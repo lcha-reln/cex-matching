@@ -12,6 +12,7 @@ are introduced only after the preceding unit has its own correctness evidence.
 - Plan version: `0.1`
 - Unit: `M00`
 - Lifecycle on `course/m00-start`: `READY`
+- Lifecycle on `unit/m00`: `IN_PROGRESS`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 

@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "io.github.lchareln.cex"
-version = "0.0.0-m00-start"
+version = "0.0.0-m00-dev"
 
 spotless {
     format("rootMisc") {
