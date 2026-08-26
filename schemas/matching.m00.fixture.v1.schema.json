@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m00.fixture.v1.schema.json",
+  "title": "Matching M00 fixture history",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "records"],
+  "properties": {
+    "schemaVersion": {
+      "const": "matching.m00.fixture.v1"
+    },
+    "records": {
+      "type": "array",
+      "minItems": 11,
+      "items": {
+        "$ref": "#/$defs/record"
+      }
+    }
+  },
+  "$defs": {
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId",
+        "instrumentId",
+        "orderId",
+        "side",
+        "priceTicks",
+        "quantityLots",
+        "expected"
+      ],
+      "properties": {
+        "caseId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "instrumentId": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[^\\u0000\\r\\n]*$"
+        },
+        "orderId": {
+          "type": "integer"
+        },
+        "side": {
+          "type": "string",
+          "maxLength": 16,
+          "pattern": "^[^\\u0000\\r\\n]*$"
+        },
+        "priceTicks": {
+          "type": "integer"
+        },
+        "quantityLots": {
+          "type": "integer"
+        },
+        "expected": {
+          "$ref": "#/$defs/expected"
+        }
+      }
+    },
+    "expected": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "code", "field"],
+          "properties": {
+            "status": {
+              "const": "VALID"
+            },
+            "code": {
+              "type": "null"
+            },
+            "field": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "code", "field"],
+          "properties": {
+            "status": {
+              "const": "INVALID"
+            },
+            "code": { "type": "string" },
+            "field": { "type": "string" }
+          },
+          "oneOf": [
+            {
+              "properties": {
+                "code": { "const": "UNKNOWN_INSTRUMENT" },
+                "field": { "const": "instrumentId" }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "INVALID_ORDER_ID" },
+                "field": { "const": "orderId" }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "INVALID_SIDE" },
+                "field": { "const": "side" }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "INVALID_PRICE" },
+                "field": { "const": "priceTicks" }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "INVALID_QUANTITY" },
+                "field": { "const": "quantityLots" }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
