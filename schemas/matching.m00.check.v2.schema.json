@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m00.check.v2.schema.json",
+  "title": "Matching M00 completion check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "status", "contractPlanVersion"],
+  "properties": {
+    "schemaVersion": { "const": "matching.m00.check.v2" },
+    "unit": { "const": "M00" },
+    "status": { "enum": ["PASS", "STUDENT_FAILURE", "SYSTEM_ERROR"] },
+    "contractPlanVersion": { "const": "0.1" },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "records", "valid", "invalid", "schemaFailureProbes"],
+      "properties": {
+        "path": { "const": "matching-testkit/src/test/resources/m00/fixtures/history-v1.json" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "records": { "const": 17 },
+        "valid": { "const": 2 },
+        "invalid": { "const": 15 },
+        "schemaFailureProbes": { "type": "integer", "minimum": 10 }
+      }
+    },
+    "canonical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "lines", "utf8Bytes", "digest", "goldenPath"],
+      "properties": {
+        "format": { "const": "M00H1" },
+        "lines": { "const": 37 },
+        "utf8Bytes": { "const": 3199 },
+        "digest": {
+          "const": "sha256:2d287d677d5f200f2b5bd1dd18dabbd40e865779489ce6da36d0411a3b670669"
+        },
+        "goldenPath": {
+          "const": "matching-testkit/src/test/resources/m00/golden/history-v1.canonical.txt"
+        }
+      }
+    },
+    "replays": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested", "completed", "distinctDigests"],
+      "properties": {
+        "requested": { "const": 100 },
+        "completed": { "const": 100 },
+        "distinctDigests": { "const": 1 }
+      }
+    },
+    "requiredMutant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "classification", "killed", "caseId", "expected", "actual"],
+      "properties": {
+        "id": { "const": "M00-QTY-ZERO-ACCEPTED" },
+        "classification": { "const": "STUDENT_FAILURE" },
+        "killed": { "const": true },
+        "caseId": { "const": "quantity-zero" },
+        "expected": { "const": "INVALID_QUANTITY(quantityLots)" },
+        "actual": { "const": "VALID" }
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "coreSourceFiles", "violations"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "coreSourceFiles": { "type": "integer", "minimum": 1 },
+        "violations": { "const": 0 }
+      }
+    },
+    "assertions": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "const": "PASS" }
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["classification", "message"],
+      "properties": {
+        "classification": { "enum": ["STUDENT_FAILURE", "SYSTEM_ERROR"] },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "PASS" } } },
+      "then": {
+        "required": [
+          "fixture",
+          "canonical",
+          "replays",
+          "requiredMutant",
+          "architecture",
+          "assertions"
+        ],
+        "not": { "required": ["failure"] }
+      },
+      "else": {
+        "required": ["failure"],
+        "not": {
+          "anyOf": [
+            { "required": ["fixture"] },
+            { "required": ["canonical"] },
+            { "required": ["replays"] },
+            { "required": ["requiredMutant"] },
+            { "required": ["architecture"] },
+            { "required": ["assertions"] }
+          ]
+        }
+      }
+    }
+  ]
+}

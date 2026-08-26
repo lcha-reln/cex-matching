@@ -1,4 +1,4 @@
-name: M00 baseline
+name: M00 contract
 
 on:
   push:
@@ -13,11 +13,13 @@ permissions:
   contents: read
 
 jobs:
-  baseline:
+  contract:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Java 25
         uses: actions/setup-java@v5
@@ -31,41 +33,104 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Build the green baseline
-        run: ./gradlew clean build --no-daemon
-
       - name: Parse frozen JSON resources
         run: >-
           jq empty
           schemas/cex.lab-evidence.v1.schema.json
           schemas/matching.m00.fixture.v1.schema.json
+          schemas/matching.m00.check.v2.schema.json
           matching-testkit/src/test/resources/m00/fixtures/history-v1.json
 
-      - name: Confirm the intentional M00 gap
+      - name: Execute the declared M00 boundary
+        id: boundary
         shell: bash
         run: |
-          mkdir -p build/reports/m00
-          m00_log=build/reports/m00/gradle-output.log
-          set +e
-          set -o pipefail
-          ./gradlew m00Check --no-daemon 2>&1 | tee "$m00_log"
-          exit_code="${PIPESTATUS[0]}"
-          set +o pipefail
-          set -e
+          expected_status="$(sed -n 's/^m00Check.expectedStatus=//p' course.properties)"
+          case "$expected_status" in
+            PASS)
+              ./gradlew clean build m00Evidence \
+                -Pm00.unitTag=course/m00-complete \
+                --no-daemon
+              test -f build/lab-evidence/M00/manifest.json
+              jq -e '
+                .schemaVersion == "matching.m00.check.v2" and
+                .unit == "M00" and
+                .status == "PASS" and
+                .replays.completed == 100 and
+                .replays.distinctDigests == 1 and
+                .requiredMutant.id == "M00-QTY-ZERO-ACCEPTED" and
+                .requiredMutant.classification == "STUDENT_FAILURE" and
+                .requiredMutant.killed == true
+              ' build/reports/m00/check.json
+              ;;
+            GOAL_NOT_IMPLEMENTED)
+              mkdir -p build/reports/m00
+              m00_log=build/reports/m00/gradle-output.log
+              set +e
+              set -o pipefail
+              ./gradlew m00Check --no-daemon 2>&1 | tee "$m00_log"
+              exit_code="${PIPESTATUS[0]}"
+              set +o pipefail
+              set -e
+              test "$exit_code" -ne 0
+              jq -e '
+                .schemaVersion == "matching.m00.check.v1" and
+                .unit == "M00" and
+                .status == "GOAL_NOT_IMPLEMENTED"
+              ' build/reports/m00/check.json
+              ;;
+            *)
+              echo "Unknown m00Check.expectedStatus: $expected_status"
+              exit 1
+              ;;
+          esac
+          echo "expected_status=$expected_status" >> "$GITHUB_OUTPUT"
 
-          if [ "$exit_code" -eq 0 ]; then
-            echo "m00Check unexpectedly passed at the start boundary"
-            exit 1
-          fi
-
-          test -f build/reports/m00/check.json
-          grep -Fq '> M00 goal is not implemented; see build/reports/m00/check.json' "$m00_log"
-          if grep -Fq 'Build completed with 2 failures' "$m00_log"; then
-            echo "m00Check mixed the educational gap with an infrastructure failure"
-            exit 1
-          fi
+      - name: Verify completion evidence semantics and hashes
+        if: ${{ steps.boundary.outputs.expected_status == 'PASS' }}
+        shell: bash
+        run: |
+          manifest=build/lab-evidence/M00/manifest.json
           jq -e '
-            .schemaVersion == "matching.m00.check.v1" and
+            .schemaVersion == "cex.lab-evidence.v1" and
+            .case == "high-availability-cex" and
+            .project == "matching" and
             .unit == "M00" and
-            .status == "GOAL_NOT_IMPLEMENTED"
-          ' build/reports/m00/check.json
+            .unitTag == "course/m00-complete" and
+            .productRelease == null and
+            .planVersion == "0.1" and
+            .source.dirty == false and
+            ([.claims[].id] == [
+              "input-contract",
+              "canonical-history",
+              "deterministic-replay",
+              "semantic-mutant",
+              "architecture-boundary"
+            ]) and
+            all(.claims[]; .status == "pass") and
+            (.limitations | length) >= 4
+          ' "$manifest"
+
+          while IFS=$'\t' read -r path expected; do
+            actual="$(sha256sum "build/lab-evidence/M00/$path" | cut -d ' ' -f 1)"
+            test "$actual" = "$expected"
+          done < <(jq -r '.claims[].artifacts[] | [.path, .sha256] | @tsv' "$manifest")
+
+          test -z "$(git status --porcelain --untracked-files=normal)"
+
+      - name: Verify annotated complete tag identity
+        if: ${{ startsWith(github.ref, 'refs/tags/course/m00') && endsWith(github.ref, '-complete') }}
+        shell: bash
+        run: |
+          test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
+          peeled="$(git rev-list -n 1 "$GITHUB_REF_NAME")"
+          test "$peeled" = "$(jq -r '.source.commit' build/lab-evidence/M00/manifest.json)"
+          test "$GITHUB_REF_NAME" = "$(jq -r '.unitTag' build/lab-evidence/M00/manifest.json)"
+
+      - name: Upload M00 evidence
+        if: ${{ steps.boundary.outputs.expected_status == 'PASS' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: m00-evidence-${{ github.sha }}
+          path: build/lab-evidence/M00
+          if-no-files-found: error

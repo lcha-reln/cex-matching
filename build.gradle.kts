@@ -1,5 +1,4 @@
 import com.diffplug.gradle.spotless.SpotlessExtension
-import io.github.lchareln.cex.build.M00StartCheck
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.testing.Test
@@ -11,7 +10,7 @@ plugins {
 }
 
 group = "io.github.lchareln.cex"
-version = "0.0.0-m00-dev"
+version = "0.0.0-m00-complete"
 
 spotless {
     format("rootMisc") {
@@ -84,13 +83,17 @@ tasks.named("assemble") {
 }
 
 tasks.named("check") {
-    dependsOn("spotlessCheck", ":matching-core:check", ":matching-testkit:check")
+    dependsOn("spotlessCheck", ":matching-core:check", ":matching-testkit:check", "m00Check")
 }
 
-val m00Report = layout.buildDirectory.file("reports/m00/check.json")
-
-tasks.register<M00StartCheck>("m00Check") {
+tasks.register("m00Check") {
     group = "verification"
-    description = "Runs the M00 executable contract. The start tag must report GOAL_NOT_IMPLEMENTED."
-    reportFile.set(m00Report)
+    description = "Runs the deterministic M00 contract, goldens, replays, architecture gate, and mutants."
+    dependsOn(":matching-testkit:m00Check")
+}
+
+tasks.register("m00Evidence") {
+    group = "verification"
+    description = "Generates and validates the clean-tree M00 evidence manifest."
+    dependsOn(":matching-testkit:m00Evidence")
 }
