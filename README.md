@@ -11,7 +11,8 @@ are introduced only after the preceding unit has its own correctness evidence.
 - Profile: `SPOT-CEX-1.0`
 - Plan version: `0.1`
 - Unit: `M00`
-- Lifecycle on `course/m00-start`: `READY`
+- Canonical start ref: `course/m00.2-start`
+- Lifecycle on the canonical start ref: `READY`
 - Lifecycle on `unit/m00`: `IN_PROGRESS`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
@@ -20,7 +21,7 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The start tag has two intentional outcomes:
+The canonical start ref has two intentional outcomes:
 
 ```bash
 ./gradlew clean build   # succeeds
@@ -29,6 +30,16 @@ The start tag has two intentional outcomes:
 
 `GOAL_NOT_IMPLEMENTED` is the expected educational gap. A compiler error, missing dependency,
 fixture parse error, or infrastructure failure is not an acceptable starting state.
+
+Two earlier start refs remain immutable for audit history and must not be used as the teaching
+baseline:
+
+- `course/m00-start` is a known failed bootstrap because the custom Gradle task source was not
+  tracked by Git;
+- `course/m00.1-start` fixes that source boundary, but its own documentation still points readers to
+  the failed original ref.
+
+`course/m00.2-start` supersedes both without rewriting or deleting either tag.
 
 ## Repository boundaries
 
