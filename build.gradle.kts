@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "io.github.lchareln.cex"
-version = "0.0.0-m00-complete"
+version = "0.0.0-m01-start"
 
 spotless {
     format("rootMisc") {
@@ -96,4 +96,10 @@ tasks.register("m00Evidence") {
     group = "verification"
     description = "Generates and validates the clean-tree M00 evidence manifest."
     dependsOn(":matching-testkit:m00Evidence")
+}
+
+tasks.register("m01Check") {
+    group = "verification"
+    description = "Runs the M01 single-instrument GTC price-time contract."
+    dependsOn(":matching-testkit:m01Check")
 }

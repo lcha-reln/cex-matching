@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m01.check.v1.schema.json",
+  "title": "Matching M01 start boundary check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "unit",
+    "status",
+    "contractPlanVersion",
+    "objective",
+    "scenarioCorpus",
+    "missingCapabilities"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "matching.m01.check.v1" },
+    "unit": { "const": "M01" },
+    "status": { "const": "GOAL_NOT_IMPLEMENTED" },
+    "contractPlanVersion": { "const": "0.3" },
+    "objective": {
+      "const": "Implement deterministic single-instrument GTC price-time matching."
+    },
+    "scenarioCorpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "schemaPath", "sha256", "scenarios"],
+      "properties": {
+        "path": {
+          "const": "matching-testkit/src/test/resources/m01/fixtures/price-time-v1.json"
+        },
+        "schemaPath": { "const": "schemas/matching.m01.scenario.v1.schema.json" },
+        "sha256": {
+          "const": "d050bc2fc029e3ac0afb5047e3030412412f3a7aecf0938a19a5953618ff9ed7"
+        },
+        "scenarios": { "const": 8 }
+      }
+    },
+    "missingCapabilities": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        { "const": "ORDER_BOOK_STATE" },
+        { "const": "PRICE_TIME_MATCHING" },
+        { "const": "ORDERED_EVENT_BATCH" }
+      ],
+      "items": false
+    }
+  }
+}

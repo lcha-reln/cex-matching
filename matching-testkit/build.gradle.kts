@@ -19,6 +19,7 @@ tasks.withType<Test>().configureEach {
 val m00ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m00")
 val m00EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M00")
 val m00UnitTag = providers.gradleProperty("m00.unitTag").orElse("course/m00-complete")
+val m01ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m01")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -43,4 +44,17 @@ tasks.register<JavaExec>("m00Evidence") {
         m00UnitTag.get(),
     )
     doNotTrackState("Evidence must re-check HEAD and working-tree cleanliness on every invocation")
+}
+
+tasks.register<JavaExec>("m01Check") {
+    group = "verification"
+    description = "Runs the M01 start boundary or completed deterministic judge."
+    dependsOn("test", ":matching-core:test", "classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M01StartCheckMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m01ReportDirectory.get().asFile.absolutePath,
+    )
+    doNotTrackState("M01 must never reuse a stale completion report")
 }

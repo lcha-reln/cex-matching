@@ -2,18 +2,19 @@
 
 The matching project for the Signal Grid **High-Availability CEX Trading Core** course.
 
-M00 starts with an executable input contract for one `PlaceLimitOrder`. It does **not** contain an
-order book, matching algorithm, trades, persistence, networking, or Aeron Cluster. Those capabilities
-are introduced only after the preceding unit has its own correctness evidence.
+M00 published the executable input contract for one `PlaceLimitOrder`. M01 is the current teaching
+boundary: it freezes the scenarios for a single-instrument, price-time-priority GTC matching loop,
+but its start state deliberately contains no order book or matching implementation. Persistence,
+networking, performance work, and Aeron Cluster remain later units.
 
 ## Current course boundary
 
 - Profile: `SPOT-CEX-1.0`
-- Plan version: `0.1`
-- Unit: `M00`
-- Canonical start ref: `course/m00.2-start`
-- Lifecycle on the canonical start ref: `READY`
-- Lifecycle on the completed implementation commit: `CODE_VERIFIED`
+- Plan version: `0.3`
+- Unit: `M01`
+- Declared start ref: `course/m01-start`
+- Declared complete ref: `course/m01-complete`
+- Lifecycle at this boundary: `READY / GOAL_NOT_IMPLEMENTED`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -21,18 +22,18 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The canonical start ref keeps two intentional outcomes:
+The M01 start boundary keeps two intentional outcomes:
 
 ```bash
 ./gradlew clean build   # succeeds
-./gradlew m00Check      # fails with structured GOAL_NOT_IMPLEMENTED
+./gradlew m01Check      # fails with structured GOAL_NOT_IMPLEMENTED
 ```
 
 `GOAL_NOT_IMPLEMENTED` is the expected educational gap. A compiler error, missing dependency,
 fixture parse error, or infrastructure failure is not an acceptable starting state.
 
-The completed implementation keeps that start ref immutable and turns the current branch into a
-green, fail-closed contract:
+The M00 implementation and evidence remain immutable at `course/m00-complete`. On that ref, the
+published commands are:
 
 ```bash
 ./gradlew clean build --no-daemon
@@ -59,7 +60,8 @@ baseline:
 - `course/m00.1-start` fixes that source boundary, but its own documentation still points readers to
   the failed original ref.
 
-`course/m00.2-start` supersedes both without rewriting or deleting either tag.
+`course/m00.2-start` supersedes both without rewriting or deleting either tag. M01 starts from the
+published M00 completion commit and does not move any M00 ref or regenerate M00 evidence.
 
 ## Repository boundaries
 
@@ -68,9 +70,10 @@ matching-core      deterministic business semantics; no I/O or runtime dependenc
 matching-testkit   fixtures, replay, mutants, and evidence tooling used by the current unit
 ```
 
-M00 must not add runtime, protocol, cluster, storage, database, or order-book modules. The bootstrap
-`buildSrc` task remains preserved in the immutable start refs; the completed branch removes it and
-delegates the real judge to `matching-testkit`.
+M01 still uses exactly these two modules. It must not add runtime, protocol, cluster, storage, or
+database modules. The start runner validates the strict scenario corpus, writes
+`build/reports/m01/check.json`, and exits non-zero because the price-time engine is intentionally
+absent. The exact contract is in `docs/specs/m01.md`.
 
 Course dashboard: <https://lcha-reln.github.io/signal-grid-blog/practice/high-availability-cex/>
 
