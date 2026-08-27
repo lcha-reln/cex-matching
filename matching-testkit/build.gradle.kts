@@ -14,12 +14,18 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     systemProperty("m00.repositoryRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
+    systemProperty("matching.repositoryRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
+    // These two end-to-end tests freeze M00's deliberate no-order-book boundary. They remain
+    // executable at course/m00-complete but are historical by definition after M01 adds the book.
+    exclude("**/M00ArchitectureBoundaryTest.class", "**/M00MutantJudgeTest.class")
 }
 
 val m00ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m00")
 val m00EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M00")
 val m00UnitTag = providers.gradleProperty("m00.unitTag").orElse("course/m00-complete")
 val m01ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m01")
+val m01EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M01")
+val m01UnitTag = providers.gradleProperty("m01.unitTag").orElse("course/m01-complete")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -48,13 +54,28 @@ tasks.register<JavaExec>("m00Evidence") {
 
 tasks.register<JavaExec>("m01Check") {
     group = "verification"
-    description = "Runs the M01 start boundary or completed deterministic judge."
+    description = "Runs the completed deterministic M01 price-time judge."
     dependsOn("test", ":matching-core:test", "classes")
     classpath = sourceSets.main.get().runtimeClasspath
-    mainClass.set("io.github.lchareln.cex.matching.testkit.M01StartCheckMain")
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M01CheckMain")
     args(
         rootProject.layout.projectDirectory.asFile.absolutePath,
         m01ReportDirectory.get().asFile.absolutePath,
     )
     doNotTrackState("M01 must never reuse a stale completion report")
+}
+
+tasks.register<JavaExec>("m01Evidence") {
+    group = "verification"
+    description = "Generates and validates the clean-tree M01 evidence manifest."
+    dependsOn("m01Check")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M01EvidenceMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m01ReportDirectory.get().asFile.absolutePath,
+        m01EvidenceDirectory.get().asFile.absolutePath,
+        m01UnitTag.get(),
+    )
+    doNotTrackState("Evidence must re-check HEAD and working-tree cleanliness on every invocation")
 }

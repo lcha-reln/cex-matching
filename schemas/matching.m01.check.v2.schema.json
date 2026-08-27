@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m01.check.v2.schema.json",
+  "title": "Matching M01 deterministic completion check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "status"],
+  "properties": {
+    "schemaVersion": { "const": "matching.m01.check.v2" },
+    "unit": { "const": "M01" },
+    "status": { "enum": ["PASS", "STUDENT_FAILURE", "SYSTEM_ERROR"] },
+    "contractPlanVersion": { "const": "0.3" },
+    "scenarioCorpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "schemaPath", "sha256", "scenarios", "cases", "schemaProbes"],
+      "properties": {
+        "path": {
+          "const": "matching-testkit/src/test/resources/m01/fixtures/price-time-v1.json"
+        },
+        "schemaPath": { "const": "schemas/matching.m01.scenario.v1.schema.json" },
+        "sha256": {
+          "const": "d050bc2fc029e3ac0afb5047e3030412412f3a7aecf0938a19a5953618ff9ed7"
+        },
+        "scenarios": { "const": 8 },
+        "cases": { "const": 22 },
+        "schemaProbes": { "const": 5 }
+      }
+    },
+    "m00Regression": { "$ref": "#/$defs/m00Regression" },
+    "priceTime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "artifact", "scenarios", "cases"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "price-time.json" },
+        "scenarios": { "const": 8 },
+        "cases": { "const": 22 }
+      }
+    },
+    "eventBatches": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "artifact", "cases"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "event-batches.json" },
+        "cases": { "const": 22 }
+      }
+    },
+    "invariants": { "$ref": "#/$defs/invariants" },
+    "canonical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "digest", "lines", "bytes", "artifact"],
+      "properties": {
+        "format": { "const": "M01H1" },
+        "digest": {
+          "const": "sha256:74585489c50e81cc3e6a10044263186ce66a7f1b20e1f45015fed68614c3e5a1"
+        },
+        "lines": { "const": 155 },
+        "bytes": { "const": 14256 },
+        "artifact": { "const": "canonical-history.utf8" }
+      }
+    },
+    "replays": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested", "completed", "distinctDigests"],
+      "properties": {
+        "requested": { "const": 100 },
+        "completed": { "const": 100 },
+        "distinctDigests": { "const": 1 }
+      }
+    },
+    "requiredMutants": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        { "$ref": "#/$defs/lifoMutant" },
+        { "$ref": "#/$defs/takerPriceMutant" },
+        { "$ref": "#/$defs/skipMakerMutant" }
+      ],
+      "items": false
+    },
+    "mutants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "artifact", "required", "killed", "systemErrorControl"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "mutants.json" },
+        "required": { "const": 3 },
+        "killed": { "const": 3 },
+        "systemErrorControl": { "const": "SYSTEM_ERROR" }
+      }
+    },
+    "architecture": { "$ref": "#/$defs/architecture" },
+    "artifacts": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "prefixItems": [
+        { "const": "m00-regression.json" },
+        { "const": "price-time.json" },
+        { "const": "event-batches.json" },
+        { "const": "invariants.json" },
+        { "const": "canonical-history.utf8" },
+        { "const": "mutants.json" },
+        { "const": "architecture.json" }
+      ],
+      "items": false
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message"],
+      "properties": { "message": { "type": "string", "minLength": 1 } }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "PASS" } }, "required": ["status"] },
+      "then": {
+        "required": [
+          "contractPlanVersion",
+          "scenarioCorpus",
+          "m00Regression",
+          "priceTime",
+          "eventBatches",
+          "invariants",
+          "canonical",
+          "replays",
+          "requiredMutants",
+          "mutants",
+          "architecture",
+          "artifacts"
+        ],
+        "not": { "required": ["failure"] }
+      },
+      "else": {
+        "required": ["failure"],
+        "not": {
+          "anyOf": [
+            { "required": ["contractPlanVersion"] },
+            { "required": ["scenarioCorpus"] },
+            { "required": ["m00Regression"] },
+            { "required": ["priceTime"] },
+            { "required": ["eventBatches"] },
+            { "required": ["invariants"] },
+            { "required": ["canonical"] },
+            { "required": ["replays"] },
+            { "required": ["requiredMutants"] },
+            { "required": ["mutants"] },
+            { "required": ["architecture"] },
+            { "required": ["artifacts"] }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "m00Regression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "artifact"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "m00-regression.json" }
+      }
+    },
+    "invariants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "artifact"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "invariants.json" }
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "artifact", "sourceFiles"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "architecture.json" },
+        "sourceFiles": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "mutantBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "classification", "killed", "scenarioId", "caseId", "artifact"],
+      "properties": {
+        "id": { "type": "string" },
+        "classification": { "const": "STUDENT_FAILURE" },
+        "killed": { "const": true },
+        "scenarioId": { "type": "string", "minLength": 1 },
+        "caseId": { "type": "string", "minLength": 1 },
+        "artifact": { "const": "mutants.json" }
+      }
+    },
+    "takerPriceMutant": {
+      "allOf": [
+        { "$ref": "#/$defs/mutantBase" },
+        {
+          "properties": {
+            "id": { "const": "M01-TAKER-PRICE" },
+            "scenarioId": { "const": "better-price-before-time" },
+            "caseId": { "const": "buy-takes-better-price-first" }
+          }
+        }
+      ]
+    },
+    "lifoMutant": {
+      "allOf": [
+        { "$ref": "#/$defs/mutantBase" },
+        {
+          "properties": {
+            "id": { "const": "M01-SAME-PRICE-LIFO" },
+            "scenarioId": { "const": "same-price-fifo-three-makers" },
+            "caseId": { "const": "fifo-taker" }
+          }
+        }
+      ]
+    },
+    "skipMakerMutant": {
+      "allOf": [
+        { "$ref": "#/$defs/mutantBase" },
+        {
+          "properties": {
+            "id": { "const": "M01-SKIP-FIRST-MAKER" },
+            "scenarioId": { "const": "better-price-before-time" },
+            "caseId": { "const": "buy-takes-better-price-first" }
+          }
+        }
+      ]
+    }
+  }
+}

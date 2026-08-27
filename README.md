@@ -2,10 +2,10 @@
 
 The matching project for the Signal Grid **High-Availability CEX Trading Core** course.
 
-M00 published the executable input contract for one `PlaceLimitOrder`. M01 is the current teaching
-boundary: it freezes the scenarios for a single-instrument, price-time-priority GTC matching loop,
-but its start state deliberately contains no order book or matching implementation. Persistence,
-networking, performance work, and Aeron Cluster remain later units.
+M00 published the executable input contract for one `PlaceLimitOrder`. M01 adds the first stateful
+business slice: a single-writer, in-memory `BTC-USDT` GTC order book with deterministic
+price-time-priority matching and ordered business-event batches. Persistence, networking,
+performance work, and Aeron Cluster remain later units.
 
 ## Current course boundary
 
@@ -14,7 +14,7 @@ networking, performance work, and Aeron Cluster remain later units.
 - Unit: `M01`
 - Declared start ref: `course/m01-start`
 - Declared complete ref: `course/m01-complete`
-- Lifecycle at this boundary: `READY / GOAL_NOT_IMPLEMENTED`
+- Lifecycle at this boundary: `CODE_VERIFIED / PASS`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -22,7 +22,7 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The M01 start boundary keeps two intentional outcomes:
+The immutable M01 start boundary keeps two intentional outcomes:
 
 ```bash
 ./gradlew clean build   # succeeds
@@ -31,6 +31,20 @@ The M01 start boundary keeps two intentional outcomes:
 
 `GOAL_NOT_IMPLEMENTED` is the expected educational gap. A compiler error, missing dependency,
 fixture parse error, or infrastructure failure is not an acceptable starting state.
+
+The completed boundary instead requires:
+
+```bash
+./gradlew clean build --no-daemon
+./gradlew m01Check --no-daemon
+./gradlew m01Evidence -Pm01.unitTag=course/m01-complete --no-daemon
+```
+
+`m01Check` replays the frozen 8-scenario/22-command oracle 100 times, verifies price-time priority,
+maker-price execution, ordered event batches, quantity and book invariants, the inherited M00 input
+contract, three required semantic mutants, and the M01 architecture boundary. Full M00 evidence is
+not regenerated on M01: its no-order-book architecture claim remains scoped to the immutable
+`course/m00-complete` tag.
 
 The M00 implementation and evidence remain immutable at `course/m00-complete`. On that ref, the
 published commands are:
@@ -70,10 +84,10 @@ matching-core      deterministic business semantics; no I/O or runtime dependenc
 matching-testkit   fixtures, replay, mutants, and evidence tooling used by the current unit
 ```
 
-M01 still uses exactly these two modules. It must not add runtime, protocol, cluster, storage, or
-database modules. The start runner validates the strict scenario corpus, writes
-`build/reports/m01/check.json`, and exits non-zero because the price-time engine is intentionally
-absent. The exact contract is in `docs/specs/m01.md`.
+M01 still uses exactly these two modules. It adds no runtime, protocol, cluster, storage, or database
+module. Stable reports are written to `build/reports/m01/`; a clean committed tree can generate
+`build/lab-evidence/M01/manifest.json`, bound to the source commit and the annotated completion tag.
+The exact contract is in `docs/specs/m01.md`.
 
 Course dashboard: <https://lcha-reln.github.io/signal-grid-blog/practice/high-availability-cex/>
 

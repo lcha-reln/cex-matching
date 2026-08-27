@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "io.github.lchareln.cex"
-version = "0.0.0-m01-start"
+version = "0.0.0-m01-complete"
 
 spotless {
     format("rootMisc") {
@@ -83,7 +83,7 @@ tasks.named("assemble") {
 }
 
 tasks.named("check") {
-    dependsOn("spotlessCheck", ":matching-core:check", ":matching-testkit:check", "m00Check")
+    dependsOn("spotlessCheck", ":matching-core:check", ":matching-testkit:check", "m01Check")
 }
 
 tasks.register("m00Check") {
@@ -102,4 +102,10 @@ tasks.register("m01Check") {
     group = "verification"
     description = "Runs the M01 single-instrument GTC price-time contract."
     dependsOn(":matching-testkit:m01Check")
+}
+
+tasks.register("m01Evidence") {
+    group = "verification"
+    description = "Generates and validates the clean-tree M01 evidence manifest."
+    dependsOn(":matching-testkit:m01Evidence")
 }
