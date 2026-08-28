@@ -3,5 +3,8 @@ plugins {
     alias(libs.plugins.spotless)
 }
 
-// M03 intentionally keeps this module free of project and external dependencies. The independent
-// semantic implementation is added only after course/m03-start has frozen this boundary.
+// Main code is intentionally JDK-only and has no project dependency. JUnit is test-only.
+dependencies {
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
