@@ -1,4 +1,4 @@
-name: Matching M01 contract
+name: Matching M02 contract
 
 on:
   push:
@@ -43,148 +43,153 @@ jobs:
             matching-testkit/src/test/resources/m00/fixtures/history-v1.json
             schemas/matching.m01.scenario.v1.schema.json
             schemas/matching.m01.check.v1.schema.json
+            schemas/matching.m01.check.v2.schema.json
             matching-testkit/src/test/resources/m01/fixtures/price-time-v1.json
+            schemas/matching.m02.scenario.v1.schema.json
+            schemas/matching.m02.check.v1.schema.json
+            matching-testkit/src/test/resources/m02/fixtures/order-lifecycle-v1.json
           )
-          if [[ -f schemas/matching.m01.check.v2.schema.json ]]; then
-            resources+=(schemas/matching.m01.check.v2.schema.json)
+          if [[ -f schemas/matching.m02.check.v2.schema.json ]]; then
+            resources+=(schemas/matching.m02.check.v2.schema.json)
           fi
           jq empty "${resources[@]}"
 
-      - name: Execute the declared M01 boundary
+      - name: Execute the inherited M01 regression and declared M02 boundary
         id: boundary
         shell: bash
         run: |
-          test "$(sed -n 's/^unit=//p' course.properties)" = M01
-          expected_status="$(sed -n 's/^m01Check.expectedStatus=//p' course.properties)"
+          unit="$(sed -n 's/^unit=//p' course.properties)"
+          test "$unit" = M02
+          expected_status="$(sed -n 's/^m02Check.expectedStatus=//p' course.properties)"
           case "$expected_status" in
             PASS)
               complete_ref="$(sed -n 's/^completeRef=//p' course.properties)"
-              [[ "$complete_ref" =~ ^course/m01(\.[1-9][0-9]*)?-complete$ ]]
-              ./gradlew clean build m01Evidence \
-                -Pm01.unitTag="$complete_ref" \
+              [[ "$complete_ref" =~ ^course/m02(\.[1-9][0-9]*)?-complete$ ]]
+              ./gradlew clean build m02Evidence \
+                -Pm02.unitTag="$complete_ref" \
                 --no-daemon
-              test -f build/lab-evidence/M01/manifest.json
+              test -f build/lab-evidence/M02/manifest.json
               jq -e '
-                .schemaVersion == "matching.m01.check.v2" and
-                .unit == "M01" and
+                .schemaVersion == "matching.m02.check.v2" and
+                .unit == "M02" and
                 .status == "PASS" and
-                .contractPlanVersion == "0.3" and
+                .contractPlanVersion == "0.4" and
                 .scenarioCorpus == {
-                  "path": "matching-testkit/src/test/resources/m01/fixtures/price-time-v1.json",
-                  "schemaPath": "schemas/matching.m01.scenario.v1.schema.json",
-                  "sha256": "d050bc2fc029e3ac0afb5047e3030412412f3a7aecf0938a19a5953618ff9ed7",
-                  "scenarios": 8,
-                  "cases": 22,
-                  "schemaProbes": 5
+                  "path": "matching-testkit/src/test/resources/m02/fixtures/order-lifecycle-v1.json",
+                  "schemaPath": "schemas/matching.m02.scenario.v1.schema.json",
+                  "sha256": "7e0be70259dcf1b4b422d68742b5c24f1a4d11b05643e2d9e367b67733d4a90a",
+                  "scenarios": 10,
+                  "commands": 34,
+                  "placeCommands": 22,
+                  "cancelCommands": 12,
+                  "schemaProbes": 8
                 } and
-                .m00Regression.status == "PASS" and
-                .priceTime.status == "PASS" and
-                .eventBatches.status == "PASS" and
-                .invariants.status == "PASS" and
-                .canonical == {
-                  "format": "M01H1",
-                  "digest": "sha256:74585489c50e81cc3e6a10044263186ce66a7f1b20e1f45015fed68614c3e5a1",
-                  "lines": 155,
-                  "bytes": 14256,
-                  "artifact": "canonical-history.utf8"
-                } and
+                .m01Regression.status == "PASS" and
+                .architecture.status == "PASS" and
                 .replays.requested == 100 and
                 .replays.completed == 100 and
                 .replays.distinctDigests == 1 and
                 ([.requiredMutants[].id] == [
-                  "M01-SAME-PRICE-LIFO",
-                  "M01-TAKER-PRICE",
-                  "M01-SKIP-FIRST-MAKER"
+                  "M02-CANCEL-WRONG-FIFO-ORDER",
+                  "M02-GHOST-RESTING-ORDER",
+                  "M02-TERMINAL-ID-REUSE",
+                  "M02-REPEATED-CANCEL-SUCCEEDS"
                 ]) and
                 all(.requiredMutants[];
                   .classification == "STUDENT_FAILURE" and .killed == true) and
-                .mutants == {
-                  "status": "PASS",
-                  "artifact": "mutants.json",
-                  "required": 3,
-                  "killed": 3,
-                  "systemErrorControl": "SYSTEM_ERROR"
-                } and
-                .architecture.status == "PASS" and
-                .artifacts == [
-                  "m00-regression.json",
-                  "price-time.json",
-                  "event-batches.json",
-                  "invariants.json",
-                  "canonical-history.utf8",
-                  "mutants.json",
-                  "architecture.json"
-                ]
-              ' build/reports/m01/check.json
+                .mutants.systemErrorControl == "SYSTEM_ERROR"
+              ' build/reports/m02/check.json
               echo "complete_ref=$complete_ref" >> "$GITHUB_OUTPUT"
               ;;
             GOAL_NOT_IMPLEMENTED)
               ./gradlew clean build --no-daemon
-              mkdir -p build/reports/m01
-              m01_log=build/reports/m01/gradle-output.log
+              jq -e '
+                .schemaVersion == "matching.m01.check.v2" and
+                .unit == "M01" and
+                .status == "PASS" and
+                .canonical.digest == "sha256:74585489c50e81cc3e6a10044263186ce66a7f1b20e1f45015fed68614c3e5a1" and
+                .replays.completed == 100 and
+                .replays.distinctDigests == 1
+              ' build/reports/m01/check.json
+
+              mkdir -p build/reports/m02
+              m02_log=build/reports/m02/gradle-output.log
               set +e
               set -o pipefail
-              ./gradlew m01Check --no-daemon 2>&1 | tee "$m01_log"
+              ./gradlew m02Check --no-daemon 2>&1 | tee "$m02_log"
               exit_code="${PIPESTATUS[0]}"
               set +o pipefail
               set -e
               test "$exit_code" -ne 0
+              grep -Fq "M02 check status: GOAL_NOT_IMPLEMENTED" "$m02_log"
               jq -e '
-                .schemaVersion == "matching.m01.check.v1" and
-                .unit == "M01" and
+                .schemaVersion == "matching.m02.check.v1" and
+                .unit == "M02" and
                 .status == "GOAL_NOT_IMPLEMENTED" and
-                .contractPlanVersion == "0.3" and
-                .scenarioCorpus.scenarios == 8 and
-                .scenarioCorpus.sha256 == "d050bc2fc029e3ac0afb5047e3030412412f3a7aecf0938a19a5953618ff9ed7" and
+                .contractPlanVersion == "0.4" and
+                .objective == "Implement addressable cancellation and irreversible order terminal states." and
+                .scenarioCorpus == {
+                  "path": "matching-testkit/src/test/resources/m02/fixtures/order-lifecycle-v1.json",
+                  "schemaPath": "schemas/matching.m02.scenario.v1.schema.json",
+                  "sha256": "7e0be70259dcf1b4b422d68742b5c24f1a4d11b05643e2d9e367b67733d4a90a",
+                  "scenarios": 10,
+                  "commands": 34,
+                  "placeCommands": 22,
+                  "cancelCommands": 12,
+                  "schemaProbes": 8
+                } and
                 .missingCapabilities == [
-                  "ORDER_BOOK_STATE",
-                  "PRICE_TIME_MATCHING",
-                  "ORDERED_EVENT_BATCH"
+                  "ADDRESSABLE_LIFECYCLE_REGISTRY",
+                  "ADDRESSABLE_CANCEL",
+                  "IRREVERSIBLE_TERMINAL_STATE"
                 ]
-              ' build/reports/m01/check.json
+              ' build/reports/m02/check.json
               ;;
             *)
-              echo "Unknown m01Check.expectedStatus: $expected_status"
+              echo "Unknown m02Check.expectedStatus: $expected_status"
               exit 1
               ;;
           esac
+          echo "unit=$unit" >> "$GITHUB_OUTPUT"
           echo "expected_status=$expected_status" >> "$GITHUB_OUTPUT"
 
-      - name: Verify M01 completion evidence semantics and hashes
-        if: ${{ steps.boundary.outputs.expected_status == 'PASS' }}
+      - name: Verify M02 completion evidence semantics and hashes
+        if: ${{ steps.boundary.outputs.unit == 'M02' && steps.boundary.outputs.expected_status == 'PASS' }}
         shell: bash
         run: |
-          manifest=build/lab-evidence/M01/manifest.json
+          manifest=build/lab-evidence/M02/manifest.json
           jq -e \
             --arg complete_ref '${{ steps.boundary.outputs.complete_ref }}' \
             --arg source_commit "$GITHUB_SHA" '
             .schemaVersion == "cex.lab-evidence.v1" and
             .case == "high-availability-cex" and
             .project == "matching" and
-            .unit == "M01" and
+            .unit == "M02" and
             .unitTag == $complete_ref and
             .productRelease == null and
-            .planVersion == "0.3" and
+            .planVersion == "0.4" and
             .source.commit == $source_commit and
             .source.dirty == false and
             ([.claims[].id] == [
-              "m00-input-regression",
-              "price-time-priority",
-              "matching-event-batches",
-              "quantity-and-book-invariants",
-              "deterministic-event-history",
+              "m00-m01-regression",
+              "cancel-event-batches",
+              "addressable-order-cancellation",
+              "irreversible-terminal-states",
+              "order-registry-book-invariants",
+              "deterministic-lifecycle-history",
               "semantic-mutants",
               "architecture-boundary"
             ]) and
             all(.claims[]; .status == "pass") and
             .limitations == [
-              "Only one in-memory BTC-USDT GTC limit-order book is implemented.",
-              "Scenario order IDs are unique; duplicate IDs, duplicate commands, and addressable lifecycle semantics are outside M01.",
-              "There is no cancel, amendment, order index, IOC, FOK, post-only, market order, STP, market state, or price band.",
-              "There is no account, asset, position, fee, settlement, or risk logic.",
+              "Only one in-memory BTC-USDT GTC limit-order book with place and cancel is implemented.",
+              "Accepted order IDs are unique for the lifetime of one engine process; terminal identity records are retained without pruning.",
+              "A repeated place command is rejected as a duplicate order ID; command-level idempotency and prior-result replay are not implemented.",
+              "There is no Cancel/Replace, amendment, mass cancel, IOC, FOK, post-only, market order, STP, market state, or price band.",
+              "There is no account, asset, position, fee, settlement, reservation-release, or risk logic.",
               "Fixed scenarios and semantic mutants are not the independent generated reference model or property proof deferred to M03.",
               "The unit has no persistence, networking, database, threads, Aeron, or high availability.",
-              "The evidence makes no throughput, latency, recovery, or production-readiness claim."
+              "The evidence makes no throughput, latency, recovery, durable-idempotency, or production-readiness claim."
             ] and
             .supersedes == null and
             (.generatedAt | type) == "string" and
@@ -198,34 +203,35 @@ jobs:
           while IFS=$'\t' read -r path expected; do
             [[ "$path" != /* ]]
             [[ "$path" != *..* ]]
-            actual="$(sha256sum "build/lab-evidence/M01/$path" | cut -d ' ' -f 1)"
+            actual="$(sha256sum "build/lab-evidence/M02/$path" | cut -d ' ' -f 1)"
             test "$actual" = "$expected"
           done < <(jq -r '.claims[].artifacts[] | [.path, .sha256] | @tsv' "$manifest")
 
           test -z "$(git status --porcelain --untracked-files=normal)"
 
-      - name: Verify annotated M01 start tag identity
-        if: ${{ startsWith(github.ref, 'refs/tags/course/m01') && endsWith(github.ref, '-start') }}
+      - name: Verify annotated M02 start tag identity
+        if: ${{ startsWith(github.ref, 'refs/tags/course/m02') && endsWith(github.ref, '-start') }}
         shell: bash
         run: |
           test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
           test "$GITHUB_REF_NAME" = "$(sed -n 's/^startRef=//p' course.properties)"
           test "$(git rev-list -n 1 "$GITHUB_REF_NAME")" = "$(git rev-parse HEAD)"
 
-      - name: Verify annotated M01 complete tag identity
-        if: ${{ startsWith(github.ref, 'refs/tags/course/m01') && endsWith(github.ref, '-complete') }}
+      - name: Verify annotated M02 complete tag identity
+        if: ${{ startsWith(github.ref, 'refs/tags/course/m02') && endsWith(github.ref, '-complete') }}
         shell: bash
         run: |
+          test "${{ steps.boundary.outputs.unit }}" = M02
           test "${{ steps.boundary.outputs.expected_status }}" = PASS
           test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
           peeled="$(git rev-list -n 1 "$GITHUB_REF_NAME")"
-          test "$peeled" = "$(jq -r '.source.commit' build/lab-evidence/M01/manifest.json)"
-          test "$GITHUB_REF_NAME" = "$(jq -r '.unitTag' build/lab-evidence/M01/manifest.json)"
+          test "$peeled" = "$(jq -r '.source.commit' build/lab-evidence/M02/manifest.json)"
+          test "$GITHUB_REF_NAME" = "$(jq -r '.unitTag' build/lab-evidence/M02/manifest.json)"
 
-      - name: Upload M01 evidence
-        if: ${{ steps.boundary.outputs.expected_status == 'PASS' }}
+      - name: Upload M02 evidence
+        if: ${{ steps.boundary.outputs.unit == 'M02' && steps.boundary.outputs.expected_status == 'PASS' }}
         uses: actions/upload-artifact@v6
         with:
-          name: m01-evidence-${{ github.sha }}
-          path: build/lab-evidence/M01
+          name: m02-evidence-${{ github.sha }}
+          path: build/lab-evidence/M02
           if-no-files-found: error

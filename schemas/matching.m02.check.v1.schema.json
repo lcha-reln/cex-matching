@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m02.check.v1.schema.json",
+  "title": "Matching M02 start boundary check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "unit",
+    "status",
+    "contractPlanVersion",
+    "objective",
+    "scenarioCorpus",
+    "missingCapabilities"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "matching.m02.check.v1" },
+    "unit": { "const": "M02" },
+    "status": { "const": "GOAL_NOT_IMPLEMENTED" },
+    "contractPlanVersion": { "const": "0.4" },
+    "objective": {
+      "const": "Implement addressable cancellation and irreversible order terminal states."
+    },
+    "scenarioCorpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schemaPath",
+        "sha256",
+        "scenarios",
+        "commands",
+        "placeCommands",
+        "cancelCommands",
+        "schemaProbes"
+      ],
+      "properties": {
+        "path": {
+          "const": "matching-testkit/src/test/resources/m02/fixtures/order-lifecycle-v1.json"
+        },
+        "schemaPath": { "const": "schemas/matching.m02.scenario.v1.schema.json" },
+        "sha256": {
+          "const": "7e0be70259dcf1b4b422d68742b5c24f1a4d11b05643e2d9e367b67733d4a90a"
+        },
+        "scenarios": { "const": 10 },
+        "commands": { "const": 34 },
+        "placeCommands": { "const": 22 },
+        "cancelCommands": { "const": 12 },
+        "schemaProbes": { "const": 8 }
+      }
+    },
+    "missingCapabilities": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        { "const": "ADDRESSABLE_LIFECYCLE_REGISTRY" },
+        { "const": "ADDRESSABLE_CANCEL" },
+        { "const": "IRREVERSIBLE_TERMINAL_STATE" }
+      ],
+      "items": false
+    }
+  }
+}

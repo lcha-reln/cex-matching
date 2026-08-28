@@ -1,0 +1,291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m02.scenario.v1.schema.json",
+  "title": "Matching M02 addressable order lifecycle scenarios",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "scenarios"],
+  "properties": {
+    "schemaVersion": { "const": "matching.m02.scenario.v1" },
+    "scenarios": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/scenario" }
+    }
+  },
+  "$defs": {
+    "positiveLong": { "type": "integer", "minimum": 1, "maximum": 9223372036854775807 },
+    "caseId": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "instrumentId": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[^\\u0000\\r\\n]*$"
+    },
+    "placeInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrumentId", "orderId", "side", "priceTicks", "quantityLots"],
+      "properties": {
+        "instrumentId": { "$ref": "#/$defs/instrumentId" },
+        "orderId": { "type": "integer" },
+        "side": {
+          "type": "string",
+          "maxLength": 16,
+          "pattern": "^[^\\u0000\\r\\n]*$"
+        },
+        "priceTicks": { "type": "integer" },
+        "quantityLots": { "type": "integer" }
+      }
+    },
+    "cancelInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrumentId", "orderId"],
+      "properties": {
+        "instrumentId": { "$ref": "#/$defs/instrumentId" },
+        "orderId": { "type": "integer" }
+      }
+    },
+    "rejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "code", "field"],
+      "properties": {
+        "type": { "const": "REJECTED" },
+        "code": {
+          "enum": [
+            "UNKNOWN_INSTRUMENT",
+            "INVALID_ORDER_ID",
+            "INVALID_SIDE",
+            "INVALID_PRICE",
+            "INVALID_QUANTITY"
+          ]
+        },
+        "field": {
+          "enum": ["instrumentId", "orderId", "side", "priceTicks", "quantityLots"]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "code": { "const": "UNKNOWN_INSTRUMENT" } } },
+          "then": { "properties": { "field": { "const": "instrumentId" } } }
+        },
+        {
+          "if": { "properties": { "code": { "const": "INVALID_ORDER_ID" } } },
+          "then": { "properties": { "field": { "const": "orderId" } } }
+        },
+        {
+          "if": { "properties": { "code": { "const": "INVALID_SIDE" } } },
+          "then": { "properties": { "field": { "const": "side" } } }
+        },
+        {
+          "if": { "properties": { "code": { "const": "INVALID_PRICE" } } },
+          "then": { "properties": { "field": { "const": "priceTicks" } } }
+        },
+        {
+          "if": { "properties": { "code": { "const": "INVALID_QUANTITY" } } },
+          "then": { "properties": { "field": { "const": "quantityLots" } } }
+        }
+      ]
+    },
+    "accepted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "sequence", "orderId", "side", "priceTicks", "quantityLots"],
+      "properties": {
+        "type": { "const": "ACCEPTED" },
+        "sequence": { "$ref": "#/$defs/positiveLong" },
+        "orderId": { "$ref": "#/$defs/positiveLong" },
+        "side": { "enum": ["BUY", "SELL"] },
+        "priceTicks": { "$ref": "#/$defs/positiveLong" },
+        "quantityLots": { "$ref": "#/$defs/positiveLong" }
+      }
+    },
+    "trade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "makerSequence",
+        "makerOrderId",
+        "takerSequence",
+        "takerOrderId",
+        "priceTicks",
+        "quantityLots"
+      ],
+      "properties": {
+        "type": { "const": "TRADE" },
+        "makerSequence": { "$ref": "#/$defs/positiveLong" },
+        "makerOrderId": { "$ref": "#/$defs/positiveLong" },
+        "takerSequence": { "$ref": "#/$defs/positiveLong" },
+        "takerOrderId": { "$ref": "#/$defs/positiveLong" },
+        "priceTicks": { "$ref": "#/$defs/positiveLong" },
+        "quantityLots": { "$ref": "#/$defs/positiveLong" }
+      }
+    },
+    "rested": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "sequence",
+        "orderId",
+        "side",
+        "priceTicks",
+        "remainingQuantityLots"
+      ],
+      "properties": {
+        "type": { "const": "RESTED" },
+        "sequence": { "$ref": "#/$defs/positiveLong" },
+        "orderId": { "$ref": "#/$defs/positiveLong" },
+        "side": { "enum": ["BUY", "SELL"] },
+        "priceTicks": { "$ref": "#/$defs/positiveLong" },
+        "remainingQuantityLots": { "$ref": "#/$defs/positiveLong" }
+      }
+    },
+    "placeRejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "orderId", "code"],
+      "properties": {
+        "type": { "const": "PLACE_REJECTED" },
+        "orderId": { "$ref": "#/$defs/positiveLong" },
+        "code": { "const": "DUPLICATE_ORDER_ID" }
+      }
+    },
+    "cancelRejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "orderId", "code"],
+      "properties": {
+        "type": { "const": "CANCEL_REJECTED" },
+        "orderId": { "$ref": "#/$defs/positiveLong" },
+        "code": {
+          "enum": ["ORDER_NOT_FOUND", "ORDER_ALREADY_FILLED", "ORDER_ALREADY_CANCELED"]
+        }
+      }
+    },
+    "canceled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "sequence",
+        "orderId",
+        "side",
+        "priceTicks",
+        "canceledQuantityLots"
+      ],
+      "properties": {
+        "type": { "const": "CANCELED" },
+        "sequence": { "$ref": "#/$defs/positiveLong" },
+        "orderId": { "$ref": "#/$defs/positiveLong" },
+        "side": { "enum": ["BUY", "SELL"] },
+        "priceTicks": { "$ref": "#/$defs/positiveLong" },
+        "canceledQuantityLots": { "$ref": "#/$defs/positiveLong" }
+      }
+    },
+    "event": {
+      "oneOf": [
+        { "$ref": "#/$defs/rejected" },
+        { "$ref": "#/$defs/accepted" },
+        { "$ref": "#/$defs/trade" },
+        { "$ref": "#/$defs/rested" },
+        { "$ref": "#/$defs/placeRejected" },
+        { "$ref": "#/$defs/cancelRejected" },
+        { "$ref": "#/$defs/canceled" }
+      ]
+    },
+    "restingOrder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence", "orderId", "remainingQuantityLots"],
+      "properties": {
+        "sequence": { "$ref": "#/$defs/positiveLong" },
+        "orderId": { "$ref": "#/$defs/positiveLong" },
+        "remainingQuantityLots": { "$ref": "#/$defs/positiveLong" }
+      }
+    },
+    "level": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["priceTicks", "orders"],
+      "properties": {
+        "priceTicks": { "$ref": "#/$defs/positiveLong" },
+        "orders": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/restingOrder" }
+        }
+      }
+    },
+    "book": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bids", "asks"],
+      "properties": {
+        "bids": { "type": "array", "items": { "$ref": "#/$defs/level" } },
+        "asks": { "type": "array", "items": { "$ref": "#/$defs/level" } }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["events", "bookAfter"],
+      "properties": {
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/event" }
+        },
+        "bookAfter": { "$ref": "#/$defs/book" }
+      }
+    },
+    "placeCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "type", "input", "expected"],
+      "properties": {
+        "caseId": { "$ref": "#/$defs/caseId" },
+        "type": { "const": "PLACE" },
+        "input": { "$ref": "#/$defs/placeInput" },
+        "expected": { "$ref": "#/$defs/expected" }
+      }
+    },
+    "cancelCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "type", "input", "expected"],
+      "properties": {
+        "caseId": { "$ref": "#/$defs/caseId" },
+        "type": { "const": "CANCEL" },
+        "input": { "$ref": "#/$defs/cancelInput" },
+        "expected": { "$ref": "#/$defs/expected" }
+      }
+    },
+    "command": {
+      "oneOf": [
+        { "$ref": "#/$defs/placeCommand" },
+        { "$ref": "#/$defs/cancelCommand" }
+      ]
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarioId", "commands"],
+      "properties": {
+        "scenarioId": { "$ref": "#/$defs/caseId" },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/command" }
+        }
+      }
+    }
+  }
+}

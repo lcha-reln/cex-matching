@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "io.github.lchareln.cex"
-version = "0.0.0-m01-complete"
+version = "0.0.0-m02-start"
 
 spotless {
     format("rootMisc") {
@@ -108,4 +108,10 @@ tasks.register("m01Evidence") {
     group = "verification"
     description = "Generates and validates the clean-tree M01 evidence manifest."
     dependsOn(":matching-testkit:m01Evidence")
+}
+
+tasks.register("m02Check") {
+    group = "verification"
+    description = "Runs the M02 addressable order lifecycle start contract."
+    dependsOn(":matching-testkit:m02Check")
 }
