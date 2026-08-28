@@ -55,6 +55,19 @@ final class SingleInstrumentExecutionPolicyTest {
   }
 
   @Test
+  void policyValidationPrecedesDuplicateIdentity() {
+    SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine();
+    engine.place(input(1, "BUY", 99, 1));
+
+    MatchingEvent.Rejected rejected =
+        assertInstanceOf(
+            MatchingEvent.Rejected.class,
+            engine.placeRequest(request(1, "SELL", 99, 1, "UNKNOWN")).events().getFirst());
+
+    assertEquals(ValidationCode.INVALID_EXECUTION_POLICY, rejected.code());
+  }
+
+  @Test
   void iocZeroFillIsAcceptedThenCanceledWithoutResting() {
     SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine();
 
@@ -193,6 +206,53 @@ final class SingleInstrumentExecutionPolicyTest {
               engine.placeRequest(request(10, "BUY", 100, 2, policy)).events().getFirst());
       assertEquals(PlaceRejectionCode.DUPLICATE_ORDER_ID, rejected.code());
     }
+  }
+
+  @Test
+  void policyRejectionsPrecedeAcceptanceSequenceCapacityWithoutReservingIdentity() {
+    SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine(Long.MAX_VALUE - 1);
+    engine.place(input(10, "SELL", 100, 1));
+    OrderBookSnapshot before = engine.snapshot();
+
+    MatchingEvent.PlaceRejected fok =
+        assertInstanceOf(
+            MatchingEvent.PlaceRejected.class,
+            engine.placeRequest(request(20, "BUY", 100, 2, "FOK")).events().getFirst());
+    assertEquals(PlaceRejectionCode.FOK_NOT_FILLABLE, fok.code());
+
+    MatchingEvent.PlaceRejected postOnly =
+        assertInstanceOf(
+            MatchingEvent.PlaceRejected.class,
+            engine.placeRequest(request(21, "BUY", 100, 1, "POST_ONLY")).events().getFirst());
+    assertEquals(PlaceRejectionCode.POST_ONLY_WOULD_TAKE, postOnly.code());
+    assertEquals(before, engine.snapshot());
+    assertThrows(
+        IllegalStateException.class, () -> engine.placeRequest(request(20, "BUY", 99, 1, "GTC")));
+  }
+
+  @Test
+  void sellIocAndPostOnlyMirrorBuyAcrossPartialCrossAndNonCrossingBoundaries() {
+    SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine();
+    engine.place(input(10, "BUY", 100, 2));
+    engine.place(input(11, "BUY", 99, 2));
+
+    ExecutionBatch ioc = engine.placeRequest(request(20, "SELL", 100, 3, "IOC"));
+    MatchingEvent.Trade trade = assertInstanceOf(MatchingEvent.Trade.class, ioc.events().get(1));
+    assertEquals(10, trade.makerOrderId().value());
+    assertEquals(2, trade.quantityLots().value());
+    MatchingEvent.RemainderCanceled remainder =
+        assertInstanceOf(MatchingEvent.RemainderCanceled.class, ioc.events().getLast());
+    assertEquals(1, remainder.canceledQuantityLots().value());
+
+    MatchingEvent.PlaceRejected cross =
+        assertInstanceOf(
+            MatchingEvent.PlaceRejected.class,
+            engine.placeRequest(request(21, "SELL", 98, 1, "POST_ONLY")).events().getFirst());
+    assertEquals(PlaceRejectionCode.POST_ONLY_WOULD_TAKE, cross.code());
+
+    ExecutionBatch nonCrossing = engine.placeRequest(request(21, "SELL", 100, 1, "POST_ONLY"));
+    assertEquals(ExecutionPolicy.POST_ONLY, accepted(nonCrossing).executionPolicy());
+    assertInstanceOf(MatchingEvent.Rested.class, nonCrossing.events().getLast());
   }
 
   @Test

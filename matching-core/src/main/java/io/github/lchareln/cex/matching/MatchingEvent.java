@@ -28,7 +28,7 @@ public sealed interface MatchingEvent
     }
   }
 
-  /** A valid place command rejected because its order identity was already accepted. */
+  /** A business-valid place command rejected before acceptance and state mutation. */
   record PlaceRejected(OrderId orderId, PlaceRejectionCode code) implements MatchingEvent {
     public PlaceRejected {
       Objects.requireNonNull(orderId, "orderId");
@@ -91,7 +91,7 @@ public sealed interface MatchingEvent
     }
   }
 
-  /** The positive GTC remainder appended to its own price level. */
+  /** The positive GTC or Post-only remainder appended to its own price level. */
   record Rested(
       AcceptanceSequence sequence,
       OrderId orderId,

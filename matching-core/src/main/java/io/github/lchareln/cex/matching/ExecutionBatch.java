@@ -4,7 +4,12 @@ import java.math.BigInteger;
 import java.util.List;
 import java.util.Objects;
 
-/** Immutable ordered events and the complete book snapshot after one command. */
+/**
+ * Immutable ordered events and the complete book snapshot after one command.
+ *
+ * <p>The constructor closes the event grammar. Cross-checking those events against the supplied
+ * book is an engine invariant and judge responsibility.
+ */
 public record ExecutionBatch(List<MatchingEvent> events, OrderBookSnapshot bookAfter) {
   public ExecutionBatch {
     events = List.copyOf(events);
