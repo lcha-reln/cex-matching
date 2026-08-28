@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Independent M02 semantics backed by one flat order list and complete linear maker scans.
+ * Independent M04 semantics backed by one flat order list and complete linear maker scans.
  *
  * <p>This deliberately does not share the production matcher's indexed book representation.
  */
@@ -15,6 +15,11 @@ public final class LinearReferenceModel implements ReferenceMatcher {
   private static final String INSTRUMENT = "BTC-USDT";
   private static final String BUY = "BUY";
   private static final String SELL = "SELL";
+  private static final String GTC = "GTC";
+  private static final String IOC = "IOC";
+  private static final String FOK = "FOK";
+  private static final String POST_ONLY = "POST_ONLY";
+  private static final String IOC_REMAINDER = "IOC_REMAINDER";
   private static final BigInteger MAXIMUM = BigInteger.valueOf(Long.MAX_VALUE);
 
   private final List<ReferenceOrder> orders = new ArrayList<>();
@@ -50,6 +55,12 @@ public final class LinearReferenceModel implements ReferenceMatcher {
     if (find(command.orderId()) != null) {
       return singleton(new SemanticEvent.PlaceRejected(command.orderId(), "DUPLICATE_ORDER_ID"));
     }
+    if (POST_ONLY.equals(command.executionPolicy()) && hasCrossingMaker(command)) {
+      return singleton(new SemanticEvent.PlaceRejected(command.orderId(), "POST_ONLY_WOULD_TAKE"));
+    }
+    if (FOK.equals(command.executionPolicy()) && !isFullyExecutable(command)) {
+      return singleton(new SemanticEvent.PlaceRejected(command.orderId(), "FOK_NOT_FILLABLE"));
+    }
     if (nextAcceptanceSequence.compareTo(MAXIMUM) >= 0) {
       throw new IllegalStateException("acceptance sequence exhausted before state mutation");
     }
@@ -72,7 +83,8 @@ public final class LinearReferenceModel implements ReferenceMatcher {
             command.orderId(),
             command.side(),
             command.priceTicks(),
-            command.quantityLots()));
+            command.quantityLots(),
+            command.executionPolicy()));
 
     while (taker.remaining.signum() > 0) {
       ReferenceOrder maker = selectMaker(taker);
@@ -88,10 +100,20 @@ public final class LinearReferenceModel implements ReferenceMatcher {
     }
 
     if (taker.remaining.signum() > 0) {
-      taker.markResting();
-      events.add(
-          new SemanticEvent.Rested(
-              taker.sequence, taker.orderId, taker.side, taker.price, taker.remaining));
+      if (IOC.equals(command.executionPolicy())) {
+        BigInteger canceled = taker.remaining;
+        taker.cancelAcceptedRemainder(canceled);
+        events.add(
+            new SemanticEvent.RemainderCanceled(
+                taker.sequence, taker.orderId, taker.side, taker.price, canceled, IOC_REMAINDER));
+      } else if (FOK.equals(command.executionPolicy())) {
+        throw new IllegalStateException("fillable FOK retained an unexpected remainder");
+      } else {
+        taker.markResting();
+        events.add(
+            new SemanticEvent.Rested(
+                taker.sequence, taker.orderId, taker.side, taker.price, taker.remaining));
+      }
     } else {
       taker.markFilled();
     }
@@ -146,10 +168,45 @@ public final class LinearReferenceModel implements ReferenceMatcher {
     return best;
   }
 
+  private boolean hasCrossingMaker(ReferenceCommand.Place taker) {
+    for (ReferenceOrder candidate : orders) {
+      if (candidate.lifecycle == Lifecycle.RESTING
+          && !candidate.side.equals(taker.side())
+          && crosses(taker.side(), taker.priceTicks(), candidate)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Read-only per-order demand deduction. It never sums book quantity, so cumulative depth cannot
+   * overflow a bounded production representation.
+   */
+  private boolean isFullyExecutable(ReferenceCommand.Place taker) {
+    BigInteger required = taker.quantityLots();
+    for (ReferenceOrder candidate : orders) {
+      if (candidate.lifecycle != Lifecycle.RESTING
+          || candidate.side.equals(taker.side())
+          || !crosses(taker.side(), taker.priceTicks(), candidate)) {
+        continue;
+      }
+      if (candidate.remaining.compareTo(required) >= 0) {
+        return true;
+      }
+      required = required.subtract(candidate.remaining);
+    }
+    return false;
+  }
+
   private static boolean crosses(ReferenceOrder taker, ReferenceOrder maker) {
-    return BUY.equals(taker.side)
-        ? taker.price.compareTo(maker.price) >= 0
-        : taker.price.compareTo(maker.price) <= 0;
+    return crosses(taker.side, taker.price, maker);
+  }
+
+  private static boolean crosses(String takerSide, BigInteger takerPrice, ReferenceOrder maker) {
+    return BUY.equals(takerSide)
+        ? takerPrice.compareTo(maker.price) >= 0
+        : takerPrice.compareTo(maker.price) <= 0;
   }
 
   private static boolean isHigherPriority(
@@ -223,6 +280,9 @@ public final class LinearReferenceModel implements ReferenceMatcher {
     if (!isPositiveLong(command.quantityLots())) {
       return new SemanticEvent.Rejected("INVALID_QUANTITY", "quantityLots");
     }
+    if (!isExecutionPolicy(command.executionPolicy())) {
+      return new SemanticEvent.Rejected("INVALID_EXECUTION_POLICY", "executionPolicy");
+    }
     return null;
   }
 
@@ -238,6 +298,10 @@ public final class LinearReferenceModel implements ReferenceMatcher {
 
   private static boolean isPositiveLong(BigInteger value) {
     return value.signum() > 0 && value.compareTo(MAXIMUM) <= 0;
+  }
+
+  private static boolean isExecutionPolicy(String value) {
+    return GTC.equals(value) || IOC.equals(value) || FOK.equals(value) || POST_ONLY.equals(value);
   }
 
   private void assertConsistentState() {
@@ -346,6 +410,17 @@ public final class LinearReferenceModel implements ReferenceMatcher {
     private void cancel(BigInteger quantity) {
       if (lifecycle != Lifecycle.RESTING || quantity.signum() <= 0 || !quantity.equals(remaining)) {
         throw new IllegalStateException("invalid reference cancel transition");
+      }
+      remaining = BigInteger.ZERO;
+      canceled = canceled.add(quantity);
+      lifecycle = Lifecycle.CANCELED;
+    }
+
+    private void cancelAcceptedRemainder(BigInteger quantity) {
+      if (lifecycle != Lifecycle.ACCEPTED
+          || quantity.signum() <= 0
+          || !quantity.equals(remaining)) {
+        throw new IllegalStateException("invalid reference accepted-remainder cancellation");
       }
       remaining = BigInteger.ZERO;
       canceled = canceled.add(quantity);

@@ -6,13 +6,14 @@ import java.util.Objects;
 /** Raw schema-valid commands consumed by the independent reference model. */
 public sealed interface ReferenceCommand permits ReferenceCommand.Place, ReferenceCommand.Cancel {
 
-  /** One raw GTC limit-order command before business validation. */
+  /** One raw policy-aware limit-order command before business validation. */
   record Place(
       String instrumentId,
       BigInteger orderId,
       String side,
       BigInteger priceTicks,
-      BigInteger quantityLots)
+      BigInteger quantityLots,
+      String executionPolicy)
       implements ReferenceCommand {
     public Place {
       Objects.requireNonNull(instrumentId, "instrumentId");
@@ -20,6 +21,17 @@ public sealed interface ReferenceCommand permits ReferenceCommand.Place, Referen
       Objects.requireNonNull(side, "side");
       Objects.requireNonNull(priceTicks, "priceTicks");
       Objects.requireNonNull(quantityLots, "quantityLots");
+      Objects.requireNonNull(executionPolicy, "executionPolicy");
+    }
+
+    /** Preserves the M00-M03 five-field command as an explicit GTC request. */
+    public Place(
+        String instrumentId,
+        BigInteger orderId,
+        String side,
+        BigInteger priceTicks,
+        BigInteger quantityLots) {
+      this(instrumentId, orderId, side, priceTicks, quantityLots, "GTC");
     }
   }
 

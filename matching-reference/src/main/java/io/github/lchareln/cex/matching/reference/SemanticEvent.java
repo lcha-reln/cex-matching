@@ -11,6 +11,7 @@ public sealed interface SemanticEvent
         SemanticEvent.Accepted,
         SemanticEvent.Trade,
         SemanticEvent.Rested,
+        SemanticEvent.RemainderCanceled,
         SemanticEvent.Canceled {
 
   record Rejected(String code, String field) implements SemanticEvent {
@@ -39,7 +40,8 @@ public sealed interface SemanticEvent
       BigInteger orderId,
       String side,
       BigInteger priceTicks,
-      BigInteger quantityLots)
+      BigInteger quantityLots,
+      String executionPolicy)
       implements SemanticEvent {
     public Accepted {
       Objects.requireNonNull(sequence, "sequence");
@@ -47,6 +49,17 @@ public sealed interface SemanticEvent
       Objects.requireNonNull(side, "side");
       Objects.requireNonNull(priceTicks, "priceTicks");
       Objects.requireNonNull(quantityLots, "quantityLots");
+      Objects.requireNonNull(executionPolicy, "executionPolicy");
+    }
+
+    /** Preserves the M01-M03 accepted-event constructor as normalized GTC. */
+    public Accepted(
+        BigInteger sequence,
+        BigInteger orderId,
+        String side,
+        BigInteger priceTicks,
+        BigInteger quantityLots) {
+      this(sequence, orderId, side, priceTicks, quantityLots, "GTC");
     }
   }
 
@@ -81,6 +94,35 @@ public sealed interface SemanticEvent
       Objects.requireNonNull(side, "side");
       Objects.requireNonNull(priceTicks, "priceTicks");
       Objects.requireNonNull(remainingQuantityLots, "remainingQuantityLots");
+    }
+  }
+
+  /** Positive IOC remainder canceled at the same command boundary instead of entering the book. */
+  record RemainderCanceled(
+      BigInteger sequence,
+      BigInteger orderId,
+      String side,
+      BigInteger priceTicks,
+      BigInteger canceledQuantityLots,
+      String reason)
+      implements SemanticEvent {
+    public RemainderCanceled {
+      Objects.requireNonNull(sequence, "sequence");
+      Objects.requireNonNull(orderId, "orderId");
+      Objects.requireNonNull(side, "side");
+      Objects.requireNonNull(priceTicks, "priceTicks");
+      Objects.requireNonNull(canceledQuantityLots, "canceledQuantityLots");
+      Objects.requireNonNull(reason, "reason");
+    }
+
+    /** M04 has exactly one remainder-cancellation reason. */
+    public RemainderCanceled(
+        BigInteger sequence,
+        BigInteger orderId,
+        String side,
+        BigInteger priceTicks,
+        BigInteger canceledQuantityLots) {
+      this(sequence, orderId, side, priceTicks, canceledQuantityLots, "IOC_REMAINDER");
     }
   }
 
