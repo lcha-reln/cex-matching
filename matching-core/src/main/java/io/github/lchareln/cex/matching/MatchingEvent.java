@@ -10,6 +10,7 @@ public sealed interface MatchingEvent
         MatchingEvent.Accepted,
         MatchingEvent.Trade,
         MatchingEvent.Rested,
+        MatchingEvent.RemainderCanceled,
         MatchingEvent.Canceled {
 
   /** A schema-valid place or cancel input rejected by the frozen field validator. */
@@ -49,7 +50,8 @@ public sealed interface MatchingEvent
       OrderId orderId,
       Side side,
       PriceTicks priceTicks,
-      QuantityLots quantityLots)
+      QuantityLots quantityLots,
+      ExecutionPolicy executionPolicy)
       implements MatchingEvent {
     public Accepted {
       Objects.requireNonNull(sequence, "sequence");
@@ -57,6 +59,16 @@ public sealed interface MatchingEvent
       Objects.requireNonNull(side, "side");
       Objects.requireNonNull(priceTicks, "priceTicks");
       Objects.requireNonNull(quantityLots, "quantityLots");
+      Objects.requireNonNull(executionPolicy, "executionPolicy");
+    }
+
+    public Accepted(
+        AcceptanceSequence sequence,
+        OrderId orderId,
+        Side side,
+        PriceTicks priceTicks,
+        QuantityLots quantityLots) {
+      this(sequence, orderId, side, priceTicks, quantityLots, ExecutionPolicy.GTC);
     }
   }
 
@@ -93,6 +105,25 @@ public sealed interface MatchingEvent
       Objects.requireNonNull(side, "side");
       Objects.requireNonNull(priceTicks, "priceTicks");
       Objects.requireNonNull(remainingQuantityLots, "remainingQuantityLots");
+    }
+  }
+
+  /** A positive accepted IOC remainder canceled without ever entering the book. */
+  record RemainderCanceled(
+      AcceptanceSequence sequence,
+      OrderId orderId,
+      Side side,
+      PriceTicks priceTicks,
+      QuantityLots canceledQuantityLots,
+      RemainderCancelReason reason)
+      implements MatchingEvent {
+    public RemainderCanceled {
+      Objects.requireNonNull(sequence, "sequence");
+      Objects.requireNonNull(orderId, "orderId");
+      Objects.requireNonNull(side, "side");
+      Objects.requireNonNull(priceTicks, "priceTicks");
+      Objects.requireNonNull(canceledQuantityLots, "canceledQuantityLots");
+      Objects.requireNonNull(reason, "reason");
     }
   }
 

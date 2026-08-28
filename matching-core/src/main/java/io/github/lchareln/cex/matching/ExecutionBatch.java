@@ -31,6 +31,8 @@ public record ExecutionBatch(List<MatchingEvent> events, OrderBookSnapshot bookA
     }
     BigInteger remaining = BigInteger.valueOf(accepted.quantityLots().value());
     boolean restedSeen = false;
+    boolean remainderCanceledSeen = false;
+    int trades = 0;
     for (int index = 1; index < events.size(); index++) {
       MatchingEvent event = events.get(index);
       if (event instanceof MatchingEvent.Trade trade) {
@@ -42,6 +44,7 @@ public record ExecutionBatch(List<MatchingEvent> events, OrderBookSnapshot bookA
         if (remaining.signum() < 0) {
           throw new IllegalArgumentException("trade quantity exceeds the accepted quantity");
         }
+        trades++;
       } else if (event instanceof MatchingEvent.Rested rested) {
         if (index != events.size() - 1) {
           throw new IllegalArgumentException("Rested must be the final event");
@@ -54,12 +57,45 @@ public record ExecutionBatch(List<MatchingEvent> events, OrderBookSnapshot bookA
           throw new IllegalArgumentException("resting remainder must belong to the accepted order");
         }
         restedSeen = true;
+      } else if (event instanceof MatchingEvent.RemainderCanceled canceled) {
+        if (index != events.size() - 1) {
+          throw new IllegalArgumentException("RemainderCanceled must be the final event");
+        }
+        if (!canceled.sequence().equals(accepted.sequence())
+            || !canceled.orderId().equals(accepted.orderId())
+            || canceled.side() != accepted.side()
+            || !canceled.priceTicks().equals(accepted.priceTicks())
+            || !remaining.equals(BigInteger.valueOf(canceled.canceledQuantityLots().value()))
+            || canceled.reason() != RemainderCancelReason.IOC_REMAINDER) {
+          throw new IllegalArgumentException("canceled remainder must belong to the accepted IOC");
+        }
+        remainderCanceledSeen = true;
       } else {
-        throw new IllegalArgumentException("only Trade or final Rested may follow Accepted");
+        throw new IllegalArgumentException(
+            "only Trade, final Rested, or final RemainderCanceled may follow Accepted");
       }
     }
-    if (remaining.signum() > 0 && !restedSeen) {
-      throw new IllegalArgumentException("a positive taker remainder must emit Rested");
+    switch (accepted.executionPolicy()) {
+      case GTC -> {
+        if ((remaining.signum() > 0) != restedSeen || remainderCanceledSeen) {
+          throw new IllegalArgumentException("GTC remainder must rest exactly once");
+        }
+      }
+      case IOC -> {
+        if (restedSeen || (remaining.signum() > 0) != remainderCanceledSeen) {
+          throw new IllegalArgumentException("IOC remainder must be canceled exactly once");
+        }
+      }
+      case FOK -> {
+        if (remaining.signum() != 0 || restedSeen || remainderCanceledSeen || trades == 0) {
+          throw new IllegalArgumentException("accepted FOK must fill completely");
+        }
+      }
+      case POST_ONLY -> {
+        if (trades != 0 || !restedSeen || remainderCanceledSeen) {
+          throw new IllegalArgumentException("accepted Post-only must rest without trading");
+        }
+      }
     }
   }
 }

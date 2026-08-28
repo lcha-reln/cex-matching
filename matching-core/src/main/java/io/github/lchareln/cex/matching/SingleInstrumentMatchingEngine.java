@@ -12,9 +12,10 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 
-/** Single-writer, in-memory price-time matcher with an addressable M02 order lifecycle. */
+/** Single-writer, in-memory price-time matcher with an addressable M04 order lifecycle. */
 public final class SingleInstrumentMatchingEngine {
   private final PlaceLimitOrderValidator placeValidator = new PlaceLimitOrderValidator();
+  private final ExecutionPolicyValidator executionPolicyValidator = new ExecutionPolicyValidator();
   private final CancelOrderValidator cancelValidator = new CancelOrderValidator();
   private final NavigableMap<Long, PriceLevelState> bids =
       new TreeMap<>(Collections.reverseOrder());
@@ -34,20 +35,42 @@ public final class SingleInstrumentMatchingEngine {
     this.nextAcceptanceSequence = nextAcceptanceSequence;
   }
 
-  /** Applies one GTC limit command. The caller must serialize calls to this method. */
+  /** Applies one legacy GTC limit command. The caller must serialize calls to this method. */
   public ExecutionBatch place(PlaceLimitOrderInput input) {
     Objects.requireNonNull(input, "input");
+    return placeRequest(new PlaceLimitOrderRequest(input));
+  }
+
+  /** Applies one M04 limit request under its explicit execution policy. */
+  public ExecutionBatch placeRequest(PlaceLimitOrderRequest request) {
+    Objects.requireNonNull(request, "request");
     assertConsistentState();
+    PlaceLimitOrderInput input = request.orderInput();
     ValidationResult validation = placeValidator.validate(input);
     if (validation instanceof ValidationResult.Invalid invalid) {
       return singleton(new MatchingEvent.Rejected(invalid.code()));
     }
+    ValidationResult policyValidation =
+        executionPolicyValidator.validate(request.executionPolicy());
+    if (policyValidation instanceof ValidationResult.Invalid invalid) {
+      return singleton(new MatchingEvent.Rejected(invalid.code()));
+    }
 
     PlaceLimitOrder command = placeValidator.normalize(input);
+    ExecutionPolicy policy = executionPolicyValidator.normalize(request.executionPolicy());
     if (ordersById.containsKey(command.orderId())) {
       return singleton(
           new MatchingEvent.PlaceRejected(
               command.orderId(), PlaceRejectionCode.DUPLICATE_ORDER_ID));
+    }
+    if (policy == ExecutionPolicy.FOK && !canFillCompletely(command)) {
+      return singleton(
+          new MatchingEvent.PlaceRejected(command.orderId(), PlaceRejectionCode.FOK_NOT_FILLABLE));
+    }
+    if (policy == ExecutionPolicy.POST_ONLY && wouldTake(command)) {
+      return singleton(
+          new MatchingEvent.PlaceRejected(
+              command.orderId(), PlaceRejectionCode.POST_ONLY_WOULD_TAKE));
     }
 
     long sequenceValue = nextAcceptanceSequence;
@@ -60,14 +83,15 @@ public final class SingleInstrumentMatchingEngine {
     }
 
     AcceptanceSequence sequence = new AcceptanceSequence(sequenceValue);
-    OrderState taker = new OrderState(sequence, command);
+    OrderState taker = new OrderState(sequence, command, policy);
     MatchingEvent.Accepted accepted =
         new MatchingEvent.Accepted(
             sequence,
             command.orderId(),
             command.side(),
             command.priceTicks(),
-            command.quantityLots());
+            command.quantityLots(),
+            policy);
     if (ordersById.putIfAbsent(command.orderId(), taker) != null) {
       throw new IllegalStateException(
           "duplicate order identity appeared during single-writer apply");
@@ -81,7 +105,21 @@ public final class SingleInstrumentMatchingEngine {
       match(taker, bids, events, false);
     }
 
-    if (taker.remainingQuantityLots > 0) {
+    if (taker.remainingQuantityLots == 0) {
+      taker.markFilled();
+    } else if (policy == ExecutionPolicy.IOC) {
+      long canceledQuantityLots = taker.cancelAcceptedRemainder();
+      events.add(
+          new MatchingEvent.RemainderCanceled(
+              taker.sequence,
+              taker.orderId,
+              taker.side,
+              taker.priceTicks,
+              new QuantityLots(canceledQuantityLots),
+              RemainderCancelReason.IOC_REMAINDER));
+    } else if (policy == ExecutionPolicy.FOK) {
+      throw new IllegalStateException("FOK preflight and execution disagreed");
+    } else {
       rest(taker);
       events.add(
           new MatchingEvent.Rested(
@@ -90,8 +128,6 @@ public final class SingleInstrumentMatchingEngine {
               taker.side,
               taker.priceTicks,
               new QuantityLots(taker.remainingQuantityLots)));
-    } else {
-      taker.markFilled();
     }
 
     nextAcceptanceSequence = followingSequence;
@@ -256,6 +292,36 @@ public final class SingleInstrumentMatchingEngine {
     }
   }
 
+  private boolean wouldTake(PlaceLimitOrder command) {
+    NavigableMap<Long, PriceLevelState> opposite = command.side() == Side.BUY ? asks : bids;
+    if (opposite.isEmpty()) {
+      return false;
+    }
+    long bestOppositePrice = opposite.firstKey();
+    return crosses(command.side(), command.priceTicks().value(), bestOppositePrice);
+  }
+
+  private boolean canFillCompletely(PlaceLimitOrder command) {
+    NavigableMap<Long, PriceLevelState> opposite = command.side() == Side.BUY ? asks : bids;
+    long required = command.quantityLots().value();
+    for (Map.Entry<Long, PriceLevelState> levelEntry : opposite.entrySet()) {
+      if (!crosses(command.side(), command.priceTicks().value(), levelEntry.getKey())) {
+        break;
+      }
+      for (OrderState maker : levelEntry.getValue().values()) {
+        if (maker.remainingQuantityLots >= required) {
+          return true;
+        }
+        required -= maker.remainingQuantityLots;
+      }
+    }
+    return false;
+  }
+
+  private static boolean crosses(Side takerSide, long takerLimitPrice, long makerPrice) {
+    return takerSide == Side.BUY ? takerLimitPrice >= makerPrice : takerLimitPrice <= makerPrice;
+  }
+
   private void verifySide(
       NavigableMap<Long, PriceLevelState> side, Side expectedSide, Set<OrderId> restingIds) {
     for (Map.Entry<Long, PriceLevelState> levelEntry : side.entrySet()) {
@@ -359,6 +425,7 @@ public final class SingleInstrumentMatchingEngine {
     private final OrderId orderId;
     private final Side side;
     private final PriceTicks priceTicks;
+    private final ExecutionPolicy executionPolicy;
     private final long originalQuantityLots;
 
     private long remainingQuantityLots;
@@ -366,11 +433,13 @@ public final class SingleInstrumentMatchingEngine {
     private long canceledQuantityLots;
     private Lifecycle lifecycle = Lifecycle.ACCEPTED;
 
-    private OrderState(AcceptanceSequence sequence, PlaceLimitOrder command) {
+    private OrderState(
+        AcceptanceSequence sequence, PlaceLimitOrder command, ExecutionPolicy executionPolicy) {
       this.sequence = sequence;
       this.orderId = command.orderId();
       this.side = command.side();
       this.priceTicks = command.priceTicks();
+      this.executionPolicy = executionPolicy;
       this.originalQuantityLots = command.quantityLots().value();
       this.remainingQuantityLots = originalQuantityLots;
     }
@@ -410,6 +479,19 @@ public final class SingleInstrumentMatchingEngine {
       lifecycle = Lifecycle.CANCELED;
     }
 
+    private long cancelAcceptedRemainder() {
+      if (lifecycle != Lifecycle.ACCEPTED
+          || executionPolicy != ExecutionPolicy.IOC
+          || remainingQuantityLots <= 0) {
+        throw new IllegalStateException("invalid IOC remainder cancellation");
+      }
+      long canceled = remainingQuantityLots;
+      canceledQuantityLots = canceled;
+      remainingQuantityLots = 0;
+      lifecycle = Lifecycle.CANCELED;
+      return canceled;
+    }
+
     private void assertQuantityPartition() {
       final long total;
       try {
@@ -439,6 +521,13 @@ public final class SingleInstrumentMatchingEngine {
       if (lifecycle == Lifecycle.CANCELED
           && (remainingQuantityLots != 0 || canceledQuantityLots <= 0)) {
         throw new IllegalStateException("canceled order has an invalid quantity partition");
+      }
+      if (executionPolicy == ExecutionPolicy.IOC && lifecycle == Lifecycle.RESTING) {
+        throw new IllegalStateException("IOC order cannot remain resting");
+      }
+      if (executionPolicy == ExecutionPolicy.FOK
+          && (lifecycle == Lifecycle.RESTING || lifecycle == Lifecycle.CANCELED)) {
+        throw new IllegalStateException("FOK order must be fully filled when accepted");
       }
     }
   }

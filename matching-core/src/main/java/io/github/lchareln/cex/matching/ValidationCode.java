@@ -6,7 +6,8 @@ public enum ValidationCode {
   INVALID_ORDER_ID("orderId"),
   INVALID_SIDE("side"),
   INVALID_PRICE("priceTicks"),
-  INVALID_QUANTITY("quantityLots");
+  INVALID_QUANTITY("quantityLots"),
+  INVALID_EXECUTION_POLICY("executionPolicy");
 
   private final String field;
 
