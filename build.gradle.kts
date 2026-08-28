@@ -83,7 +83,7 @@ tasks.named("assemble") {
 }
 
 tasks.named("check") {
-    dependsOn("spotlessCheck", ":matching-core:check", ":matching-reference:check", ":matching-testkit:check", "m03Check")
+    dependsOn("spotlessCheck", ":matching-core:check", ":matching-reference:check", ":matching-testkit:check", "m04Check")
 }
 
 tasks.register("m00Check") {
@@ -136,6 +136,12 @@ tasks.register("m03Evidence") {
 
 tasks.register("m04Check") {
     group = "verification"
-    description = "Runs the declared M04 execution-policy RED boundary."
+    description = "Runs the completed M04 execution-policy proof."
     dependsOn(":matching-testkit:m04Check")
+}
+
+tasks.register("m04Evidence") {
+    group = "verification"
+    description = "Generates and validates the clean-tree M04 evidence manifest."
+    dependsOn(":matching-testkit:m04Evidence")
 }

@@ -62,6 +62,7 @@ final class M02ProductionCandidate implements M02Candidate {
                     rested.side().name(),
                     rested.priceTicks().value(),
                     rested.remainingQuantityLots().value());
+            case MatchingEvent.RemainderCanceled canceled -> throw unexpectedM04Event(canceled);
             case MatchingEvent.Canceled canceled ->
                 new M02ScenarioPack.Canceled(
                     canceled.sequence().value(),
@@ -72,6 +73,11 @@ final class M02ProductionCandidate implements M02Candidate {
           });
     }
     return List.copyOf(events);
+  }
+
+  private static IllegalStateException unexpectedM04Event(MatchingEvent event) {
+    return new IllegalStateException(
+        "M02 GTC candidate emitted an M04 policy event: " + event.getClass().getSimpleName());
   }
 
   private static M02ScenarioPack.Book book(OrderBookSnapshot snapshot) {

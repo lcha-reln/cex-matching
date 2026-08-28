@@ -1,0 +1,487 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m04.check.v2.schema.json",
+  "title": "Matching M04 completed execution-policy check",
+  "oneOf": [
+    { "$ref": "#/$defs/pass" },
+    { "$ref": "#/$defs/failure" }
+  ],
+  "$defs": {
+    "common": {
+      "type": "object",
+      "required": ["schemaVersion", "unit", "status"],
+      "properties": {
+        "schemaVersion": { "const": "matching.m04.check.v2" },
+        "unit": { "const": "M04" },
+        "status": { "enum": ["PASS", "STUDENT_FAILURE", "SYSTEM_ERROR"] }
+      }
+    },
+    "pass": {
+      "allOf": [
+        { "$ref": "#/$defs/common" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "unit",
+            "status",
+            "contractPlanVersion",
+            "inheritedM03",
+            "fixedCorpus",
+            "generator",
+            "properties",
+            "coverage",
+            "boundaries",
+            "counterexamples",
+            "mutants",
+            "architecture",
+            "releaseTarget",
+            "artifacts"
+          ],
+          "properties": {
+            "schemaVersion": { "const": "matching.m04.check.v2" },
+            "unit": { "const": "M04" },
+            "status": { "const": "PASS" },
+            "contractPlanVersion": { "const": "0.6" },
+            "inheritedM03": { "$ref": "#/$defs/inheritedM03" },
+            "fixedCorpus": { "$ref": "#/$defs/fixedCorpus" },
+            "generator": { "$ref": "#/$defs/generator" },
+            "properties": { "$ref": "#/$defs/properties" },
+            "coverage": { "$ref": "#/$defs/coverage" },
+            "boundaries": { "$ref": "#/$defs/boundaries" },
+            "counterexamples": { "$ref": "#/$defs/counterexamples" },
+            "mutants": { "$ref": "#/$defs/mutants" },
+            "architecture": { "$ref": "#/$defs/architecture" },
+            "releaseTarget": { "$ref": "#/$defs/releaseTarget" },
+            "artifacts": { "$ref": "#/$defs/artifacts" }
+          }
+        }
+      ]
+    },
+    "failure": {
+      "allOf": [
+        { "$ref": "#/$defs/common" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "unit", "status", "failure"],
+          "properties": {
+            "schemaVersion": { "const": "matching.m04.check.v2" },
+            "unit": { "const": "M04" },
+            "status": { "enum": ["STUDENT_FAILURE", "SYSTEM_ERROR"] },
+            "failure": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["message"],
+              "properties": { "message": { "type": "string", "minLength": 1 } }
+            }
+          }
+        }
+      ]
+    },
+    "artifactStatus": {
+      "type": "object",
+      "required": ["status", "artifact"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "type": "string", "minLength": 1 }
+      }
+    },
+    "inheritedM03": {
+      "allOf": [
+        { "$ref": "#/$defs/artifactStatus" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "artifact",
+            "histories",
+            "commands",
+            "bytes",
+            "lines",
+            "commandDigest",
+            "differentialComparisons",
+            "ledgerChecks",
+            "bookChecks",
+            "mutantsKilled",
+            "counterexamples",
+            "oneMinimal",
+            "historicalArchitectureGateExecuted"
+          ],
+          "properties": {
+            "status": { "const": "PASS" },
+            "artifact": { "const": "m00-m03-regression.json" },
+            "histories": { "const": 256 },
+            "commands": { "const": 16384 },
+            "bytes": { "const": 1682592 },
+            "lines": { "const": 16641 },
+            "commandDigest": {
+              "const": "sha256:1920d6b8a480998825c72636d446854d9e795e91b0ab29520f203b12186979ce"
+            },
+            "differentialComparisons": { "const": 16384 },
+            "ledgerChecks": { "const": 16384 },
+            "bookChecks": { "const": 16384 },
+            "mutantsKilled": { "const": 6 },
+            "counterexamples": { "const": 6 },
+            "oneMinimal": { "const": 6 },
+            "historicalArchitectureGateExecuted": { "const": false }
+          }
+        }
+      ]
+    },
+    "fixedCorpus": {
+      "allOf": [
+        { "$ref": "#/$defs/artifactStatus" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "artifact",
+            "path",
+            "schemaPath",
+            "sha256",
+            "scenarios",
+            "commands",
+            "placeCommands",
+            "cancelCommands",
+            "schemaProbes",
+            "policyCounts",
+            "eventBatchesArtifact",
+            "canonicalArtifact",
+            "canonicalFormat",
+            "canonicalDigest",
+            "canonicalBytes",
+            "canonicalLines"
+          ],
+          "properties": {
+            "status": { "const": "PASS" },
+            "artifact": { "const": "fixed-scenario-pack.json" },
+            "path": {
+              "const": "matching-testkit/src/test/resources/m04/fixtures/execution-policy-v1.json"
+            },
+            "schemaPath": { "const": "schemas/matching.m04.scenario.v1.schema.json" },
+            "sha256": {
+              "const": "a8bf834828847a24d316bf6f760d008809901d8e3e2ff132276225b0aa79f596"
+            },
+            "scenarios": { "const": 14 },
+            "commands": { "const": 48 },
+            "placeCommands": { "const": 44 },
+            "cancelCommands": { "const": 4 },
+            "schemaProbes": { "const": 6 },
+            "policyCounts": { "$ref": "#/$defs/policyCounts" },
+            "eventBatchesArtifact": { "const": "fixed-event-batches.json" },
+            "canonicalArtifact": { "const": "fixed-history.canonical.utf8" },
+            "canonicalFormat": { "const": "M04F1" },
+            "canonicalDigest": {
+              "const": "sha256:68de35e41358ea72c9852fdf3fd652db116774964360f0b526f43612576bfa77"
+            },
+            "canonicalBytes": { "const": 47104 },
+            "canonicalLines": { "const": 63 }
+          }
+        }
+      ]
+    },
+    "policyCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["GTC", "IOC", "FOK", "POST_ONLY", "UNKNOWN"],
+      "properties": {
+        "GTC": { "const": 25 },
+        "IOC": { "const": 5 },
+        "FOK": { "const": 6 },
+        "POST_ONLY": { "const": 6 },
+        "UNKNOWN": { "const": 2 }
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schemaPath",
+        "sha256",
+        "algorithm",
+        "seedDerivation",
+        "baseSeed",
+        "histories",
+        "commandsPerHistory",
+        "totalCommands",
+        "lanes",
+        "historiesPerLane",
+        "schemaProbes",
+        "canonicalFormat",
+        "canonicalArtifact",
+        "canonicalDigest",
+        "canonicalBytes",
+        "canonicalLines",
+        "freshGenerations"
+      ],
+      "properties": {
+        "path": {
+          "const": "matching-testkit/src/test/resources/m04/fixtures/property-suite-v1.json"
+        },
+        "schemaPath": { "const": "schemas/matching.m04.generator.v1.schema.json" },
+        "sha256": {
+          "const": "33a24417d56b565fe9b25868e70c1faa1637a7997d92486c5d6f30113e00575d"
+        },
+        "algorithm": { "const": "splitmix64-v1" },
+        "seedDerivation": { "const": "splitmix64(baseSeed+historyIndex).nextLong" },
+        "baseSeed": { "const": "4404" },
+        "histories": { "const": 192 },
+        "commandsPerHistory": { "const": 64 },
+        "totalCommands": { "const": 12288 },
+        "lanes": { "const": 6 },
+        "historiesPerLane": { "const": 32 },
+        "schemaProbes": { "const": 6 },
+        "canonicalFormat": { "const": "M04H1" },
+        "canonicalArtifact": { "const": "generated-history.canonical.utf8" },
+        "canonicalDigest": {
+          "const": "sha256:6005c674d0c42927989f1c8c4d1ddce224d06ceff0b95bf58615d23c4496ba51"
+        },
+        "canonicalBytes": { "const": 1496773 },
+        "canonicalLines": { "const": 12481 },
+        "freshGenerations": { "const": 2 }
+      }
+    },
+    "properties": {
+      "allOf": [
+        { "$ref": "#/$defs/artifactStatus" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "artifact",
+            "histories",
+            "commands",
+            "differentialComparisons",
+            "ledgerChecks",
+            "bookChecks"
+          ],
+          "properties": {
+            "status": { "const": "PASS" },
+            "artifact": { "const": "generated-properties.json" },
+            "histories": { "const": 192 },
+            "commands": { "const": 12288 },
+            "differentialComparisons": { "const": 12288 },
+            "ledgerChecks": { "const": 12288 },
+            "bookChecks": { "const": 12288 }
+          }
+        }
+      ]
+    },
+    "coverage": {
+      "allOf": [
+        { "$ref": "#/$defs/artifactStatus" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "artifact",
+            "requiredObligations",
+            "satisfiedObligations",
+            "fokOutsideLimit",
+            "baseValidUnknown",
+            "baseValidUnusedUnknown"
+          ],
+          "properties": {
+            "status": { "const": "PASS" },
+            "artifact": { "const": "coverage.json" },
+            "requiredObligations": { "const": 23 },
+            "satisfiedObligations": { "const": 23 },
+            "fokOutsideLimit": { "const": 214 },
+            "baseValidUnknown": { "const": 423 },
+            "baseValidUnusedUnknown": { "const": 295 }
+          }
+        }
+      ]
+    },
+    "boundaries": {
+      "allOf": [
+        { "$ref": "#/$defs/artifactStatus" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "artifact",
+            "exactRawPolicyVariants",
+            "exactRawPolicyPaths",
+            "longMaxFokDeductionPaths"
+          ],
+          "properties": {
+            "status": { "const": "PASS" },
+            "artifact": { "const": "boundaries.json" },
+            "exactRawPolicyVariants": { "const": 4 },
+            "exactRawPolicyPaths": { "const": 2 },
+            "longMaxFokDeductionPaths": { "const": 2 }
+          }
+        }
+      ]
+    },
+    "counterexamples": {
+      "allOf": [
+        { "$ref": "#/$defs/artifactStatus" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "artifact",
+            "required",
+            "shrunk",
+            "persisted",
+            "schemaParsed",
+            "replayed",
+            "oneMinimal",
+            "minimizedCommands",
+            "persistedArtifact",
+            "canonical"
+          ],
+          "properties": {
+            "status": { "const": "PASS" },
+            "artifact": { "const": "counterexamples.json" },
+            "required": { "const": 8 },
+            "shrunk": { "const": 8 },
+            "persisted": { "const": 8 },
+            "schemaParsed": { "const": 8 },
+            "replayed": { "const": 8 },
+            "oneMinimal": { "const": 8 },
+            "minimizedCommands": { "type": "integer", "minimum": 8, "maximum": 504 },
+            "persistedArtifact": { "const": "counterexamples-v1.json" },
+            "canonical": { "$ref": "#/$defs/canonical" }
+          }
+        }
+      ]
+    },
+    "canonical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "artifact", "digest", "bytes", "lines"],
+      "properties": {
+        "format": { "const": "M04X1" },
+        "artifact": { "const": "counterexamples.canonical.utf8" },
+        "digest": { "$ref": "#/$defs/digest" },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "lines": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "mutants": {
+      "allOf": [
+        { "$ref": "#/$defs/artifactStatus" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "artifact", "required", "killed", "systemErrorControl", "requiredMutants"],
+          "properties": {
+            "status": { "const": "PASS" },
+            "artifact": { "const": "mutants.json" },
+            "required": { "const": 8 },
+            "killed": { "const": 8 },
+            "systemErrorControl": { "const": "SYSTEM_ERROR" },
+            "requiredMutants": {
+              "type": "array",
+              "minItems": 8,
+              "maxItems": 8,
+              "items": { "$ref": "#/$defs/mutantFact" }
+            }
+          }
+        }
+      ]
+    },
+    "mutantFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "fingerprint",
+        "coverageKey",
+        "classification",
+        "killed",
+        "historyIndex",
+        "sourceFailingCommandIndex",
+        "lane",
+        "seed",
+        "originalCommands",
+        "minimizedCommands",
+        "shrinkTrials",
+        "oneMinimal",
+        "replayed"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^M04-[A-Z0-9-]+$" },
+        "fingerprint": { "type": "string", "pattern": "^[A-Z0-9_]+/[A-Z0-9_]+$" },
+        "coverageKey": { "type": "string", "pattern": "^[A-Z0-9_]+$" },
+        "classification": { "const": "STUDENT_FAILURE" },
+        "killed": { "const": true },
+        "historyIndex": { "type": "integer", "minimum": 0, "maximum": 191 },
+        "sourceFailingCommandIndex": { "type": "integer", "minimum": 0, "maximum": 63 },
+        "lane": { "type": "string", "minLength": 1 },
+        "seed": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+        "originalCommands": { "const": 64 },
+        "minimizedCommands": { "type": "integer", "minimum": 1, "maximum": 63 },
+        "shrinkTrials": { "type": "integer", "minimum": 1, "maximum": 50000 },
+        "oneMinimal": { "const": true },
+        "replayed": { "const": true }
+      }
+    },
+    "architecture": {
+      "allOf": [
+        { "$ref": "#/$defs/artifactStatus" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "artifact", "coreSourceFiles", "referenceSourceFiles", "violations"],
+          "properties": {
+            "status": { "const": "PASS" },
+            "artifact": { "const": "architecture.json" },
+            "coreSourceFiles": { "const": 24 },
+            "referenceSourceFiles": { "const": 7 },
+            "violations": { "const": 0 }
+          }
+        }
+      ]
+    },
+    "releaseTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "verification"],
+      "properties": {
+        "unitTag": { "const": "course/m04-complete" },
+        "productRelease": { "type": "null" },
+        "verification": { "const": "M04_EVIDENCE_ONLY" }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 15,
+      "maxItems": 15,
+      "prefixItems": [
+        { "const": "m00-m03-regression.json" },
+        { "const": "fixed-scenario-pack.json" },
+        { "const": "fixed-event-batches.json" },
+        { "const": "fixed-history.canonical.utf8" },
+        { "const": "generated-history.canonical.utf8" },
+        { "const": "generated-properties.json" },
+        { "const": "invariants.json" },
+        { "const": "coverage.json" },
+        { "const": "boundaries.json" },
+        { "const": "counterexamples-v1.json" },
+        { "const": "counterexamples.json" },
+        { "const": "counterexamples.canonical.utf8" },
+        { "const": "replay.json" },
+        { "const": "mutants.json" },
+        { "const": "architecture.json" }
+      ],
+      "items": false
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

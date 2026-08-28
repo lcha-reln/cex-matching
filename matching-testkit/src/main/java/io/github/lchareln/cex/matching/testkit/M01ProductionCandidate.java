@@ -49,6 +49,7 @@ final class M01ProductionCandidate implements M01Candidate {
                     rested.remainingQuantityLots().value());
             case MatchingEvent.PlaceRejected rejected -> throw unexpectedM02Event(rejected);
             case MatchingEvent.CancelRejected rejected -> throw unexpectedM02Event(rejected);
+            case MatchingEvent.RemainderCanceled canceled -> throw unexpectedM04Event(canceled);
             case MatchingEvent.Canceled canceled -> throw unexpectedM02Event(canceled);
           });
     }
@@ -58,6 +59,11 @@ final class M01ProductionCandidate implements M01Candidate {
   private static IllegalStateException unexpectedM02Event(MatchingEvent event) {
     return new IllegalStateException(
         "M01 candidate emitted an M02 lifecycle event: " + event.getClass().getSimpleName());
+  }
+
+  private static IllegalStateException unexpectedM04Event(MatchingEvent event) {
+    return new IllegalStateException(
+        "M01 GTC candidate emitted an M04 policy event: " + event.getClass().getSimpleName());
   }
 
   private static M01ScenarioPack.Book book(OrderBookSnapshot snapshot) {

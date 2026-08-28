@@ -243,6 +243,10 @@ final class M03CounterexampleCanonicalizer {
               .append(rested.priceTicks())
               .append("|remainingQuantityLots=")
               .append(rested.remainingQuantityLots());
+      case SemanticEvent.RemainderCanceled canceled ->
+          throw new IllegalStateException(
+              "M03 GTC canonicalizer received M04 policy event: "
+                  + canceled.getClass().getSimpleName());
       case SemanticEvent.Canceled canceled ->
           result
               .append("|type=CANCELED|sequence=")

@@ -16,9 +16,15 @@ dependencies {
 tasks.withType<Test>().configureEach {
     systemProperty("m00.repositoryRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
     systemProperty("matching.repositoryRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
-    // These two end-to-end tests freeze M00's deliberate no-order-book boundary. They remain
-    // executable at course/m00-complete but are historical by definition after M01 adds the book.
-    exclude("**/M00ArchitectureBoundaryTest.class", "**/M00MutantJudgeTest.class")
+    // Historical source-identity checks remain executable from their immutable completion tags.
+    // M04 runs their semantic contracts but must not rebind old exact source counts to this tree.
+    exclude(
+        "**/M00ArchitectureBoundaryTest.class",
+        "**/M00MutantJudgeTest.class",
+        "**/M03ArchitectureBoundaryTest.class",
+        "**/M03CheckRunnerTest.class",
+        "**/M04StartCheckRunnerTest.class",
+    )
 }
 
 val m00ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m00")
@@ -35,6 +41,8 @@ val m03EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M
 val m03UnitTag = providers.gradleProperty("m03.unitTag").orElse("course/m03-complete")
 val m03ProductRelease = providers.gradleProperty("m03.productRelease").orElse("matching-0.1.0")
 val m04ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m04")
+val m04EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M04")
+val m04UnitTag = providers.gradleProperty("m04.unitTag").orElse("course/m04-complete")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -148,7 +156,7 @@ tasks.register<JavaExec>("m03Evidence") {
 
 tasks.register<JavaExec>("m04Check") {
     group = "verification"
-    description = "Runs the structured M04 execution-policy RED boundary."
+    description = "Runs the completed deterministic M04 execution-policy judge."
     dependsOn("test", ":matching-core:test", ":matching-reference:check", "classes")
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("io.github.lchareln.cex.matching.testkit.M04CheckMain")
@@ -156,5 +164,20 @@ tasks.register<JavaExec>("m04Check") {
         rootProject.layout.projectDirectory.asFile.absolutePath,
         m04ReportDirectory.get().asFile.absolutePath,
     )
-    doNotTrackState("M04 must never reuse a stale boundary report")
+    doNotTrackState("M04 must never reuse a stale completion report")
+}
+
+tasks.register<JavaExec>("m04Evidence") {
+    group = "verification"
+    description = "Generates and validates the clean-tree M04 evidence manifest."
+    dependsOn("m04Check")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M04EvidenceMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m04ReportDirectory.get().asFile.absolutePath,
+        m04EvidenceDirectory.get().asFile.absolutePath,
+        m04UnitTag.get(),
+    )
+    doNotTrackState("Evidence must re-check the M04 tag and working-tree cleanliness on every invocation")
 }

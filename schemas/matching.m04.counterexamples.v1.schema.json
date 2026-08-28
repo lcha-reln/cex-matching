@@ -1,0 +1,483 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m04.counterexamples.v1.schema.json",
+  "title": "Matching M04 persisted minimal counterexamples",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "fixtureSha256",
+    "profileSha256",
+    "generatorAlgorithm",
+    "seedDerivation",
+    "modelVersion",
+    "scenarios"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "matching.m04.counterexamples.v1" },
+    "fixtureSha256": {
+      "const": "a8bf834828847a24d316bf6f760d008809901d8e3e2ff132276225b0aa79f596"
+    },
+    "profileSha256": {
+      "const": "33a24417d56b565fe9b25868e70c1faa1637a7997d92486c5d6f30113e00575d"
+    },
+    "generatorAlgorithm": { "const": "splitmix64-v1" },
+    "seedDerivation": { "const": "splitmix64(baseSeed+historyIndex).nextLong" },
+    "modelVersion": { "const": "linear-scan-reference-v1" },
+    "scenarios": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        { "$ref": "#/$defs/iocRemainderRests" },
+        { "$ref": "#/$defs/iocBehavesLikeFok" },
+        { "$ref": "#/$defs/fokPartialStateLeak" },
+        { "$ref": "#/$defs/fokBestLevelOnly" },
+        { "$ref": "#/$defs/fokIgnoresLimitPrice" },
+        { "$ref": "#/$defs/postOnlyTouchAccepted" },
+        { "$ref": "#/$defs/policyRejectConsumesIdentity" },
+        { "$ref": "#/$defs/unknownPolicyDefaultsGtc" }
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "iocRemainderRests": {
+      "allOf": [
+        { "$ref": "#/$defs/scenario" },
+        {
+          "properties": {
+            "scenarioId": { "const": "ioc-remainder-rests" },
+            "mutantId": { "const": "M04-IOC-REMAINDER-RESTS" }
+          }
+        }
+      ]
+    },
+    "iocBehavesLikeFok": {
+      "allOf": [
+        { "$ref": "#/$defs/scenario" },
+        {
+          "properties": {
+            "scenarioId": { "const": "ioc-behaves-like-fok" },
+            "mutantId": { "const": "M04-IOC-BEHAVES-LIKE-FOK" }
+          }
+        }
+      ]
+    },
+    "fokPartialStateLeak": {
+      "allOf": [
+        { "$ref": "#/$defs/scenario" },
+        {
+          "properties": {
+            "scenarioId": { "const": "fok-partial-state-leak" },
+            "mutantId": { "const": "M04-FOK-PARTIAL-STATE-LEAK" }
+          }
+        }
+      ]
+    },
+    "fokBestLevelOnly": {
+      "allOf": [
+        { "$ref": "#/$defs/scenario" },
+        {
+          "properties": {
+            "scenarioId": { "const": "fok-best-level-only" },
+            "mutantId": { "const": "M04-FOK-BEST-LEVEL-ONLY" }
+          }
+        }
+      ]
+    },
+    "fokIgnoresLimitPrice": {
+      "allOf": [
+        { "$ref": "#/$defs/scenario" },
+        {
+          "properties": {
+            "scenarioId": { "const": "fok-ignores-limit-price" },
+            "mutantId": { "const": "M04-FOK-IGNORES-LIMIT-PRICE" }
+          }
+        }
+      ]
+    },
+    "postOnlyTouchAccepted": {
+      "allOf": [
+        { "$ref": "#/$defs/scenario" },
+        {
+          "properties": {
+            "scenarioId": { "const": "post-only-touch-accepted" },
+            "mutantId": { "const": "M04-POST-ONLY-TOUCH-ACCEPTED" }
+          }
+        }
+      ]
+    },
+    "policyRejectConsumesIdentity": {
+      "allOf": [
+        { "$ref": "#/$defs/scenario" },
+        {
+          "properties": {
+            "scenarioId": { "const": "policy-reject-consumes-identity" },
+            "mutantId": { "const": "M04-POLICY-REJECT-CONSUMES-IDENTITY" }
+          }
+        }
+      ]
+    },
+    "unknownPolicyDefaultsGtc": {
+      "allOf": [
+        { "$ref": "#/$defs/scenario" },
+        {
+          "properties": {
+            "scenarioId": { "const": "unknown-policy-defaults-gtc" },
+            "mutantId": { "const": "M04-UNKNOWN-POLICY-DEFAULTS-GTC" }
+          }
+        }
+      ]
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenarioId",
+        "mutantId",
+        "classification",
+        "propertyId",
+        "divergenceKind",
+        "sourceKind",
+        "historyIndex",
+        "lane",
+        "seed",
+        "coverageKey",
+        "sourceFailingCommandIndex",
+        "originalCommandCount",
+        "minimizedCommandCount",
+        "firstFailingCommandIndex",
+        "oneMinimal",
+        "shrinkTrials",
+        "originalCommands",
+        "commands",
+        "actualAtFailure"
+      ],
+      "properties": {
+        "scenarioId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        "mutantId": {
+          "enum": [
+            "M04-IOC-REMAINDER-RESTS",
+            "M04-IOC-BEHAVES-LIKE-FOK",
+            "M04-FOK-PARTIAL-STATE-LEAK",
+            "M04-FOK-BEST-LEVEL-ONLY",
+            "M04-FOK-IGNORES-LIMIT-PRICE",
+            "M04-POST-ONLY-TOUCH-ACCEPTED",
+            "M04-POLICY-REJECT-CONSUMES-IDENTITY",
+            "M04-UNKNOWN-POLICY-DEFAULTS-GTC"
+          ]
+        },
+        "classification": { "const": "STUDENT_FAILURE" },
+        "propertyId": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" },
+        "divergenceKind": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" },
+        "sourceKind": { "const": "GENERATED" },
+        "historyIndex": { "type": "integer", "minimum": 0, "maximum": 191 },
+        "lane": {
+          "enum": [
+            "LEGACY_GTC",
+            "IOC_ZERO_PARTIAL_FULL",
+            "FOK_INSUFFICIENT_EXACT_MULTI_LEVEL",
+            "POST_ONLY_EMPTY_NON_CROSS_TOUCH_CROSS",
+            "IDENTITY_AND_SEQUENCE_AFTER_REJECTION",
+            "MIXED_POLICY_CANCEL_DUPLICATE"
+          ]
+        },
+        "seed": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+        "coverageKey": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" },
+        "sourceFailingCommandIndex": { "type": "integer", "minimum": 0, "maximum": 63 },
+        "originalCommandCount": { "const": 64 },
+        "minimizedCommandCount": { "type": "integer", "minimum": 1, "maximum": 63 },
+        "firstFailingCommandIndex": { "type": "integer", "minimum": 0, "maximum": 62 },
+        "oneMinimal": { "const": true },
+        "shrinkTrials": { "type": "integer", "minimum": 1, "maximum": 50000 },
+        "originalCommands": {
+          "type": "array",
+          "minItems": 64,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/rawCommand" }
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 63,
+          "items": { "$ref": "#/$defs/replayCommand" }
+        },
+        "actualAtFailure": { "$ref": "#/$defs/outcome" }
+      }
+    },
+    "rawCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": { "const": "PLACE" },
+            "input": { "$ref": "#/$defs/placeInput" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": { "const": "CANCEL" },
+            "input": { "$ref": "#/$defs/cancelInput" }
+          }
+        }
+      ]
+    },
+    "replayCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["caseId", "type", "input", "expected"],
+          "properties": {
+            "caseId": { "type": "string", "pattern": "^command-[1-9][0-9]*$" },
+            "type": { "const": "PLACE" },
+            "input": { "$ref": "#/$defs/placeInput" },
+            "expected": { "$ref": "#/$defs/outcome" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["caseId", "type", "input", "expected"],
+          "properties": {
+            "caseId": { "type": "string", "pattern": "^command-[1-9][0-9]*$" },
+            "type": { "const": "CANCEL" },
+            "input": { "$ref": "#/$defs/cancelInput" },
+            "expected": { "$ref": "#/$defs/outcome" }
+          }
+        }
+      ]
+    },
+    "placeInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instrumentId",
+        "orderId",
+        "side",
+        "priceTicks",
+        "quantityLots",
+        "executionPolicy"
+      ],
+      "properties": {
+        "instrumentId": { "type": "string" },
+        "orderId": { "type": "integer" },
+        "side": { "type": "string" },
+        "priceTicks": { "type": "integer" },
+        "quantityLots": { "type": "integer" },
+        "executionPolicy": { "type": "string" }
+      }
+    },
+    "cancelInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrumentId", "orderId"],
+      "properties": {
+        "instrumentId": { "type": "string" },
+        "orderId": { "type": "integer" }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["events", "bookAfter"],
+      "properties": {
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/event" }
+        },
+        "bookAfter": { "$ref": "#/$defs/book" }
+      }
+    },
+    "event": {
+      "oneOf": [
+        { "$ref": "#/$defs/rejected" },
+        { "$ref": "#/$defs/placeRejected" },
+        { "$ref": "#/$defs/cancelRejected" },
+        { "$ref": "#/$defs/accepted" },
+        { "$ref": "#/$defs/trade" },
+        { "$ref": "#/$defs/rested" },
+        { "$ref": "#/$defs/remainderCanceled" },
+        { "$ref": "#/$defs/canceled" }
+      ]
+    },
+    "rejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "code", "field"],
+      "properties": {
+        "type": { "const": "REJECTED" },
+        "code": { "type": "string", "minLength": 1 },
+        "field": { "type": "string", "minLength": 1 }
+      }
+    },
+    "placeRejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "orderId", "code"],
+      "properties": {
+        "type": { "const": "PLACE_REJECTED" },
+        "orderId": { "type": "integer" },
+        "code": { "type": "string", "minLength": 1 }
+      }
+    },
+    "cancelRejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "orderId", "code"],
+      "properties": {
+        "type": { "const": "CANCEL_REJECTED" },
+        "orderId": { "type": "integer" },
+        "code": { "type": "string", "minLength": 1 }
+      }
+    },
+    "accepted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "sequence",
+        "orderId",
+        "side",
+        "priceTicks",
+        "quantityLots",
+        "executionPolicy"
+      ],
+      "properties": {
+        "type": { "const": "ACCEPTED" },
+        "sequence": { "type": "integer" },
+        "orderId": { "type": "integer" },
+        "side": { "type": "string" },
+        "priceTicks": { "type": "integer" },
+        "quantityLots": { "type": "integer" },
+        "executionPolicy": { "type": "string" }
+      }
+    },
+    "trade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "makerSequence",
+        "makerOrderId",
+        "takerSequence",
+        "takerOrderId",
+        "priceTicks",
+        "quantityLots"
+      ],
+      "properties": {
+        "type": { "const": "TRADE" },
+        "makerSequence": { "type": "integer" },
+        "makerOrderId": { "type": "integer" },
+        "takerSequence": { "type": "integer" },
+        "takerOrderId": { "type": "integer" },
+        "priceTicks": { "type": "integer" },
+        "quantityLots": { "type": "integer" }
+      }
+    },
+    "rested": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "sequence",
+        "orderId",
+        "side",
+        "priceTicks",
+        "remainingQuantityLots"
+      ],
+      "properties": {
+        "type": { "const": "RESTED" },
+        "sequence": { "type": "integer" },
+        "orderId": { "type": "integer" },
+        "side": { "type": "string" },
+        "priceTicks": { "type": "integer" },
+        "remainingQuantityLots": { "type": "integer" }
+      }
+    },
+    "remainderCanceled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "sequence",
+        "orderId",
+        "side",
+        "priceTicks",
+        "canceledQuantityLots",
+        "reason"
+      ],
+      "properties": {
+        "type": { "const": "REMAINDER_CANCELED" },
+        "sequence": { "type": "integer" },
+        "orderId": { "type": "integer" },
+        "side": { "type": "string" },
+        "priceTicks": { "type": "integer" },
+        "canceledQuantityLots": { "type": "integer" },
+        "reason": { "const": "IOC_REMAINDER" }
+      }
+    },
+    "canceled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "sequence",
+        "orderId",
+        "side",
+        "priceTicks",
+        "canceledQuantityLots"
+      ],
+      "properties": {
+        "type": { "const": "CANCELED" },
+        "sequence": { "type": "integer" },
+        "orderId": { "type": "integer" },
+        "side": { "type": "string" },
+        "priceTicks": { "type": "integer" },
+        "canceledQuantityLots": { "type": "integer" }
+      }
+    },
+    "book": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bids", "asks"],
+      "properties": {
+        "bids": { "$ref": "#/$defs/levels" },
+        "asks": { "$ref": "#/$defs/levels" }
+      }
+    },
+    "levels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["priceTicks", "orders"],
+        "properties": {
+          "priceTicks": { "type": "integer" },
+          "orders": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/restingOrder" }
+          }
+        }
+      }
+    },
+    "restingOrder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence", "orderId", "remainingQuantityLots"],
+      "properties": {
+        "sequence": { "type": "integer" },
+        "orderId": { "type": "integer" },
+        "remainingQuantityLots": { "type": "integer" }
+      }
+    }
+  }
+}

@@ -204,11 +204,19 @@ final class SingleInstrumentExecutionPolicyTest {
         assertInstanceOf(MatchingEvent.PlaceRejected.class, touch.events().getFirst());
     assertEquals(PlaceRejectionCode.POST_ONLY_WOULD_TAKE, rejected.code());
     assertEquals(before, touch.bookAfter());
+    assertEquals(
+        CancelRejectionCode.ORDER_NOT_FOUND,
+        assertInstanceOf(
+                MatchingEvent.CancelRejected.class,
+                engine.cancel(cancelInput(20)).events().getFirst())
+            .code());
 
     ExecutionBatch accepted = engine.placeRequest(request(20, "BUY", 99, 1, "POST_ONLY"));
     assertEquals(2, acceptedSequence(accepted));
     assertEquals(ExecutionPolicy.POST_ONLY, accepted(accepted).executionPolicy());
     assertInstanceOf(MatchingEvent.Rested.class, accepted.events().getLast());
+    assertInstanceOf(
+        MatchingEvent.Canceled.class, engine.cancel(cancelInput(20)).events().getFirst());
   }
 
   @Test

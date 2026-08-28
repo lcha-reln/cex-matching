@@ -12,9 +12,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Lossless JSON binding for the reference-owned M03 command and outcome vocabulary. */
-final class M03Json {
-  private M03Json() {}
+/** Lossless strict JSON binding for the reference-owned M04 vocabulary. */
+final class M04Json {
+  private M04Json() {}
 
   static ObjectNode command(ReferenceCommand command) {
     Objects.requireNonNull(command, "command");
@@ -28,6 +28,7 @@ final class M03Json {
         input.put("side", place.side());
         input.put("priceTicks", place.priceTicks());
         input.put("quantityLots", place.quantityLots());
+        input.put("executionPolicy", place.executionPolicy());
       }
       case ReferenceCommand.Cancel cancel -> {
         node.put("type", "CANCEL");
@@ -48,11 +49,12 @@ final class M03Json {
               requiredInteger(input, "orderId"),
               requiredText(input, "side"),
               requiredInteger(input, "priceTicks"),
-              requiredInteger(input, "quantityLots"));
+              requiredInteger(input, "quantityLots"),
+              requiredText(input, "executionPolicy"));
       case "CANCEL" ->
           new ReferenceCommand.Cancel(
               requiredText(input, "instrumentId"), requiredInteger(input, "orderId"));
-      default -> throw malformed("unknown M03 command type");
+      default -> throw malformed("unknown command type");
     };
   }
 
@@ -64,9 +66,9 @@ final class M03Json {
 
   static List<ReferenceCommand> commands(JsonNode node) {
     requireArray(node, "commands");
-    List<ReferenceCommand> commands = new ArrayList<>(node.size());
-    node.forEach(command -> commands.add(command(command)));
-    return List.copyOf(commands);
+    List<ReferenceCommand> result = new ArrayList<>(node.size());
+    node.forEach(command -> result.add(command(command)));
+    return List.copyOf(result);
   }
 
   static ObjectNode replayCommand(
@@ -103,6 +105,7 @@ final class M03Json {
         node.put("side", accepted.side());
         node.put("priceTicks", accepted.priceTicks());
         node.put("quantityLots", accepted.quantityLots());
+        node.put("executionPolicy", accepted.executionPolicy());
       }
       case SemanticEvent.Trade trade -> {
         node.put("type", "TRADE");
@@ -121,7 +124,15 @@ final class M03Json {
         node.put("priceTicks", rested.priceTicks());
         node.put("remainingQuantityLots", rested.remainingQuantityLots());
       }
-      case SemanticEvent.RemainderCanceled canceled -> throw unexpectedM04Event(canceled);
+      case SemanticEvent.RemainderCanceled canceled -> {
+        node.put("type", "REMAINDER_CANCELED");
+        node.put("sequence", canceled.sequence());
+        node.put("orderId", canceled.orderId());
+        node.put("side", canceled.side());
+        node.put("priceTicks", canceled.priceTicks());
+        node.put("canceledQuantityLots", canceled.canceledQuantityLots());
+        node.put("reason", canceled.reason());
+      }
       case SemanticEvent.Canceled canceled -> {
         node.put("type", "CANCELED");
         node.put("sequence", canceled.sequence());
@@ -132,11 +143,6 @@ final class M03Json {
       }
     }
     return node;
-  }
-
-  private static IllegalStateException unexpectedM04Event(SemanticEvent event) {
-    return new IllegalStateException(
-        "M03 GTC JSON binding received an M04 policy event: " + event.getClass().getSimpleName());
   }
 
   static SemanticEvent event(JsonNode node) {
@@ -156,7 +162,8 @@ final class M03Json {
               requiredInteger(node, "orderId"),
               requiredText(node, "side"),
               requiredInteger(node, "priceTicks"),
-              requiredInteger(node, "quantityLots"));
+              requiredInteger(node, "quantityLots"),
+              requiredText(node, "executionPolicy"));
       case "TRADE" ->
           new SemanticEvent.Trade(
               requiredInteger(node, "makerSequence"),
@@ -172,6 +179,14 @@ final class M03Json {
               requiredText(node, "side"),
               requiredInteger(node, "priceTicks"),
               requiredInteger(node, "remainingQuantityLots"));
+      case "REMAINDER_CANCELED" ->
+          new SemanticEvent.RemainderCanceled(
+              requiredInteger(node, "sequence"),
+              requiredInteger(node, "orderId"),
+              requiredText(node, "side"),
+              requiredInteger(node, "priceTicks"),
+              requiredInteger(node, "canceledQuantityLots"),
+              requiredText(node, "reason"));
       case "CANCELED" ->
           new SemanticEvent.Canceled(
               requiredInteger(node, "sequence"),
@@ -179,22 +194,8 @@ final class M03Json {
               requiredText(node, "side"),
               requiredInteger(node, "priceTicks"),
               requiredInteger(node, "canceledQuantityLots"));
-      default -> throw malformed("unknown M03 event type");
+      default -> throw malformed("unknown event type");
     };
-  }
-
-  static ObjectNode book(SemanticBook book) {
-    Objects.requireNonNull(book, "book");
-    ObjectNode node = JsonSupport.MAPPER.createObjectNode();
-    node.set("bids", levels(book.bids()));
-    node.set("asks", levels(book.asks()));
-    return node;
-  }
-
-  static SemanticBook book(JsonNode node) {
-    requireObject(node, "book");
-    return new SemanticBook(
-        levels(requiredArray(node, "bids"), "BUY"), levels(requiredArray(node, "asks"), "SELL"));
   }
 
   static ObjectNode outcome(SemanticOutcome outcome) {
@@ -214,6 +215,19 @@ final class M03Json {
     return new SemanticOutcome(events, book(requiredObject(node, "bookAfter")));
   }
 
+  static ObjectNode book(SemanticBook book) {
+    ObjectNode node = JsonSupport.MAPPER.createObjectNode();
+    node.set("bids", levels(book.bids()));
+    node.set("asks", levels(book.asks()));
+    return node;
+  }
+
+  static SemanticBook book(JsonNode node) {
+    requireObject(node, "book");
+    return new SemanticBook(
+        levels(requiredArray(node, "bids"), "BUY"), levels(requiredArray(node, "asks"), "SELL"));
+  }
+
   private static ArrayNode levels(List<SemanticBook.PriceLevel> levels) {
     ArrayNode result = JsonSupport.MAPPER.createArrayNode();
     for (SemanticBook.PriceLevel level : levels) {
@@ -231,8 +245,7 @@ final class M03Json {
   }
 
   private static List<SemanticBook.PriceLevel> levels(JsonNode nodes, String side) {
-    requireArray(nodes, side + " levels");
-    List<SemanticBook.PriceLevel> levels = new ArrayList<>(nodes.size());
+    List<SemanticBook.PriceLevel> result = new ArrayList<>(nodes.size());
     for (JsonNode node : nodes) {
       JsonNode orderNodes = requiredArray(node, "orders");
       List<SemanticBook.RestingOrder> orders = new ArrayList<>(orderNodes.size());
@@ -243,9 +256,9 @@ final class M03Json {
                 requiredInteger(order, "orderId"),
                 requiredInteger(order, "remainingQuantityLots")));
       }
-      levels.add(new SemanticBook.PriceLevel(side, requiredInteger(node, "priceTicks"), orders));
+      result.add(new SemanticBook.PriceLevel(side, requiredInteger(node, "priceTicks"), orders));
     }
-    return List.copyOf(levels);
+    return List.copyOf(result);
   }
 
   private static JsonNode requiredObject(JsonNode node, String field) {
@@ -289,6 +302,6 @@ final class M03Json {
   }
 
   private static FixtureSchemaException malformed(String message) {
-    return new FixtureSchemaException("malformed M03 counterexample: " + message);
+    return new FixtureSchemaException("malformed M04 artifact: " + message);
   }
 }

@@ -5,6 +5,7 @@ import io.github.lchareln.cex.matching.ExecutionBatch;
 import io.github.lchareln.cex.matching.MatchingEvent;
 import io.github.lchareln.cex.matching.OrderBookSnapshot;
 import io.github.lchareln.cex.matching.PlaceLimitOrderInput;
+import io.github.lchareln.cex.matching.PlaceLimitOrderRequest;
 import io.github.lchareln.cex.matching.SingleInstrumentMatchingEngine;
 import io.github.lchareln.cex.matching.reference.ReferenceCommand;
 import io.github.lchareln.cex.matching.reference.SemanticBook;
@@ -14,26 +15,27 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 
-/** One-way adapter from the public M02 production surface to neutral M03 semantic values. */
-final class M03ProductionCandidate implements M03Candidate {
+/** One-way adapter from the public M04 matcher to reference-owned semantic values. */
+final class M04ProductionCandidate implements M04Candidate {
   private final SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine();
 
   @Override
   public SemanticOutcome apply(ReferenceCommand command) {
     if (command instanceof ReferenceCommand.Place place) {
+      PlaceLimitOrderInput input =
+          new PlaceLimitOrderInput(
+              place.instrumentId(),
+              place.orderId(),
+              place.side(),
+              place.priceTicks(),
+              place.quantityLots());
       return outcome(
-          engine.place(
-              new PlaceLimitOrderInput(
-                  place.instrumentId(),
-                  place.orderId(),
-                  place.side(),
-                  place.priceTicks(),
-                  place.quantityLots())));
+          engine.placeRequest(new PlaceLimitOrderRequest(input, place.executionPolicy())));
     }
     if (command instanceof ReferenceCommand.Cancel cancel) {
       return outcome(engine.cancel(new CancelOrderInput(cancel.instrumentId(), cancel.orderId())));
     }
-    throw new IllegalArgumentException("unsupported M03 production command");
+    throw new IllegalArgumentException("unsupported M04 production command");
   }
 
   private static SemanticOutcome outcome(ExecutionBatch batch) {
@@ -41,9 +43,9 @@ final class M03ProductionCandidate implements M03Candidate {
   }
 
   private static List<SemanticEvent> events(List<MatchingEvent> source) {
-    List<SemanticEvent> events = new ArrayList<>(source.size());
+    List<SemanticEvent> result = new ArrayList<>(source.size());
     for (MatchingEvent event : source) {
-      events.add(
+      result.add(
           switch (event) {
             case MatchingEvent.Rejected rejected ->
                 new SemanticEvent.Rejected(rejected.code().name(), rejected.field());
@@ -59,7 +61,8 @@ final class M03ProductionCandidate implements M03Candidate {
                     value(accepted.orderId().value()),
                     accepted.side().name(),
                     value(accepted.priceTicks().value()),
-                    value(accepted.quantityLots().value()));
+                    value(accepted.quantityLots().value()),
+                    accepted.executionPolicy().name());
             case MatchingEvent.Trade trade ->
                 new SemanticEvent.Trade(
                     value(trade.makerSequence().value()),
@@ -75,7 +78,14 @@ final class M03ProductionCandidate implements M03Candidate {
                     rested.side().name(),
                     value(rested.priceTicks().value()),
                     value(rested.remainingQuantityLots().value()));
-            case MatchingEvent.RemainderCanceled canceled -> throw unexpectedM04Event(canceled);
+            case MatchingEvent.RemainderCanceled canceled ->
+                new SemanticEvent.RemainderCanceled(
+                    value(canceled.sequence().value()),
+                    value(canceled.orderId().value()),
+                    canceled.side().name(),
+                    value(canceled.priceTicks().value()),
+                    value(canceled.canceledQuantityLots().value()),
+                    canceled.reason().name());
             case MatchingEvent.Canceled canceled ->
                 new SemanticEvent.Canceled(
                     value(canceled.sequence().value()),
@@ -85,12 +95,7 @@ final class M03ProductionCandidate implements M03Candidate {
                     value(canceled.canceledQuantityLots().value()));
           });
     }
-    return List.copyOf(events);
-  }
-
-  private static IllegalStateException unexpectedM04Event(MatchingEvent event) {
-    return new IllegalStateException(
-        "M03 GTC candidate emitted an M04 policy event: " + event.getClass().getSimpleName());
+    return List.copyOf(result);
   }
 
   private static SemanticBook book(OrderBookSnapshot snapshot) {

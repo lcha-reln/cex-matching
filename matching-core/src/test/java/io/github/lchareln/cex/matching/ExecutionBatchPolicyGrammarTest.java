@@ -25,29 +25,51 @@ final class ExecutionBatchPolicyGrammarTest {
   }
 
   @Test
+  void iocRemainderMustEqualTheUnfilledQuantityAndTerminateTheBatch() {
+    MatchingEvent.Accepted accepted = accepted(ExecutionPolicy.IOC);
+    MatchingEvent.Trade oneLotTrade = trade(1);
+    MatchingEvent.RemainderCanceled wrongQuantity =
+        new MatchingEvent.RemainderCanceled(
+            SEQUENCE,
+            ORDER_ID,
+            Side.BUY,
+            PRICE,
+            new QuantityLots(1),
+            RemainderCancelReason.IOC_REMAINDER);
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new ExecutionBatch(List.of(accepted, oneLotTrade, wrongQuantity), emptyBook()));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new ExecutionBatch(List.of(accepted, remainderCanceled(), oneLotTrade), emptyBook()));
+  }
+
+  @Test
   void fokCannotBeAcceptedWithoutACompleteFill() {
     MatchingEvent.Accepted accepted = accepted(ExecutionPolicy.FOK);
 
+    assertThrows(
+        IllegalArgumentException.class, () -> new ExecutionBatch(List.of(accepted), emptyBook()));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new ExecutionBatch(List.of(accepted, trade(2)), emptyBook()));
     assertThrows(
         IllegalArgumentException.class,
         () -> new ExecutionBatch(List.of(accepted, remainderCanceled()), emptyBook()));
     assertThrows(
         IllegalArgumentException.class,
         () -> new ExecutionBatch(List.of(accepted, rested()), emptyBook()));
+    assertDoesNotThrow(() -> new ExecutionBatch(List.of(accepted, trade(3)), emptyBook()));
   }
 
   @Test
   void postOnlyCannotTradeAndMustRestItsFullQuantity() {
     MatchingEvent.Accepted accepted = accepted(ExecutionPolicy.POST_ONLY);
-    MatchingEvent.Trade trade =
-        new MatchingEvent.Trade(
-            new AcceptanceSequence(2),
-            new OrderId(2),
-            SEQUENCE,
-            ORDER_ID,
-            PRICE,
-            new QuantityLots(1));
+    MatchingEvent.Trade trade = trade(1);
 
+    assertThrows(
+        IllegalArgumentException.class, () -> new ExecutionBatch(List.of(accepted), emptyBook()));
     assertThrows(
         IllegalArgumentException.class,
         () ->
@@ -55,6 +77,15 @@ final class ExecutionBatchPolicyGrammarTest {
                 List.of(
                     accepted,
                     trade,
+                    new MatchingEvent.Rested(
+                        SEQUENCE, ORDER_ID, Side.BUY, PRICE, new QuantityLots(2))),
+                emptyBook()));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new ExecutionBatch(
+                List.of(
+                    accepted,
                     new MatchingEvent.Rested(
                         SEQUENCE, ORDER_ID, Side.BUY, PRICE, new QuantityLots(2))),
                 emptyBook()));
@@ -72,6 +103,16 @@ final class ExecutionBatchPolicyGrammarTest {
   private static MatchingEvent.RemainderCanceled remainderCanceled() {
     return new MatchingEvent.RemainderCanceled(
         SEQUENCE, ORDER_ID, Side.BUY, PRICE, QUANTITY, RemainderCancelReason.IOC_REMAINDER);
+  }
+
+  private static MatchingEvent.Trade trade(long quantityLots) {
+    return new MatchingEvent.Trade(
+        new AcceptanceSequence(2),
+        new OrderId(2),
+        SEQUENCE,
+        ORDER_ID,
+        PRICE,
+        new QuantityLots(quantityLots));
   }
 
   private static OrderBookSnapshot emptyBook() {

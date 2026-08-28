@@ -58,15 +58,11 @@ jobs:
             schemas/matching.m04.scenario.v1.schema.json
             schemas/matching.m04.generator.v1.schema.json
             schemas/matching.m04.check.v1.schema.json
+            schemas/matching.m04.check.v2.schema.json
+            schemas/matching.m04.counterexamples.v1.schema.json
             matching-testkit/src/test/resources/m04/fixtures/execution-policy-v1.json
             matching-testkit/src/test/resources/m04/fixtures/property-suite-v1.json
           )
-          if [[ -f schemas/matching.m04.check.v2.schema.json ]]; then
-            resources+=(schemas/matching.m04.check.v2.schema.json)
-          fi
-          if [[ -f schemas/matching.m04.counterexamples.v1.schema.json ]]; then
-            resources+=(schemas/matching.m04.counterexamples.v1.schema.json)
-          fi
           jq empty "${resources[@]}"
 
       - name: Execute the inherited M03 regression and declared M04 boundary
@@ -190,24 +186,94 @@ jobs:
               ' build/reports/m04/check.json
               ;;
             PASS)
+              test -z "$(git tag --points-at HEAD --list 'matching-*')"
               ./gradlew clean build --no-daemon
               jq -e '
                 .schemaVersion == "matching.m04.check.v2" and
                 .unit == "M04" and
                 .status == "PASS" and
                 .contractPlanVersion == "0.6" and
+                .inheritedM03.status == "PASS" and
+                .inheritedM03.histories == 256 and
+                .inheritedM03.commands == 16384 and
+                .inheritedM03.bytes == 1682592 and
+                .inheritedM03.lines == 16641 and
+                .inheritedM03.commandDigest == "sha256:1920d6b8a480998825c72636d446854d9e795e91b0ab29520f203b12186979ce" and
+                .inheritedM03.differentialComparisons == 16384 and
+                .inheritedM03.ledgerChecks == 16384 and
+                .inheritedM03.bookChecks == 16384 and
+                .inheritedM03.mutantsKilled == 6 and
+                .inheritedM03.counterexamples == 6 and
+                .inheritedM03.oneMinimal == 6 and
+                .inheritedM03.historicalArchitectureGateExecuted == false and
                 .fixedCorpus.scenarios == 14 and
                 .fixedCorpus.commands == 48 and
+                .fixedCorpus.placeCommands == 44 and
+                .fixedCorpus.cancelCommands == 4 and
+                .fixedCorpus.policyCounts == {
+                  "GTC": 25,
+                  "IOC": 5,
+                  "FOK": 6,
+                  "POST_ONLY": 6,
+                  "UNKNOWN": 2
+                } and
+                .fixedCorpus.canonicalFormat == "M04F1" and
+                .fixedCorpus.canonicalDigest == "sha256:68de35e41358ea72c9852fdf3fd652db116774964360f0b526f43612576bfa77" and
+                .fixedCorpus.canonicalBytes == 47104 and
+                .fixedCorpus.canonicalLines == 63 and
                 .generator.histories == 192 and
                 .generator.commandsPerHistory == 64 and
+                .generator.totalCommands == 12288 and
+                .generator.lanes == 6 and
+                .generator.historiesPerLane == 32 and
+                .generator.canonicalFormat == "M04H1" and
+                .generator.canonicalDigest == "sha256:6005c674d0c42927989f1c8c4d1ddce224d06ceff0b95bf58615d23c4496ba51" and
+                .generator.canonicalBytes == 1496773 and
+                .generator.canonicalLines == 12481 and
+                .generator.freshGenerations == 2 and
+                .properties.histories == 192 and
                 .properties.commands == 12288 and
+                .properties.differentialComparisons == 12288 and
+                .properties.ledgerChecks == 12288 and
+                .properties.bookChecks == 12288 and
+                .coverage.requiredObligations == 23 and
+                .coverage.satisfiedObligations == 23 and
+                .coverage.fokOutsideLimit == 214 and
+                .coverage.baseValidUnknown == 423 and
+                .coverage.baseValidUnusedUnknown == 295 and
+                .boundaries.exactRawPolicyVariants == 4 and
+                .boundaries.exactRawPolicyPaths == 2 and
+                .boundaries.longMaxFokDeductionPaths == 2 and
                 .counterexamples.required == 8 and
+                .counterexamples.shrunk == 8 and
+                .counterexamples.persisted == 8 and
+                .counterexamples.schemaParsed == 8 and
                 .counterexamples.replayed == 8 and
                 .counterexamples.oneMinimal == 8 and
+                .counterexamples.minimizedCommands == 15 and
+                .counterexamples.canonical.format == "M04X1" and
+                .counterexamples.canonical.digest == "sha256:60076a395fe365ba9eaa6bf91ae148dc42120ddb95ad01cac988ab90dd8550cb" and
+                .counterexamples.canonical.bytes == 166483 and
+                .counterexamples.canonical.lines == 544 and
                 .mutants.required == 8 and
                 .mutants.killed == 8 and
                 .mutants.systemErrorControl == "SYSTEM_ERROR" and
-                .releaseTarget.productRelease == null
+                (.mutants.requiredMutants | length) == 8 and
+                all(.mutants.requiredMutants[];
+                  .classification == "STUDENT_FAILURE" and
+                  .killed == true and
+                  .originalCommands == 64 and
+                  .oneMinimal == true and
+                  .replayed == true
+                ) and
+                .architecture.coreSourceFiles == 24 and
+                .architecture.referenceSourceFiles == 7 and
+                .architecture.violations == 0 and
+                .releaseTarget == {
+                  "unitTag": "course/m04-complete",
+                  "productRelease": null,
+                  "verification": "M04_EVIDENCE_ONLY"
+                }
               ' build/reports/m04/check.json
               if [[ "$GITHUB_REF" == "refs/heads/main" ||
                     "$GITHUB_REF" == "refs/tags/course/m04-complete" ]]; then
