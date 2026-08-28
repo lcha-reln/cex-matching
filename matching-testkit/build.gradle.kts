@@ -34,6 +34,7 @@ val m03ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m03")
 val m03EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M03")
 val m03UnitTag = providers.gradleProperty("m03.unitTag").orElse("course/m03-complete")
 val m03ProductRelease = providers.gradleProperty("m03.productRelease").orElse("matching-0.1.0")
+val m04ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m04")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -143,4 +144,17 @@ tasks.register<JavaExec>("m03Evidence") {
         m03ProductRelease.get(),
     )
     doNotTrackState("Evidence must re-check both M03 tags and working-tree cleanliness on every invocation")
+}
+
+tasks.register<JavaExec>("m04Check") {
+    group = "verification"
+    description = "Runs the structured M04 execution-policy RED boundary."
+    dependsOn("test", ":matching-core:test", ":matching-reference:check", "classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M04CheckMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m04ReportDirectory.get().asFile.absolutePath,
+    )
+    doNotTrackState("M04 must never reuse a stale boundary report")
 }

@@ -133,3 +133,9 @@ tasks.register("m03Evidence") {
     description = "Generates and validates the clean-tree M03 evidence manifest."
     dependsOn(":matching-testkit:m03Evidence")
 }
+
+tasks.register("m04Check") {
+    group = "verification"
+    description = "Runs the declared M04 execution-policy RED boundary."
+    dependsOn(":matching-testkit:m04Check")
+}

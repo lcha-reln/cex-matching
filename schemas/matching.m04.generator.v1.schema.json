@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m04.generator.v1.schema.json",
+  "title": "Matching M04 deterministic execution-policy generator",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "algorithm",
+    "baseSeed",
+    "histories",
+    "commandsPerHistory",
+    "lanes",
+    "randomDomain",
+    "coverageRequirements",
+    "requiredMutants"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "matching.m04.generator.v1" },
+    "algorithm": { "const": "splitmix64-v1" },
+    "baseSeed": { "type": "string", "pattern": "^[0-9]+$" },
+    "histories": { "const": 192 },
+    "commandsPerHistory": { "const": 64 },
+    "lanes": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": { "$ref": "#/$defs/lane" }
+    },
+    "randomDomain": { "$ref": "#/$defs/randomDomain" },
+    "coverageRequirements": { "$ref": "#/$defs/coverageRequirements" },
+    "requiredMutants": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        { "const": "M04-IOC-REMAINDER-RESTS" },
+        { "const": "M04-IOC-BEHAVES-LIKE-FOK" },
+        { "const": "M04-FOK-PARTIAL-STATE-LEAK" },
+        { "const": "M04-FOK-BEST-LEVEL-ONLY" },
+        { "const": "M04-FOK-IGNORES-LIMIT-PRICE" },
+        { "const": "M04-POST-ONLY-TOUCH-ACCEPTED" },
+        { "const": "M04-POLICY-REJECT-CONSUMES-IDENTITY" },
+        { "const": "M04-UNKNOWN-POLICY-DEFAULTS-GTC" }
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "historyModulo", "prefix"],
+      "properties": {
+        "id": {
+          "enum": [
+            "LEGACY_GTC",
+            "IOC_ZERO_PARTIAL_FULL",
+            "FOK_INSUFFICIENT_EXACT_MULTI_LEVEL",
+            "POST_ONLY_EMPTY_NON_CROSS_TOUCH_CROSS",
+            "IDENTITY_AND_SEQUENCE_AFTER_REJECTION",
+            "MIXED_POLICY_CANCEL_DUPLICATE"
+          ]
+        },
+        "historyModulo": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "prefix": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/command" }
+        }
+      }
+    },
+    "command": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": { "const": "PLACE" },
+            "input": { "$ref": "#/$defs/placeRequest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": { "const": "CANCEL" },
+            "input": { "$ref": "#/$defs/cancelInput" }
+          }
+        }
+      ]
+    },
+    "placeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instrumentId",
+        "orderId",
+        "side",
+        "priceTicks",
+        "quantityLots",
+        "executionPolicy"
+      ],
+      "properties": {
+        "instrumentId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "orderId": { "type": "integer", "minimum": 0 },
+        "side": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "priceTicks": { "type": "integer", "minimum": 0 },
+        "quantityLots": { "type": "integer", "minimum": 0 },
+        "executionPolicy": { "type": "string", "minLength": 1, "maxLength": 32 }
+      }
+    },
+    "cancelInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrumentId", "orderId"],
+      "properties": {
+        "instrumentId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "orderId": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "randomDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "placeWeight",
+        "cancelWeight",
+        "invalidOneIn",
+        "unknownPolicyOneIn",
+        "validInstrumentId",
+        "invalidInstrumentId",
+        "minimumOrderId",
+        "maximumOrderId",
+        "validSides",
+        "invalidSide",
+        "minimumPriceTicks",
+        "maximumPriceTicks",
+        "minimumQuantityLots",
+        "maximumQuantityLots",
+        "executionPolicies",
+        "invalidExecutionPolicy"
+      ],
+      "properties": {
+        "placeWeight": { "const": 70 },
+        "cancelWeight": { "const": 30 },
+        "invalidOneIn": { "const": 32 },
+        "unknownPolicyOneIn": { "const": 16 },
+        "validInstrumentId": { "const": "BTC-USDT" },
+        "invalidInstrumentId": { "const": "ETH-USDT" },
+        "minimumOrderId": { "const": 1 },
+        "maximumOrderId": { "const": 40 },
+        "validSides": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [{ "const": "BUY" }, { "const": "SELL" }],
+          "items": false
+        },
+        "invalidSide": { "const": "HOLD" },
+        "minimumPriceTicks": { "const": 98 },
+        "maximumPriceTicks": { "const": 102 },
+        "minimumQuantityLots": { "const": 1 },
+        "maximumQuantityLots": { "const": 5 },
+        "executionPolicies": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            { "$ref": "#/$defs/gtcWeight" },
+            { "$ref": "#/$defs/iocWeight" },
+            { "$ref": "#/$defs/fokWeight" },
+            { "$ref": "#/$defs/postOnlyWeight" }
+          ],
+          "items": false
+        },
+        "invalidExecutionPolicy": { "const": "UNKNOWN" }
+      }
+    },
+    "gtcWeight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "weight"],
+      "properties": { "id": { "const": "GTC" }, "weight": { "const": 35 } }
+    },
+    "iocWeight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "weight"],
+      "properties": { "id": { "const": "IOC" }, "weight": { "const": 25 } }
+    },
+    "fokWeight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "weight"],
+      "properties": { "id": { "const": "FOK" }, "weight": { "const": 20 } }
+    },
+    "postOnlyWeight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "weight"],
+      "properties": { "id": { "const": "POST_ONLY" }, "weight": { "const": 20 } }
+    },
+    "coverageRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ioc", "fok", "postOnly", "rejectionIdentityAndSequence", "buyAndSell"],
+      "properties": {
+        "ioc": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "prefixItems": [
+            { "const": "ZERO_FILL" },
+            { "const": "PARTIAL_FILL" },
+            { "const": "FULL_FILL" }
+          ],
+          "items": false
+        },
+        "fok": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            { "const": "INSUFFICIENT" },
+            { "const": "EXACT" },
+            { "const": "MULTI_LEVEL" },
+            { "const": "OUTSIDE_LIMIT_EXCLUDED" }
+          ],
+          "items": false
+        },
+        "postOnly": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            { "const": "EMPTY_BOOK" },
+            { "const": "NON_CROSSING" },
+            { "const": "TOUCH" },
+            { "const": "CROSS" }
+          ],
+          "items": false
+        },
+        "rejectionIdentityAndSequence": { "const": true },
+        "buyAndSell": { "const": true }
+      }
+    }
+  }
+}

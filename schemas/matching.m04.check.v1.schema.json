@@ -1,0 +1,295 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m04.check.v1.schema.json",
+  "title": "Matching M04 structured RED check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "unit",
+    "status",
+    "contractPlanVersion",
+    "objective",
+    "inheritedM03",
+    "fixedCorpus",
+    "generator",
+    "executionContract",
+    "requiredMutants",
+    "missingCapabilities",
+    "releaseTarget"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "matching.m04.check.v1" },
+    "unit": { "const": "M04" },
+    "status": { "const": "GOAL_NOT_IMPLEMENTED" },
+    "contractPlanVersion": { "const": "0.6" },
+    "objective": {
+      "const": "Add one closed execution-policy axis to the proven limit matcher without changing the frozen five-field PlaceLimitOrderInput."
+    },
+    "inheritedM03": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "checkSchemaVersion",
+        "histories",
+        "commands",
+        "commandDigest",
+        "counterexamples",
+        "mutantsKilled",
+        "productRelease"
+      ],
+      "properties": {
+        "status": { "const": "PASS" },
+        "checkSchemaVersion": { "const": "matching.m03.check.v2" },
+        "histories": { "const": 256 },
+        "commands": { "const": 16384 },
+        "commandDigest": {
+          "const": "sha256:1920d6b8a480998825c72636d446854d9e795e91b0ab29520f203b12186979ce"
+        },
+        "counterexamples": { "const": 6 },
+        "mutantsKilled": { "const": 6 },
+        "productRelease": { "const": "matching-0.1.0" }
+      }
+    },
+    "fixedCorpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schemaPath",
+        "sha256",
+        "scenarios",
+        "commands",
+        "placeCommands",
+        "cancelCommands",
+        "policyCounts",
+        "schemaProbes"
+      ],
+      "properties": {
+        "path": {
+          "const": "matching-testkit/src/test/resources/m04/fixtures/execution-policy-v1.json"
+        },
+        "schemaPath": { "const": "schemas/matching.m04.scenario.v1.schema.json" },
+        "sha256": {
+          "const": "a8bf834828847a24d316bf6f760d008809901d8e3e2ff132276225b0aa79f596"
+        },
+        "scenarios": { "const": 14 },
+        "commands": { "const": 48 },
+        "placeCommands": { "const": 44 },
+        "cancelCommands": { "const": 4 },
+        "policyCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["GTC", "IOC", "FOK", "POST_ONLY", "UNKNOWN"],
+          "properties": {
+            "GTC": { "const": 25 },
+            "IOC": { "const": 5 },
+            "FOK": { "const": 6 },
+            "POST_ONLY": { "const": 6 },
+            "UNKNOWN": { "const": 2 }
+          }
+        },
+        "schemaProbes": { "const": 6 }
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schemaPath",
+        "sha256",
+        "algorithm",
+        "baseSeed",
+        "histories",
+        "commandsPerHistory",
+        "totalCommands",
+        "lanes",
+        "historiesPerLane",
+        "laneIds",
+        "schemaProbes"
+      ],
+      "properties": {
+        "path": {
+          "const": "matching-testkit/src/test/resources/m04/fixtures/property-suite-v1.json"
+        },
+        "schemaPath": { "const": "schemas/matching.m04.generator.v1.schema.json" },
+        "sha256": {
+          "const": "33a24417d56b565fe9b25868e70c1faa1637a7997d92486c5d6f30113e00575d"
+        },
+        "algorithm": { "const": "splitmix64-v1" },
+        "baseSeed": { "const": "4404" },
+        "histories": { "const": 192 },
+        "commandsPerHistory": { "const": 64 },
+        "totalCommands": { "const": 12288 },
+        "lanes": { "const": 6 },
+        "historiesPerLane": { "const": 32 },
+        "laneIds": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "prefixItems": [
+            { "const": "LEGACY_GTC" },
+            { "const": "IOC_ZERO_PARTIAL_FULL" },
+            { "const": "FOK_INSUFFICIENT_EXACT_MULTI_LEVEL" },
+            { "const": "POST_ONLY_EMPTY_NON_CROSS_TOUCH_CROSS" },
+            { "const": "IDENTITY_AND_SEQUENCE_AFTER_REJECTION" },
+            { "const": "MIXED_POLICY_CANCEL_DUPLICATE" }
+          ],
+          "items": false
+        },
+        "schemaProbes": { "const": 6 }
+      }
+    },
+    "executionContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestType",
+        "policyType",
+        "legacyMethod",
+        "requestMethod",
+        "requestComponents",
+        "legacyPolicy",
+        "policies",
+        "legacyInputFields",
+        "precedence",
+        "unknownPolicyEvent",
+        "unknownPolicyCode",
+        "unknownPolicyField",
+        "placeRejectionEvent",
+        "placeRejectionCodes",
+        "acceptedPolicyField",
+        "remainderEvent",
+        "remainderReason",
+        "protectedLimitField",
+        "fokAtomic",
+        "postOnlyRejectsTouch",
+        "policyRejectionsReserveIdentity",
+        "policyRejectionsConsumeSequence"
+      ],
+      "properties": {
+        "requestType": { "const": "PlaceLimitOrderRequest" },
+        "policyType": { "const": "ExecutionPolicy" },
+        "legacyMethod": { "const": "place(PlaceLimitOrderInput)" },
+        "requestMethod": { "const": "placeRequest(PlaceLimitOrderRequest)" },
+        "requestComponents": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            { "const": "orderInput:PlaceLimitOrderInput" },
+            { "const": "executionPolicy:String" }
+          ],
+          "items": false
+        },
+        "legacyPolicy": { "const": "GTC" },
+        "policies": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            { "const": "GTC" },
+            { "const": "IOC" },
+            { "const": "FOK" },
+            { "const": "POST_ONLY" }
+          ],
+          "items": false
+        },
+        "legacyInputFields": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "prefixItems": [
+            { "const": "instrumentId" },
+            { "const": "orderId" },
+            { "const": "side" },
+            { "const": "priceTicks" },
+            { "const": "quantityLots" }
+          ],
+          "items": false
+        },
+        "precedence": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "prefixItems": [
+            { "const": "M00_FIELD_VALIDATION" },
+            { "const": "EXECUTION_POLICY_VALIDATION" },
+            { "const": "DUPLICATE_ORDER_ID" },
+            { "const": "POLICY_STATE_PRECHECK" },
+            { "const": "ACCEPTANCE_SEQUENCE_CAPACITY" },
+            { "const": "ACCEPT_AND_EXECUTE" }
+          ],
+          "items": false
+        },
+        "unknownPolicyEvent": { "const": "Rejected" },
+        "unknownPolicyCode": { "const": "INVALID_EXECUTION_POLICY" },
+        "unknownPolicyField": { "const": "executionPolicy" },
+        "placeRejectionEvent": { "const": "PlaceRejected" },
+        "placeRejectionCodes": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "prefixItems": [
+            { "const": "DUPLICATE_ORDER_ID" },
+            { "const": "FOK_NOT_FILLABLE" },
+            { "const": "POST_ONLY_WOULD_TAKE" }
+          ],
+          "items": false
+        },
+        "acceptedPolicyField": { "const": "executionPolicy:ExecutionPolicy" },
+        "remainderEvent": { "const": "RemainderCanceled" },
+        "remainderReason": { "const": "IOC_REMAINDER" },
+        "protectedLimitField": { "const": "priceTicks" },
+        "fokAtomic": { "const": true },
+        "postOnlyRejectsTouch": { "const": true },
+        "policyRejectionsReserveIdentity": { "const": false },
+        "policyRejectionsConsumeSequence": { "const": false }
+      }
+    },
+    "requiredMutants": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        { "const": "M04-IOC-REMAINDER-RESTS" },
+        { "const": "M04-IOC-BEHAVES-LIKE-FOK" },
+        { "const": "M04-FOK-PARTIAL-STATE-LEAK" },
+        { "const": "M04-FOK-BEST-LEVEL-ONLY" },
+        { "const": "M04-FOK-IGNORES-LIMIT-PRICE" },
+        { "const": "M04-POST-ONLY-TOUCH-ACCEPTED" },
+        { "const": "M04-POLICY-REJECT-CONSUMES-IDENTITY" },
+        { "const": "M04-UNKNOWN-POLICY-DEFAULTS-GTC" }
+      ],
+      "items": false
+    },
+    "missingCapabilities": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        { "const": "PLACE_LIMIT_ORDER_REQUEST" },
+        { "const": "EXECUTION_POLICY" },
+        { "const": "IOC_REMAINDER_CANCELLATION" },
+        { "const": "FOK_ATOMIC_PREFLIGHT" },
+        { "const": "POST_ONLY_ADMISSION" },
+        { "const": "M04_REFERENCE_MODEL" },
+        { "const": "M04_GENERATED_PROPERTY_JUDGE" },
+        { "const": "M04_REPLAYABLE_COUNTEREXAMPLES" }
+      ],
+      "items": false
+    },
+    "releaseTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "verification"],
+      "properties": {
+        "unitTag": { "const": "course/m04-complete" },
+        "productRelease": { "type": "null" },
+        "verification": { "const": "M04_EVIDENCE_ONLY" }
+      }
+    }
+  }
+}

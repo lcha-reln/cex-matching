@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m04.scenario.v1.schema.json",
+  "title": "Matching M04 fixed execution-policy scenarios",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "scenarios"],
+  "properties": {
+    "schemaVersion": { "const": "matching.m04.scenario.v1" },
+    "scenarios": {
+      "type": "array",
+      "minItems": 14,
+      "maxItems": 14,
+      "items": { "$ref": "#/$defs/scenario" }
+    }
+  },
+  "$defs": {
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarioId", "proofObligations", "commands"],
+      "properties": {
+        "scenarioId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        "proofObligations": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "LEGACY_GTC",
+              "VALIDATION_PRIORITY",
+              "IOC_ZERO_FILL",
+              "IOC_PARTIAL_FILL",
+              "IOC_FULL_FILL",
+              "FOK_INSUFFICIENT",
+              "FOK_EXACT_FILL",
+              "FOK_MULTI_LEVEL",
+              "FOK_ZERO_SIDE_EFFECT",
+              "POST_ONLY_EMPTY",
+              "POST_ONLY_NON_CROSSING",
+              "POST_ONLY_TOUCH",
+              "POST_ONLY_CROSS",
+              "PRICE_PROTECTION",
+              "IDENTITY_SEQUENCE",
+              "SELL_SYMMETRY"
+            ]
+          }
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/command" }
+        }
+      }
+    },
+    "command": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["caseId", "type", "input"],
+          "properties": {
+            "caseId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+            "type": { "const": "PLACE" },
+            "input": { "$ref": "#/$defs/placeRequest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["caseId", "type", "input"],
+          "properties": {
+            "caseId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+            "type": { "const": "CANCEL" },
+            "input": { "$ref": "#/$defs/cancelInput" }
+          }
+        }
+      ]
+    },
+    "placeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instrumentId",
+        "orderId",
+        "side",
+        "priceTicks",
+        "quantityLots",
+        "executionPolicy"
+      ],
+      "properties": {
+        "instrumentId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "orderId": { "type": "integer", "minimum": 0 },
+        "side": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "priceTicks": { "type": "integer", "minimum": 0 },
+        "quantityLots": { "type": "integer", "minimum": 0 },
+        "executionPolicy": { "type": "string", "minLength": 1, "maxLength": 32 }
+      }
+    },
+    "cancelInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrumentId", "orderId"],
+      "properties": {
+        "instrumentId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "orderId": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
