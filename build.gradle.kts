@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "io.github.lchareln.cex"
-version = "0.0.0-m02-start"
+version = "0.0.0-m02-complete"
 
 spotless {
     format("rootMisc") {
@@ -83,7 +83,7 @@ tasks.named("assemble") {
 }
 
 tasks.named("check") {
-    dependsOn("spotlessCheck", ":matching-core:check", ":matching-testkit:check", "m01Check")
+    dependsOn("spotlessCheck", ":matching-core:check", ":matching-testkit:check", "m02Check")
 }
 
 tasks.register("m00Check") {
@@ -112,6 +112,12 @@ tasks.register("m01Evidence") {
 
 tasks.register("m02Check") {
     group = "verification"
-    description = "Runs the M02 addressable order lifecycle start contract."
+    description = "Runs the completed M02 addressable order lifecycle contract."
     dependsOn(":matching-testkit:m02Check")
+}
+
+tasks.register("m02Evidence") {
+    group = "verification"
+    description = "Generates and validates the clean-tree M02 evidence manifest."
+    dependsOn(":matching-testkit:m02Evidence")
 }

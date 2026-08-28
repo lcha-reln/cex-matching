@@ -65,10 +65,20 @@ jobs:
             PASS)
               complete_ref="$(sed -n 's/^completeRef=//p' course.properties)"
               [[ "$complete_ref" =~ ^course/m02(\.[1-9][0-9]*)?-complete$ ]]
-              ./gradlew clean build m02Evidence \
-                -Pm02.unitTag="$complete_ref" \
-                --no-daemon
-              test -f build/lab-evidence/M02/manifest.json
+              ./gradlew clean build --no-daemon
+              evidence_generated=false
+              if git rev-parse --verify --quiet "refs/tags/$complete_ref" >/dev/null &&
+                test "$(git cat-file -t "$complete_ref")" = tag &&
+                test "$(git rev-list -n 1 "$complete_ref")" = "$(git rev-parse HEAD)"; then
+                ./gradlew m02Evidence \
+                  -Pm02.unitTag="$complete_ref" \
+                  --no-daemon
+                test -f build/lab-evidence/M02/manifest.json
+                evidence_generated=true
+              else
+                test "$GITHUB_EVENT_NAME" = pull_request
+                echo "Tag-bound evidence is deferred for the pull request merge commit."
+              fi
               jq -e '
                 .schemaVersion == "matching.m02.check.v2" and
                 .unit == "M02" and
@@ -85,21 +95,33 @@ jobs:
                   "schemaProbes": 8
                 } and
                 .m01Regression.status == "PASS" and
+                .eventBatches.status == "PASS" and
+                .lifecycle.status == "PASS" and
+                .lifecycle.validationPriorityProbes == 4 and
+                .registryInvariants.status == "PASS" and
                 .architecture.status == "PASS" and
+                .canonical == {
+                  "format": "M02H1",
+                  "digest": "sha256:32054d63accba99b19db823c41f74bda73dc3b8a009b528f2834d2bc70839d16",
+                  "lines": 181,
+                  "bytes": 17160,
+                  "artifact": "canonical-history.utf8"
+                } and
                 .replays.requested == 100 and
                 .replays.completed == 100 and
                 .replays.distinctDigests == 1 and
-                ([.requiredMutants[].id] == [
+                ([.mutants.requiredMutants[].id] == [
                   "M02-CANCEL-WRONG-FIFO-ORDER",
                   "M02-GHOST-RESTING-ORDER",
                   "M02-TERMINAL-ID-REUSE",
                   "M02-REPEATED-CANCEL-SUCCEEDS"
                 ]) and
-                all(.requiredMutants[];
+                all(.mutants.requiredMutants[];
                   .classification == "STUDENT_FAILURE" and .killed == true) and
                 .mutants.systemErrorControl == "SYSTEM_ERROR"
               ' build/reports/m02/check.json
               echo "complete_ref=$complete_ref" >> "$GITHUB_OUTPUT"
+              echo "evidence_generated=$evidence_generated" >> "$GITHUB_OUTPUT"
               ;;
             GOAL_NOT_IMPLEMENTED)
               ./gradlew clean build --no-daemon
@@ -154,13 +176,13 @@ jobs:
           echo "expected_status=$expected_status" >> "$GITHUB_OUTPUT"
 
       - name: Verify M02 completion evidence semantics and hashes
-        if: ${{ steps.boundary.outputs.unit == 'M02' && steps.boundary.outputs.expected_status == 'PASS' }}
+        if: ${{ steps.boundary.outputs.unit == 'M02' && steps.boundary.outputs.expected_status == 'PASS' && steps.boundary.outputs.evidence_generated == 'true' }}
         shell: bash
         run: |
           manifest=build/lab-evidence/M02/manifest.json
           jq -e \
             --arg complete_ref '${{ steps.boundary.outputs.complete_ref }}' \
-            --arg source_commit "$GITHUB_SHA" '
+            --arg source_commit "$(git rev-parse HEAD)" '
             .schemaVersion == "cex.lab-evidence.v1" and
             .case == "high-availability-cex" and
             .project == "matching" and
@@ -229,7 +251,7 @@ jobs:
           test "$GITHUB_REF_NAME" = "$(jq -r '.unitTag' build/lab-evidence/M02/manifest.json)"
 
       - name: Upload M02 evidence
-        if: ${{ steps.boundary.outputs.unit == 'M02' && steps.boundary.outputs.expected_status == 'PASS' }}
+        if: ${{ steps.boundary.outputs.unit == 'M02' && steps.boundary.outputs.expected_status == 'PASS' && steps.boundary.outputs.evidence_generated == 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: m02-evidence-${{ github.sha }}

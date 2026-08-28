@@ -27,6 +27,8 @@ val m01ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m01")
 val m01EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M01")
 val m01UnitTag = providers.gradleProperty("m01.unitTag").orElse("course/m01-complete")
 val m02ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m02")
+val m02EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M02")
+val m02UnitTag = providers.gradleProperty("m02.unitTag").orElse("course/m02-complete")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -83,7 +85,7 @@ tasks.register<JavaExec>("m01Evidence") {
 
 tasks.register<JavaExec>("m02Check") {
     group = "verification"
-    description = "Runs the M02 start boundary or completed deterministic judge."
+    description = "Runs the completed deterministic M02 addressable lifecycle judge."
     dependsOn("test", ":matching-core:test", "classes")
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("io.github.lchareln.cex.matching.testkit.M02CheckMain")
@@ -92,4 +94,19 @@ tasks.register<JavaExec>("m02Check") {
         m02ReportDirectory.get().asFile.absolutePath,
     )
     doNotTrackState("M02 must never reuse a stale completion report")
+}
+
+tasks.register<JavaExec>("m02Evidence") {
+    group = "verification"
+    description = "Generates and validates the clean-tree M02 evidence manifest."
+    dependsOn("m02Check")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M02EvidenceMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m02ReportDirectory.get().asFile.absolutePath,
+        m02EvidenceDirectory.get().asFile.absolutePath,
+        m02UnitTag.get(),
+    )
+    doNotTrackState("Evidence must re-check HEAD and working-tree cleanliness on every invocation")
 }

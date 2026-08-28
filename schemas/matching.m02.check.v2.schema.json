@@ -1,0 +1,287 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m02.check.v2.schema.json",
+  "title": "Matching M02 deterministic completion check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "status"],
+  "properties": {
+    "schemaVersion": { "const": "matching.m02.check.v2" },
+    "unit": { "const": "M02" },
+    "status": { "enum": ["PASS", "STUDENT_FAILURE", "SYSTEM_ERROR"] },
+    "contractPlanVersion": { "const": "0.4" },
+    "scenarioCorpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schemaPath",
+        "sha256",
+        "scenarios",
+        "commands",
+        "placeCommands",
+        "cancelCommands",
+        "schemaProbes"
+      ],
+      "properties": {
+        "path": {
+          "const": "matching-testkit/src/test/resources/m02/fixtures/order-lifecycle-v1.json"
+        },
+        "schemaPath": { "const": "schemas/matching.m02.scenario.v1.schema.json" },
+        "sha256": {
+          "const": "7e0be70259dcf1b4b422d68742b5c24f1a4d11b05643e2d9e367b67733d4a90a"
+        },
+        "scenarios": { "const": 10 },
+        "commands": { "const": 34 },
+        "placeCommands": { "const": 22 },
+        "cancelCommands": { "const": 12 },
+        "schemaProbes": { "const": 8 }
+      }
+    },
+    "m01Regression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "artifact",
+        "m01Scenarios",
+        "m01Commands",
+        "m00Status"
+      ],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "m00-m01-regression.json" },
+        "m01Scenarios": { "const": 8 },
+        "m01Commands": { "const": 22 },
+        "m00Status": { "const": "PASS" }
+      }
+    },
+    "eventBatches": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "artifact", "commands"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "cancel-event-batches.json" },
+        "commands": { "const": 34 }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "artifact",
+        "commands",
+        "canceled",
+        "cancelRejected",
+        "validationPriorityProbes"
+      ],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "lifecycle.json" },
+        "commands": { "const": 34 },
+        "canceled": { "type": "integer", "minimum": 1 },
+        "cancelRejected": { "type": "integer", "minimum": 1 },
+        "validationPriorityProbes": { "const": 4 }
+      }
+    },
+    "registryInvariants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "artifact", "checks"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "registry-invariants.json" },
+        "checks": { "const": 34 }
+      }
+    },
+    "canonical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "digest", "lines", "bytes", "artifact"],
+      "properties": {
+        "format": { "const": "M02H1" },
+        "digest": {
+          "const": "sha256:32054d63accba99b19db823c41f74bda73dc3b8a009b528f2834d2bc70839d16"
+        },
+        "lines": { "const": 181 },
+        "bytes": { "const": 17160 },
+        "artifact": { "const": "canonical-history.utf8" }
+      }
+    },
+    "replays": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested", "completed", "distinctDigests"],
+      "properties": {
+        "requested": { "const": 100 },
+        "completed": { "const": 100 },
+        "distinctDigests": { "const": 1 }
+      }
+    },
+    "mutants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "artifact",
+        "required",
+        "killed",
+        "systemErrorControl",
+        "requiredMutants"
+      ],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "mutants.json" },
+        "required": { "const": 4 },
+        "killed": { "const": 4 },
+        "systemErrorControl": { "const": "SYSTEM_ERROR" },
+        "requiredMutants": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            { "$ref": "#/$defs/wrongFifoMutant" },
+            { "$ref": "#/$defs/ghostRestingMutant" },
+            { "$ref": "#/$defs/terminalReuseMutant" },
+            { "$ref": "#/$defs/repeatedCancelMutant" }
+          ],
+          "items": false
+        }
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "artifact", "sourceFiles"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "architecture.json" },
+        "sourceFiles": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "prefixItems": [
+        { "const": "m00-m01-regression.json" },
+        { "const": "cancel-event-batches.json" },
+        { "const": "lifecycle.json" },
+        { "const": "registry-invariants.json" },
+        { "const": "canonical-history.utf8" },
+        { "const": "mutants.json" },
+        { "const": "architecture.json" }
+      ],
+      "items": false
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message"],
+      "properties": { "message": { "type": "string", "minLength": 1 } }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "PASS" } }, "required": ["status"] },
+      "then": {
+        "required": [
+          "contractPlanVersion",
+          "scenarioCorpus",
+          "m01Regression",
+          "eventBatches",
+          "lifecycle",
+          "registryInvariants",
+          "canonical",
+          "replays",
+          "mutants",
+          "architecture",
+          "artifacts"
+        ],
+        "not": { "required": ["failure"] }
+      },
+      "else": {
+        "required": ["failure"],
+        "not": {
+          "anyOf": [
+            { "required": ["contractPlanVersion"] },
+            { "required": ["scenarioCorpus"] },
+            { "required": ["m01Regression"] },
+            { "required": ["eventBatches"] },
+            { "required": ["lifecycle"] },
+            { "required": ["registryInvariants"] },
+            { "required": ["canonical"] },
+            { "required": ["replays"] },
+            { "required": ["mutants"] },
+            { "required": ["architecture"] },
+            { "required": ["artifacts"] }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "mutantBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "classification", "killed", "scenarioId", "caseId"],
+      "properties": {
+        "id": { "type": "string" },
+        "classification": { "const": "STUDENT_FAILURE" },
+        "killed": { "const": true },
+        "scenarioId": { "type": "string", "minLength": 1 },
+        "caseId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "wrongFifoMutant": {
+      "allOf": [
+        { "$ref": "#/$defs/mutantBase" },
+        {
+          "properties": {
+            "id": { "const": "M02-CANCEL-WRONG-FIFO-ORDER" },
+            "scenarioId": { "const": "cancel-middle-preserves-fifo" },
+            "caseId": { "const": "cancel-middle-maker-only" }
+          }
+        }
+      ]
+    },
+    "ghostRestingMutant": {
+      "allOf": [
+        { "$ref": "#/$defs/mutantBase" },
+        {
+          "properties": {
+            "id": { "const": "M02-GHOST-RESTING-ORDER" },
+            "scenarioId": { "const": "cancel-only-resting-order-removes-level" },
+            "caseId": { "const": "cancel-only-ask-removes-level" }
+          }
+        }
+      ]
+    },
+    "terminalReuseMutant": {
+      "allOf": [
+        { "$ref": "#/$defs/mutantBase" },
+        {
+          "properties": {
+            "id": { "const": "M02-TERMINAL-ID-REUSE" },
+            "scenarioId": { "const": "duplicate-canceled-order-id-does-not-resurrect" },
+            "caseId": { "const": "duplicate-canceled-place-rejected" }
+          }
+        }
+      ]
+    },
+    "repeatedCancelMutant": {
+      "allOf": [
+        { "$ref": "#/$defs/mutantBase" },
+        {
+          "properties": {
+            "id": { "const": "M02-REPEATED-CANCEL-SUCCEEDS" },
+            "scenarioId": { "const": "repeat-cancel-stable" },
+            "caseId": { "const": "repeat-cancel-reports-canceled-terminal" }
+          }
+        }
+      ]
+    }
+  }
+}

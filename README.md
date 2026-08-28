@@ -4,7 +4,8 @@ The matching project for the Signal Grid **High-Availability CEX Trading Core** 
 
 M00 published the executable limit-order input contract. M01 published a deterministic,
 single-writer `BTC-USDT` GTC order book with price-time matching and ordered event batches. M02 now
-freezes the next deliberate gap: addressable cancellation and irreversible order terminal states.
+completes addressable cancellation and irreversible order terminal states while retaining every
+accepted order identity for the lifetime of the engine process.
 Persistence, networking, performance work, and Aeron Cluster remain later units.
 
 ## Current course boundary
@@ -13,7 +14,8 @@ Persistence, networking, performance work, and Aeron Cluster remain later units.
 - Plan version: `0.4`
 - Unit: `M02`
 - Declared start ref: `course/m02-start`
-- Lifecycle at this boundary: `READY / GOAL_NOT_IMPLEMENTED`
+- Declared complete ref: `course/m02-complete`
+- Lifecycle at this boundary: `CODE_VERIFIED / PASS`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -21,23 +23,24 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The immutable M02 start boundary intentionally has two outcomes:
+The completed M02 boundary has one cumulative verification path:
 
 ```bash
-./gradlew clean build --no-daemon  # succeeds and reruns the complete M01 judge
-./gradlew m02Check --no-daemon     # fails with structured GOAL_NOT_IMPLEMENTED
+./gradlew clean build --no-daemon
+./gradlew m02Check --no-daemon
+./gradlew m02Evidence -Pm02.unitTag=course/m02-complete --no-daemon
 ```
 
-`GOAL_NOT_IMPLEMENTED` is the expected educational gap. The second command first validates the
-strict ten-scenario, 34-command M02 oracle, its byte digest, fixed identities, command union,
-complete event/book expectations, and eight negative schema probes. A compiler error, failed M01
-regression, missing dependency, fixture parse error, or filesystem failure is not an acceptable
-starting state.
+The check validates the strict ten-scenario, 34-command M02 oracle, eight negative schema probes,
+all command event batches, lifecycle/registry invariants, 100 fresh `M02H1` replays, and four
+required semantic mutants. The inherited M00 input contract and complete M01 price-time corpus are
+regressions inside the same fail-closed run. The canonical history is 181 lines / 17,160 UTF-8
+bytes with digest
+`sha256:32054d63accba99b19db823c41f74bda73dc3b8a009b528f2834d2bc70839d16`.
 
-M02 adds no production cancellation code at its start ref. Its exact contract is in
-[`docs/specs/m02.md`](docs/specs/m02.md); learners add the addressable lifecycle registry,
-cancellation path, and irreversible `FILLED`/`CANCELED` identity semantics after branching from
-the annotated start tag.
+The immutable educational RED boundary remains available at annotated `course/m02-start`.
+Learners branch from that tag; the completed implementation and evidence are bound to annotated
+`course/m02-complete`. The exact contract is in [`docs/specs/m02.md`](docs/specs/m02.md).
 
 ## Immutable inherited baselines
 
@@ -68,9 +71,8 @@ matching-testkit   fixtures, replay, mutants, and evidence tooling for signed co
 ```
 
 M02 still uses exactly these two modules. It creates no runtime, protocol, cluster, storage,
-database, Counter, or Rest module. The start report is written beneath `build/reports/m02/`; there
-is no M02 evidence bundle until the production contract passes and a clean completion commit can be
-bound to an annotated `course/m02-complete` tag.
+database, Counter, or Rest module. Reports are written beneath `build/reports/m02/`; the evidence
+task requires a clean tree and an annotated `course/m02-complete` tag that peels to `HEAD`.
 
 Course dashboard: <https://lcha-reln.github.io/signal-grid-blog/practice/high-availability-cex/>
 
