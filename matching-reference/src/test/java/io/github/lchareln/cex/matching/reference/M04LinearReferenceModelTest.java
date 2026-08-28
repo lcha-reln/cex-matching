@@ -6,6 +6,8 @@ import java.math.BigInteger;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 final class M04LinearReferenceModelTest {
   private static final BigInteger MAXIMUM = BigInteger.valueOf(Long.MAX_VALUE);
@@ -51,6 +53,19 @@ final class M04LinearReferenceModelTest {
               List.of(new SemanticEvent.PlaceRejected(bi(1), "DUPLICATE_ORDER_ID")),
               model.snapshot()),
           model.apply(policy("BTC-USDT", 1, "BUY", 100, 1, "FOK")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"gtc", "Gtc", " GTC", "GTC "})
+    void policyGrammarIsExactWithoutCaseFoldingOrTrimming(String rawPolicy) {
+      ReferenceMatcher model = new LinearReferenceModel();
+
+      assertEquals(
+          outcome(new SemanticEvent.Rejected("INVALID_EXECUTION_POLICY", "executionPolicy")),
+          model.apply(policy("BTC-USDT", 1, "BUY", 100, 1, rawPolicy)));
+
+      SemanticOutcome accepted = model.apply(place("BTC-USDT", 1, "BUY", 100, 1));
+      assertEquals(bi(1), ((SemanticEvent.Accepted) accepted.events().getFirst()).sequence());
     }
   }
 

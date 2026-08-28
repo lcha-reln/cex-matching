@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.math.BigInteger;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 final class SingleInstrumentExecutionPolicyTest {
 
@@ -65,6 +67,21 @@ final class SingleInstrumentExecutionPolicyTest {
             engine.placeRequest(request(1, "SELL", 99, 1, "UNKNOWN")).events().getFirst());
 
     assertEquals(ValidationCode.INVALID_EXECUTION_POLICY, rejected.code());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"gtc", "Gtc", " GTC", "GTC "})
+  void policyGrammarIsExactWithoutCaseFoldingOrTrimming(String rawPolicy) {
+    SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine();
+
+    MatchingEvent.Rejected rejected =
+        assertInstanceOf(
+            MatchingEvent.Rejected.class,
+            engine.placeRequest(request(1, "BUY", 99, 1, rawPolicy)).events().getFirst());
+
+    assertEquals(ValidationCode.INVALID_EXECUTION_POLICY, rejected.code());
+    assertEquals("executionPolicy", rejected.field());
+    assertEquals(1, acceptedSequence(engine.place(input(1, "BUY", 99, 1))));
   }
 
   @Test
