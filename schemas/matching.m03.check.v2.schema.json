@@ -1,0 +1,325 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m03.check.v2.schema.json",
+  "title": "Matching M03 generated-property completion check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "status"],
+  "properties": {
+    "schemaVersion": { "const": "matching.m03.check.v2" },
+    "unit": { "const": "M03" },
+    "status": { "enum": ["PASS", "STUDENT_FAILURE", "SYSTEM_ERROR"] },
+    "contractPlanVersion": { "const": "0.5" },
+    "generator": { "$ref": "#/$defs/generator" },
+    "m02Regression": { "$ref": "#/$defs/m02Regression" },
+    "independence": { "$ref": "#/$defs/independence" },
+    "properties": { "$ref": "#/$defs/properties" },
+    "determinism": { "$ref": "#/$defs/determinism" },
+    "counterexamples": { "$ref": "#/$defs/counterexamples" },
+    "mutants": { "$ref": "#/$defs/mutants" },
+    "architecture": { "$ref": "#/$defs/architecture" },
+    "release": { "$ref": "#/$defs/release" },
+    "artifacts": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "prefixItems": [
+        { "const": "m00-m02-regression.json" },
+        { "const": "reference-model.json" },
+        { "const": "generated-properties.json" },
+        { "const": "invariants.json" },
+        { "const": "counterexamples.json" },
+        { "const": "counterexamples.canonical.utf8" },
+        { "const": "replay.json" },
+        { "const": "mutants.json" },
+        { "const": "architecture.json" }
+      ],
+      "items": false
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message"],
+      "properties": { "message": { "type": "string", "minLength": 1 } }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "PASS" } }, "required": ["status"] },
+      "then": {
+        "required": [
+          "contractPlanVersion",
+          "generator",
+          "m02Regression",
+          "independence",
+          "properties",
+          "determinism",
+          "counterexamples",
+          "mutants",
+          "architecture",
+          "release",
+          "artifacts"
+        ],
+        "not": { "required": ["failure"] }
+      },
+      "else": {
+        "required": ["failure"],
+        "not": {
+          "anyOf": [
+            { "required": ["contractPlanVersion"] },
+            { "required": ["generator"] },
+            { "required": ["m02Regression"] },
+            { "required": ["independence"] },
+            { "required": ["properties"] },
+            { "required": ["determinism"] },
+            { "required": ["counterexamples"] },
+            { "required": ["mutants"] },
+            { "required": ["architecture"] },
+            { "required": ["release"] },
+            { "required": ["artifacts"] }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "statusArtifact": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["status", "artifact"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "type": "string", "minLength": 1 }
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schemaPath",
+        "sha256",
+        "algorithm",
+        "seedDerivation",
+        "baseSeed",
+        "histories",
+        "commandsPerHistory",
+        "totalCommands",
+        "lanes",
+        "historiesPerLane",
+        "schemaProbes"
+      ],
+      "properties": {
+        "path": {
+          "const": "matching-testkit/src/test/resources/m03/fixtures/property-suite-v1.json"
+        },
+        "schemaPath": { "const": "schemas/matching.m03.generator.v1.schema.json" },
+        "sha256": {
+          "const": "3e051347b9bd42aac431d02949c0c1b72daa667d10a03cc8aeb09a6b5a74d24e"
+        },
+        "algorithm": { "const": "splitmix64-v1" },
+        "seedDerivation": { "const": "splitmix64(baseSeed+historyIndex).nextLong" },
+        "baseSeed": { "const": "6824" },
+        "histories": { "const": 256 },
+        "commandsPerHistory": { "const": 64 },
+        "totalCommands": { "const": 16384 },
+        "lanes": { "const": 4 },
+        "historiesPerLane": { "const": 64 },
+        "schemaProbes": { "const": 6 }
+      }
+    },
+    "m02Regression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "artifact", "checkSchemaVersion", "scenarios", "commands", "digest"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "m00-m02-regression.json" },
+        "checkSchemaVersion": { "const": "matching.m02.check.v2" },
+        "scenarios": { "const": 10 },
+        "commands": { "const": 34 },
+        "digest": {
+          "const": "sha256:32054d63accba99b19db823c41f74bda73dc3b8a009b528f2834d2bc70839d16"
+        }
+      }
+    },
+    "independence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "artifact",
+        "module",
+        "coreDependency",
+        "testkitDependency",
+        "representation",
+        "sourceFiles"
+      ],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "reference-model.json" },
+        "module": { "const": "matching-reference" },
+        "coreDependency": { "const": false },
+        "testkitDependency": { "const": false },
+        "representation": { "const": "FLAT_LIST_LINEAR_SCAN" },
+        "sourceFiles": { "type": "integer", "minimum": 5 }
+      }
+    },
+    "properties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "artifact",
+        "histories",
+        "commands",
+        "differentialComparisons",
+        "ledgerChecks",
+        "bookChecks"
+      ],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "generated-properties.json" },
+        "histories": { "const": 256 },
+        "commands": { "const": 16384 },
+        "differentialComparisons": { "const": 16384 },
+        "ledgerChecks": { "const": 16384 },
+        "bookChecks": { "const": 16384 }
+      }
+    },
+    "determinism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generations", "distinctCommandDigests", "commandDigest", "format"],
+      "properties": {
+        "generations": { "const": 2 },
+        "distinctCommandDigests": { "const": 1 },
+        "commandDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "format": { "const": "M03G1" }
+      }
+    },
+    "counterexamples": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "artifact",
+        "required",
+        "shrunk",
+        "persisted",
+        "replayed",
+        "oneMinimal",
+        "minimizedCommands",
+        "canonical"
+      ],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "counterexamples.json" },
+        "required": { "const": 6 },
+        "shrunk": { "const": 6 },
+        "persisted": { "const": 6 },
+        "replayed": { "const": 6 },
+        "oneMinimal": { "const": 6 },
+        "minimizedCommands": { "type": "integer", "minimum": 6, "maximum": 63 },
+        "canonical": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format", "digest", "lines", "bytes", "artifact"],
+          "properties": {
+            "format": { "const": "M03X1" },
+            "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+            "lines": { "type": "integer", "minimum": 1 },
+            "bytes": { "type": "integer", "minimum": 1 },
+            "artifact": { "const": "counterexamples.canonical.utf8" }
+          }
+        }
+      }
+    },
+    "mutants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "artifact",
+        "required",
+        "killed",
+        "systemErrorControl",
+        "requiredMutants"
+      ],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "mutants.json" },
+        "required": { "const": 6 },
+        "killed": { "const": 6 },
+        "systemErrorControl": { "const": "SYSTEM_ERROR" },
+        "requiredMutants": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": { "$ref": "#/$defs/mutant" }
+        }
+      }
+    },
+    "mutant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "classification",
+        "killed",
+        "propertyId",
+        "originalCommands",
+        "minimizedCommands",
+        "oneMinimal",
+        "replayed"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "M03-BEST-PRICE-LAST",
+            "M03-SAME-PRICE-LIFO",
+            "M03-TAKER-PRICE-TRADE",
+            "M03-TRADE-QUANTITY-OVERFLOW",
+            "M03-CANCEL-GHOST-BOOK",
+            "M03-CANCELED-ID-REUSE"
+          ]
+        },
+        "classification": { "const": "STUDENT_FAILURE" },
+        "killed": { "const": true },
+        "propertyId": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" },
+        "originalCommands": { "const": 64 },
+        "minimizedCommands": { "type": "integer", "minimum": 1, "maximum": 63 },
+        "oneMinimal": { "const": true },
+        "replayed": { "const": true }
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "artifact",
+        "coreSourceFiles",
+        "referenceSourceFiles",
+        "violations"
+      ],
+      "properties": {
+        "status": { "const": "PASS" },
+        "artifact": { "const": "architecture.json" },
+        "coreSourceFiles": { "const": 20 },
+        "referenceSourceFiles": { "type": "integer", "minimum": 5 },
+        "violations": { "const": 0 }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "sameCommit"],
+      "properties": {
+        "unitTag": { "const": "course/m03-complete" },
+        "productRelease": { "const": "matching-0.1.0" },
+        "sameCommit": { "const": true }
+      }
+    }
+  }
+}

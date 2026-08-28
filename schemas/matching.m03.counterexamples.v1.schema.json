@@ -1,0 +1,321 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m03.counterexamples.v1.schema.json",
+  "title": "Matching M03 persisted minimal counterexamples",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "profileSha256",
+    "generatorAlgorithm",
+    "seedDerivation",
+    "modelVersion",
+    "scenarios"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "matching.m03.counterexamples.v1" },
+    "profileSha256": {
+      "const": "3e051347b9bd42aac431d02949c0c1b72daa667d10a03cc8aeb09a6b5a74d24e"
+    },
+    "generatorAlgorithm": { "const": "splitmix64-v1" },
+    "seedDerivation": { "const": "splitmix64(baseSeed+historyIndex).nextLong" },
+    "modelVersion": { "const": "linear-scan-reference-v1" },
+    "scenarios": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": { "$ref": "#/$defs/scenario" }
+    }
+  },
+  "$defs": {
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenarioId",
+        "mutantId",
+        "classification",
+        "propertyId",
+        "divergenceKind",
+        "seed",
+        "originalCommandCount",
+        "minimizedCommandCount",
+        "firstFailingCommandIndex",
+        "oneMinimal",
+        "shrinkTrials",
+        "originalCommands",
+        "commands",
+        "actualAtFailure"
+      ],
+      "properties": {
+        "scenarioId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        "mutantId": {
+          "enum": [
+            "M03-BEST-PRICE-LAST",
+            "M03-SAME-PRICE-LIFO",
+            "M03-TAKER-PRICE-TRADE",
+            "M03-TRADE-QUANTITY-OVERFLOW",
+            "M03-CANCEL-GHOST-BOOK",
+            "M03-CANCELED-ID-REUSE"
+          ]
+        },
+        "classification": { "const": "STUDENT_FAILURE" },
+        "propertyId": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" },
+        "divergenceKind": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" },
+        "seed": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+        "originalCommandCount": { "const": 64 },
+        "minimizedCommandCount": { "type": "integer", "minimum": 1, "maximum": 63 },
+        "firstFailingCommandIndex": { "type": "integer", "minimum": 0, "maximum": 62 },
+        "oneMinimal": { "const": true },
+        "shrinkTrials": { "type": "integer", "minimum": 1, "maximum": 50000 },
+        "originalCommands": {
+          "type": "array",
+          "minItems": 64,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/rawCommand" }
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 63,
+          "items": { "$ref": "#/$defs/replayCommand" }
+        },
+        "actualAtFailure": { "$ref": "#/$defs/outcome" }
+      }
+    },
+    "rawCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": { "const": "PLACE" },
+            "input": { "$ref": "#/$defs/placeInput" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": { "const": "CANCEL" },
+            "input": { "$ref": "#/$defs/cancelInput" }
+          }
+        }
+      ]
+    },
+    "replayCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["caseId", "type", "input", "expected"],
+          "properties": {
+            "caseId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+            "type": { "const": "PLACE" },
+            "input": { "$ref": "#/$defs/placeInput" },
+            "expected": { "$ref": "#/$defs/outcome" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["caseId", "type", "input", "expected"],
+          "properties": {
+            "caseId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+            "type": { "const": "CANCEL" },
+            "input": { "$ref": "#/$defs/cancelInput" },
+            "expected": { "$ref": "#/$defs/outcome" }
+          }
+        }
+      ]
+    },
+    "placeInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrumentId", "orderId", "side", "priceTicks", "quantityLots"],
+      "properties": {
+        "instrumentId": { "type": "string" },
+        "orderId": { "type": "integer" },
+        "side": { "type": "string" },
+        "priceTicks": { "type": "integer" },
+        "quantityLots": { "type": "integer" }
+      }
+    },
+    "cancelInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrumentId", "orderId"],
+      "properties": {
+        "instrumentId": { "type": "string" },
+        "orderId": { "type": "integer" }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["events", "bookAfter"],
+      "properties": {
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/event" }
+        },
+        "bookAfter": { "$ref": "#/$defs/book" }
+      }
+    },
+    "event": {
+      "oneOf": [
+        { "$ref": "#/$defs/rejected" },
+        { "$ref": "#/$defs/placeRejected" },
+        { "$ref": "#/$defs/cancelRejected" },
+        { "$ref": "#/$defs/accepted" },
+        { "$ref": "#/$defs/trade" },
+        { "$ref": "#/$defs/rested" },
+        { "$ref": "#/$defs/canceled" }
+      ]
+    },
+    "rejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "code", "field"],
+      "properties": {
+        "type": { "const": "REJECTED" },
+        "code": { "type": "string", "minLength": 1 },
+        "field": { "type": "string", "minLength": 1 }
+      }
+    },
+    "placeRejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "orderId", "code"],
+      "properties": {
+        "type": { "const": "PLACE_REJECTED" },
+        "orderId": { "type": "integer", "minimum": 1 },
+        "code": { "const": "DUPLICATE_ORDER_ID" }
+      }
+    },
+    "cancelRejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "orderId", "code"],
+      "properties": {
+        "type": { "const": "CANCEL_REJECTED" },
+        "orderId": { "type": "integer", "minimum": 1 },
+        "code": {
+          "enum": ["ORDER_NOT_FOUND", "ORDER_ALREADY_FILLED", "ORDER_ALREADY_CANCELED"]
+        }
+      }
+    },
+    "accepted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "sequence", "orderId", "side", "priceTicks", "quantityLots"],
+      "properties": {
+        "type": { "const": "ACCEPTED" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "orderId": { "type": "integer", "minimum": 1 },
+        "side": { "enum": ["BUY", "SELL"] },
+        "priceTicks": { "type": "integer", "minimum": 1 },
+        "quantityLots": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "trade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "makerSequence",
+        "makerOrderId",
+        "takerSequence",
+        "takerOrderId",
+        "priceTicks",
+        "quantityLots"
+      ],
+      "properties": {
+        "type": { "const": "TRADE" },
+        "makerSequence": { "type": "integer", "minimum": 1 },
+        "makerOrderId": { "type": "integer", "minimum": 1 },
+        "takerSequence": { "type": "integer", "minimum": 1 },
+        "takerOrderId": { "type": "integer", "minimum": 1 },
+        "priceTicks": { "type": "integer", "minimum": 1 },
+        "quantityLots": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "rested": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "sequence",
+        "orderId",
+        "side",
+        "priceTicks",
+        "remainingQuantityLots"
+      ],
+      "properties": {
+        "type": { "const": "RESTED" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "orderId": { "type": "integer", "minimum": 1 },
+        "side": { "enum": ["BUY", "SELL"] },
+        "priceTicks": { "type": "integer", "minimum": 1 },
+        "remainingQuantityLots": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "canceled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "sequence",
+        "orderId",
+        "side",
+        "priceTicks",
+        "canceledQuantityLots"
+      ],
+      "properties": {
+        "type": { "const": "CANCELED" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "orderId": { "type": "integer", "minimum": 1 },
+        "side": { "enum": ["BUY", "SELL"] },
+        "priceTicks": { "type": "integer", "minimum": 1 },
+        "canceledQuantityLots": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "book": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bids", "asks"],
+      "properties": {
+        "bids": { "$ref": "#/$defs/levels" },
+        "asks": { "$ref": "#/$defs/levels" }
+      }
+    },
+    "levels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["priceTicks", "orders"],
+        "properties": {
+          "priceTicks": { "type": "integer", "minimum": 1 },
+          "orders": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sequence", "orderId", "remainingQuantityLots"],
+              "properties": {
+                "sequence": { "type": "integer", "minimum": 1 },
+                "orderId": { "type": "integer", "minimum": 1 },
+                "remainingQuantityLots": { "type": "integer", "minimum": 1 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,27 +1,19 @@
 package io.github.lchareln.cex.matching.testkit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 
-import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 final class M03StartCheckRunnerTest {
   @Test
-  void freezesTheStructuredEducationalGap(@TempDir Path temporaryDirectory) {
-    Path root = M02TestPaths.root();
-    M03StartCheckRunner.Result result =
-        new M03StartCheckRunner()
-            .run(root, temporaryDirectory.resolve("reports"), temporaryDirectory);
+  void preservesTheImmutableStartProfileAfterReferenceImplementationBegins() {
+    byte[] profile =
+        M03TestPaths.readBytes(M02TestPaths.root().resolve(M03StartCheckRunner.GENERATOR_PATH));
 
-    assertEquals(M03StartCheckRunner.STATUS, result.status());
-    var report = JsonSupport.parse(M03TestPaths.readBytes(result.reportPath()));
-    assertEquals("matching.m03.check.v1", report.path("schemaVersion").stringValue());
-    assertEquals("PASS", report.path("inheritedM02").path("status").stringValue());
-    assertEquals(16384, report.path("generator").path("totalCommands").intValue());
-    assertEquals(6, report.path("generator").path("schemaProbes").intValue());
-    assertEquals(0, report.path("independenceBoundary").path("semanticSources").intValue());
-    assertFalse(report.path("missingCapabilities").isEmpty());
+    assertEquals("GOAL_NOT_IMPLEMENTED", M03StartCheckRunner.STATUS);
+    assertEquals(M03StartCheckRunner.FROZEN_GENERATOR_SHA256, Hashing.sha256Hex(profile));
+    assertEquals(256, M03StartCheckRunner.HISTORIES);
+    assertEquals(64, M03StartCheckRunner.COMMANDS_PER_HISTORY);
+    assertEquals(16384, M03StartCheckRunner.TOTAL_COMMANDS);
   }
 }
