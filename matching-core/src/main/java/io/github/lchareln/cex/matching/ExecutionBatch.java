@@ -17,9 +17,12 @@ public record ExecutionBatch(List<MatchingEvent> events, OrderBookSnapshot bookA
       throw new IllegalArgumentException("execution batch must contain at least one event");
     }
     MatchingEvent first = events.getFirst();
-    if (first instanceof MatchingEvent.Rejected) {
+    if (first instanceof MatchingEvent.Rejected
+        || first instanceof MatchingEvent.PlaceRejected
+        || first instanceof MatchingEvent.CancelRejected
+        || first instanceof MatchingEvent.Canceled) {
       if (events.size() != 1) {
-        throw new IllegalArgumentException("a rejected batch must contain exactly one event");
+        throw new IllegalArgumentException("a singleton batch must contain exactly one event");
       }
       return;
     }

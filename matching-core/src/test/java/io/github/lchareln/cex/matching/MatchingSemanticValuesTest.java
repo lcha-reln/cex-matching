@@ -14,11 +14,16 @@ final class MatchingSemanticValuesTest {
   }
 
   @Test
-  void executionBatchEnforcesRejectedOrAcceptedTradeRestedGrammar() {
+  void executionBatchEnforcesPlaceAndCancelEventGrammar() {
     OrderBookSnapshot empty = new OrderBookSnapshot(List.of(), List.of());
     MatchingEvent.Accepted accepted = accepted(1, 1, Side.BUY, 100, 2);
     MatchingEvent.Trade trade = trade(2, 2, 1, 1, 99, 1);
     MatchingEvent.Rested rested = rested(1, 1, Side.BUY, 100, 1);
+    MatchingEvent.PlaceRejected duplicate =
+        new MatchingEvent.PlaceRejected(new OrderId(1), PlaceRejectionCode.DUPLICATE_ORDER_ID);
+    MatchingEvent.CancelRejected notFound =
+        new MatchingEvent.CancelRejected(new OrderId(2), CancelRejectionCode.ORDER_NOT_FOUND);
+    MatchingEvent.Canceled canceled = canceled(2, 2, Side.SELL, 99, 1);
 
     assertThrows(IllegalArgumentException.class, () -> new ExecutionBatch(List.of(), empty));
     assertThrows(
@@ -27,6 +32,15 @@ final class MatchingSemanticValuesTest {
             new ExecutionBatch(
                 List.of(new MatchingEvent.Rejected(ValidationCode.INVALID_PRICE), accepted),
                 empty));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new ExecutionBatch(List.of(duplicate, accepted), empty));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new ExecutionBatch(List.of(notFound, accepted), empty));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new ExecutionBatch(List.of(canceled, accepted), empty));
     assertThrows(IllegalArgumentException.class, () -> new ExecutionBatch(List.of(trade), empty));
     assertThrows(
         IllegalArgumentException.class,
@@ -36,6 +50,9 @@ final class MatchingSemanticValuesTest {
     assertThrows(
         IllegalArgumentException.class, () -> new ExecutionBatch(List.of(accepted), empty));
     assertDoesNotThrow(() -> new ExecutionBatch(List.of(accepted, trade, rested), empty));
+    assertDoesNotThrow(() -> new ExecutionBatch(List.of(duplicate), empty));
+    assertDoesNotThrow(() -> new ExecutionBatch(List.of(notFound), empty));
+    assertDoesNotThrow(() -> new ExecutionBatch(List.of(canceled), empty));
   }
 
   @Test
@@ -115,6 +132,16 @@ final class MatchingSemanticValuesTest {
         side,
         new PriceTicks(priceTicks),
         new QuantityLots(remainingQuantityLots));
+  }
+
+  private static MatchingEvent.Canceled canceled(
+      long sequence, long orderId, Side side, long priceTicks, long canceledQuantityLots) {
+    return new MatchingEvent.Canceled(
+        new AcceptanceSequence(sequence),
+        new OrderId(orderId),
+        side,
+        new PriceTicks(priceTicks),
+        new QuantityLots(canceledQuantityLots));
   }
 
   private static OrderBookSnapshot.RestingOrderView resting(

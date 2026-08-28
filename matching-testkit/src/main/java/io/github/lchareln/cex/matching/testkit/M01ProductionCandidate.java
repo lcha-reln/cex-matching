@@ -47,9 +47,17 @@ final class M01ProductionCandidate implements M01Candidate {
                     rested.side().name(),
                     rested.priceTicks().value(),
                     rested.remainingQuantityLots().value());
+            case MatchingEvent.PlaceRejected rejected -> throw unexpectedM02Event(rejected);
+            case MatchingEvent.CancelRejected rejected -> throw unexpectedM02Event(rejected);
+            case MatchingEvent.Canceled canceled -> throw unexpectedM02Event(canceled);
           });
     }
     return List.copyOf(events);
+  }
+
+  private static IllegalStateException unexpectedM02Event(MatchingEvent event) {
+    return new IllegalStateException(
+        "M01 candidate emitted an M02 lifecycle event: " + event.getClass().getSimpleName());
   }
 
   private static M01ScenarioPack.Book book(OrderBookSnapshot snapshot) {

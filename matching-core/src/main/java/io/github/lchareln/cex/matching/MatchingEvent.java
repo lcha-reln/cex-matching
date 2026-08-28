@@ -2,14 +2,17 @@ package io.github.lchareln.cex.matching;
 
 import java.util.Objects;
 
-/** Ordered business events emitted for one M01 place command. */
+/** Ordered business events emitted for one place or cancel command. */
 public sealed interface MatchingEvent
     permits MatchingEvent.Rejected,
+        MatchingEvent.PlaceRejected,
+        MatchingEvent.CancelRejected,
         MatchingEvent.Accepted,
         MatchingEvent.Trade,
-        MatchingEvent.Rested {
+        MatchingEvent.Rested,
+        MatchingEvent.Canceled {
 
-  /** A schema-valid input rejected by the frozen M00 business validator. */
+  /** A schema-valid place or cancel input rejected by the frozen field validator. */
   record Rejected(ValidationCode code, String field) implements MatchingEvent {
     public Rejected {
       Objects.requireNonNull(code, "code");
@@ -24,7 +27,23 @@ public sealed interface MatchingEvent
     }
   }
 
-  /** A valid command assigned its in-memory time-priority sequence. */
+  /** A valid place command rejected because its order identity was already accepted. */
+  record PlaceRejected(OrderId orderId, PlaceRejectionCode code) implements MatchingEvent {
+    public PlaceRejected {
+      Objects.requireNonNull(orderId, "orderId");
+      Objects.requireNonNull(code, "code");
+    }
+  }
+
+  /** A valid cancel command that found no cancellable active remainder. */
+  record CancelRejected(OrderId orderId, CancelRejectionCode code) implements MatchingEvent {
+    public CancelRejected {
+      Objects.requireNonNull(orderId, "orderId");
+      Objects.requireNonNull(code, "code");
+    }
+  }
+
+  /** A valid unique place command assigned its in-memory time-priority sequence. */
   record Accepted(
       AcceptanceSequence sequence,
       OrderId orderId,
@@ -74,6 +93,23 @@ public sealed interface MatchingEvent
       Objects.requireNonNull(side, "side");
       Objects.requireNonNull(priceTicks, "priceTicks");
       Objects.requireNonNull(remainingQuantityLots, "remainingQuantityLots");
+    }
+  }
+
+  /** The positive active remainder removed by one successful cancellation. */
+  record Canceled(
+      AcceptanceSequence sequence,
+      OrderId orderId,
+      Side side,
+      PriceTicks priceTicks,
+      QuantityLots canceledQuantityLots)
+      implements MatchingEvent {
+    public Canceled {
+      Objects.requireNonNull(sequence, "sequence");
+      Objects.requireNonNull(orderId, "orderId");
+      Objects.requireNonNull(side, "side");
+      Objects.requireNonNull(priceTicks, "priceTicks");
+      Objects.requireNonNull(canceledQuantityLots, "canceledQuantityLots");
     }
   }
 }
