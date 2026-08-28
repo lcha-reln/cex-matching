@@ -1,0 +1,32 @@
+package io.github.lchareln.cex.matching.testkit;
+
+import java.nio.file.Path;
+
+/** Command-line entrypoint used by the Gradle {@code m03Evidence} task. */
+public final class M03EvidenceMain {
+  private M03EvidenceMain() {}
+
+  public static void main(String[] arguments) {
+    if (arguments.length != 5) {
+      throw new IllegalArgumentException(
+          "usage: M03EvidenceMain <repository-root> <check-directory> <evidence-directory> <unit-tag> <product-release-tag>");
+    }
+    M03EvidenceWriter.Result result =
+        new M03EvidenceWriter()
+            .write(
+                Path.of(arguments[0]),
+                Path.of(arguments[1]),
+                Path.of(arguments[2]),
+                arguments[3],
+                arguments[4]);
+    System.out.println(
+        "M03 evidence: "
+            + result.manifestPath()
+            + " sha256="
+            + result.manifestSha256()
+            + " source="
+            + result.sourceCommit()
+            + " release="
+            + M03EvidenceWriter.PRODUCT_RELEASE);
+  }
+}

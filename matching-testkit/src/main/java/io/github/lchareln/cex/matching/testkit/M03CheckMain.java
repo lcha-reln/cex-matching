@@ -2,7 +2,7 @@ package io.github.lchareln.cex.matching.testkit;
 
 import java.nio.file.Path;
 
-/** Command-line entrypoint for the intentional M03 RED boundary. */
+/** Command-line entrypoint for the completed M03 generated-property boundary. */
 public final class M03CheckMain {
   private M03CheckMain() {}
 
@@ -11,8 +11,8 @@ public final class M03CheckMain {
       throw new IllegalArgumentException(
           "usage: M03CheckMain <repository-root> <report-directory>");
     }
-    M03StartCheckRunner.Result result =
-        new M03StartCheckRunner().run(Path.of(arguments[0]), Path.of(arguments[1]));
+    M03CheckRunner.Result result =
+        new M03CheckRunner().run(Path.of(arguments[0]), Path.of(arguments[1]));
     System.out.println("M03 check status: " + result.status() + " (" + result.reportPath() + ")");
     if (!"PASS".equals(result.status())) {
       System.exit(1);

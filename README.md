@@ -4,11 +4,11 @@ The matching project for the Signal Grid **High-Availability CEX Trading Core** 
 
 M00 published the executable limit-order input contract. M01 published a deterministic,
 single-writer `BTC-USDT` GTC order book with price-time matching and ordered event batches. M02
-completed addressable cancellation and irreversible order terminal states. M03 now freezes the
-next proof obligation: compare that production engine command by command with an independently
-implemented linear-scan model over 256 deterministic generated histories, then shrink, persist,
-and replay every required semantic counterexample. Persistence, networking, performance work, and
-Aeron Cluster remain later units.
+completed addressable cancellation and irreversible order terminal states. M03 completes the next
+proof obligation: it compares that production engine command by command with an independently
+implemented linear-scan model over 256 deterministic generated histories, then shrinks, persists,
+and strictly replays every required semantic counterexample. Persistence, networking, performance
+work, and Aeron Cluster remain later units.
 
 ## Current course boundary
 
@@ -18,7 +18,7 @@ Aeron Cluster remain later units.
 - Declared start ref: `course/m03-start`
 - Declared complete ref: `course/m03-complete`
 - Product stopping point: `matching-0.1.0`
-- Lifecycle at this boundary: `READY / GOAL_NOT_IMPLEMENTED`
+- Lifecycle at this boundary: `CODE_VERIFIED / PASS`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -26,23 +26,27 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The M03 start boundary keeps the completed M02 matcher green and exposes one intentional,
-structured RED check:
+The completed M03 boundary has one cumulative verification and evidence path:
 
 ```bash
 ./gradlew clean build --no-daemon
 ./gradlew m03Check --no-daemon
+./gradlew m03Evidence -Pm03.unitTag=course/m03-complete -Pm03.productRelease=matching-0.1.0 --no-daemon
 ```
 
-The first command remains a cumulative M02 regression. The second validates the immutable M03
-generator contract—SplitMix64 seed `6824`, 256 histories, 64 commands per history, four stratified
-coverage lanes, and six negative schema probes—then exits non-zero with
-`GOAL_NOT_IMPLEMENTED`. A compiler, schema, parser, filesystem, or runtime failure is not the
-educational gap.
+The check validates the immutable M03 generator contract—SplitMix64 seed `6824`, 256 histories,
+64 commands per history, four stratified coverage lanes—and compares all 16,384 command boundaries
+against the independent model and an event-derived ledger. It kills six required semantic mutants,
+shrinks them to 15 commands in total (`3/3/2/2/2/3`), and strictly regenerates and replays their
+persisted provenance. The generated command digest is
+`sha256:1920d6b8a480998825c72636d446854d9e795e91b0ab29520f203b12186979ce`;
+the 513-line / 54,088-byte `M03X1` counterexample digest is
+`sha256:3c23c1f08975d9ad57260d8a16a8201710ee7f56671824648e4e32c477afcac1`.
 
-Learners branch from annotated `course/m03-start`. Completion will require annotated
-`course/m03-complete`, the same peeled commit under annotated `matching-0.1.0`, clean-tree evidence,
-and the exact contract in [`docs/specs/m03.md`](docs/specs/m03.md).
+The immutable educational RED boundary remains available at annotated `course/m03-start`.
+Learners branch from that tag; the completed implementation and clean-tree evidence are bound to
+annotated `course/m03-complete` and the same peeled commit under annotated `matching-0.1.0`. The
+exact contract is in [`docs/specs/m03.md`](docs/specs/m03.md).
 
 ## Immutable inherited baselines
 
@@ -81,15 +85,14 @@ architecture limitation still describes current HEAD.
 
 ```text
 matching-core       deterministic business semantics; no I/O or runtime dependencies
-matching-reference test-only independent model; no core/testkit or external dependency
+matching-reference independent model; main/runtime is JDK-only with no project or production dependency
 matching-testkit    generators, differential judge, replay, mutants, and evidence tooling
 ```
 
-M03 still uses exactly these two modules. It creates no runtime, protocol, cluster, storage,
-database, Counter, or Rest module. Reports are written beneath `build/reports/m02/`; the evidence
-for the completed M02 baseline remains immutable. The M03 RED report is written beneath
-`build/reports/m03/`; completion evidence will require both annotated M03 tags to peel to one clean
-`HEAD`.
+M03 uses exactly these three modules. It creates no runtime, protocol, cluster, storage, database,
+Counter, or Rest module. Reports are written beneath `build/reports/m03/`; the evidence task
+requires a clean tree and both annotated M03 release refs to peel to the same `HEAD`. Historical
+M01/M02 evidence remains attached to its immutable completion tag and is never rebound to M03.
 
 Course dashboard: <https://lcha-reln.github.io/signal-grid-blog/practice/high-availability-cex/>
 

@@ -144,12 +144,120 @@ jobs:
                 .properties.commands == 16384 and
                 .properties.differentialComparisons == 16384 and
                 .counterexamples.required == 6 and
+                .counterexamples.shrunk == 6 and
                 .counterexamples.persisted == 6 and
                 .counterexamples.replayed == 6 and
+                .counterexamples.oneMinimal == 6 and
+                .counterexamples.canonical.format == "M03X1" and
                 .mutants.required == 6 and
                 .mutants.killed == 6 and
-                .mutants.systemErrorControl == "SYSTEM_ERROR"
+                .mutants.systemErrorControl == "SYSTEM_ERROR" and
+                ([.mutants.requiredMutants[].id] == [
+                  "M03-BEST-PRICE-LAST",
+                  "M03-SAME-PRICE-LIFO",
+                  "M03-TAKER-PRICE-TRADE",
+                  "M03-TRADE-QUANTITY-OVERFLOW",
+                  "M03-CANCEL-GHOST-BOOK",
+                  "M03-CANCELED-ID-REUSE"
+                ]) and
+                ([.mutants.requiredMutants[].classification] | all(. == "STUDENT_FAILURE")) and
+                ([.mutants.requiredMutants[].killed] | all(. == true)) and
+                ([.mutants.requiredMutants[].oneMinimal] | all(. == true)) and
+                ([.mutants.requiredMutants[].replayed] | all(. == true)) and
+                .architecture.status == "PASS" and
+                .architecture.coreSourceFiles == 20 and
+                .architecture.violations == 0 and
+                .releaseTarget == {
+                  "unitTag": "course/m03-complete",
+                  "productRelease": "matching-0.1.0",
+                  "verification": "M03_EVIDENCE_ONLY"
+                } and
+                .artifacts == [
+                  "m00-m02-regression.json",
+                  "reference-model.json",
+                  "generated-properties.json",
+                  "invariants.json",
+                  "counterexamples.json",
+                  "counterexamples.canonical.utf8",
+                  "replay.json",
+                  "mutants.json",
+                  "architecture.json"
+                ]
               ' build/reports/m03/check.json
+              jq -e '
+                .schemaVersion == "matching.m03.counterexamples.v1" and
+                .profileSha256 == "3e051347b9bd42aac431d02949c0c1b72daa667d10a03cc8aeb09a6b5a74d24e" and
+                .generatorAlgorithm == "splitmix64-v1" and
+                .seedDerivation == "splitmix64(baseSeed+historyIndex).nextLong" and
+                .modelVersion == "linear-scan-reference-v1" and
+                (.scenarios | length) == 6 and
+                ([.scenarios[].scenarioId] == [
+                  "best-price-last",
+                  "same-price-lifo",
+                  "taker-price-trade",
+                  "trade-quantity-overflow",
+                  "cancel-ghost-book",
+                  "canceled-id-reuse"
+                ]) and
+                ([.scenarios[].mutantId] == [
+                  "M03-BEST-PRICE-LAST",
+                  "M03-SAME-PRICE-LIFO",
+                  "M03-TAKER-PRICE-TRADE",
+                  "M03-TRADE-QUANTITY-OVERFLOW",
+                  "M03-CANCEL-GHOST-BOOK",
+                  "M03-CANCELED-ID-REUSE"
+                ]) and
+                ([.scenarios[].originalCommandCount] | all(. == 64)) and
+                ([.scenarios[].oneMinimal] | all(. == true)) and
+                ([.scenarios[].classification] | all(. == "STUDENT_FAILURE"))
+              ' build/reports/m03/counterexamples-v1.json
+              jq -e '
+                .schemaVersion == "matching.m03.replay-report.v1" and
+                .status == "PASS" and
+                .requested == 6 and
+                .completed == 6 and
+                (.scenarios | length) == 6 and
+                ([.scenarios[].classification] | all(. == "STUDENT_FAILURE")) and
+                ([.scenarios[].referenceOutcomesExact] | all(. == true)) and
+                ([.scenarios[].actualOutcomeExact] | all(. == true)) and
+                ([.scenarios[].provenanceExact] | all(. == true)) and
+                ([.scenarios[].oneMinimalReverified] | all(. == true)) and
+                ([.scenarios[].passed] | all(. == true))
+              ' build/reports/m03/replay.json
+              test "$(head -n 1 build/reports/m03/counterexamples.canonical.utf8 | cut -d'|' -f1)" = M03X1
+
+              evidence_generated=false
+              if [[ "$GITHUB_REF" == "refs/heads/main" ||
+                    "$GITHUB_REF" == "refs/tags/course/m03-complete" ||
+                    "$GITHUB_REF" == "refs/tags/matching-0.1.0" ]]; then
+                test "$(git cat-file -t course/m03-complete)" = tag
+                test "$(git cat-file -t matching-0.1.0)" = tag
+                test "$(git rev-list -n 1 course/m03-complete)" = "$(git rev-parse HEAD)"
+                test "$(git rev-list -n 1 matching-0.1.0)" = "$(git rev-parse HEAD)"
+                ./gradlew m03Evidence --no-daemon
+                jq -e '
+                  .schemaVersion == "cex.lab-evidence.v1" and
+                  .case == "high-availability-cex" and
+                  .project == "matching" and
+                  .unit == "M03" and
+                  .unitTag == "course/m03-complete" and
+                  .productRelease == "matching-0.1.0" and
+                  .planVersion == "0.5" and
+                  .source.commit == env.GITHUB_SHA and
+                  .source.dirty == false and
+                  ([.claims[].id] == [
+                    "m00-m02-regression",
+                    "independent-reference-model",
+                    "generated-property-suite",
+                    "quantity-lifecycle-invariants",
+                    "minimal-counterexamples",
+                    "counterexample-replay",
+                    "semantic-mutants",
+                    "architecture-boundary"
+                  ])
+                ' build/lab-evidence/M03/manifest.json
+                evidence_generated=true
+              fi
               ;;
             *)
               echo "Unknown m03Check.expectedStatus: $expected_status"
@@ -158,6 +266,52 @@ jobs:
           esac
           echo "unit=$unit" >> "$GITHUB_OUTPUT"
           echo "expected_status=$expected_status" >> "$GITHUB_OUTPUT"
+          echo "evidence_generated=${evidence_generated:-false}" >> "$GITHUB_OUTPUT"
+
+      - name: Independently verify M03 evidence semantics and hashes
+        if: ${{ steps.boundary.outputs.evidence_generated == 'true' }}
+        shell: bash
+        run: |
+          evidence=build/lab-evidence/M03
+          manifest="$evidence/manifest.json"
+          jq -e '
+            ([.claims[].status] | all(. == "pass")) and
+            ([.claims[].id] | unique | length) == 8 and
+            .limitations == [
+              "Only one in-memory BTC-USDT GTC limit-order book with place and cancel is implemented.",
+              "The generated suite is frozen at 256 histories by 64 commands and is bounded testing, not exhaustive or formal verification.",
+              "Accepted order IDs are unique for one engine lifetime; terminal identity records are retained without pruning.",
+              "A repeated Place is rejected as a duplicate order ID; durable command idempotency and prior-result replay are not implemented.",
+              "There is no Cancel/Replace, amendment, mass cancel, IOC, FOK, post-only, market order, STP, market state, price band, or multi-instrument routing.",
+              "There is no account, asset, position, fee, settlement, reservation, or risk logic.",
+              "The unit has no persistence, networking, database, threads, Aeron, cluster replication, or high availability.",
+              "The evidence makes no throughput, latency, recovery, durability, or production-readiness claim."
+            ] and
+            ([.claims[].artifacts[].path] == [
+              "reports/m00-m02-regression.json",
+              "reports/reference-model.json",
+              "inputs/property-suite-v1.json",
+              "reports/generated-properties.json",
+              "reports/invariants.json",
+              "inputs/counterexamples-v1.json",
+              "reports/counterexamples.canonical.utf8",
+              "reports/replay.json",
+              "reports/mutants.json",
+              "reports/counterexamples.json",
+              "reports/architecture.json",
+              "reports/check.json"
+            ]) and
+            ([.claims[].artifacts[].path] | unique | length) == 12
+          ' "$manifest"
+          while IFS=$'\t' read -r path expected; do
+            case "$path" in
+              ""|/*|../*|*/../*|*/..|*\\*) exit 1 ;;
+            esac
+            test -f "$evidence/$path"
+            actual="$(shasum -a 256 "$evidence/$path" | cut -d' ' -f1)"
+            test "$actual" = "$expected"
+          done < <(jq -r '.claims[].artifacts[] | [.path, .sha256] | @tsv' "$manifest")
+          test -z "$(git status --porcelain --untracked-files=normal)"
 
       - name: Verify annotated M03 start tag identity
         if: ${{ startsWith(github.ref, 'refs/tags/course/m03') && endsWith(github.ref, '-start') }}
@@ -166,3 +320,29 @@ jobs:
           test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
           test "$GITHUB_REF_NAME" = "$(sed -n 's/^startRef=//p' course.properties)"
           test "$(git rev-list -n 1 "$GITHUB_REF_NAME")" = "$(git rev-parse HEAD)"
+
+      - name: Verify annotated M03 completion identity
+        if: ${{ github.ref == 'refs/tags/course/m03-complete' }}
+        shell: bash
+        run: |
+          test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
+          test "$GITHUB_REF_NAME" = "$(sed -n 's/^completeRef=//p' course.properties)"
+          test "$(git rev-list -n 1 "$GITHUB_REF_NAME")" = "$(git rev-parse HEAD)"
+          test "$(git rev-list -n 1 matching-0.1.0)" = "$(git rev-parse HEAD)"
+
+      - name: Verify annotated product release identity
+        if: ${{ github.ref == 'refs/tags/matching-0.1.0' }}
+        shell: bash
+        run: |
+          test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
+          test "$GITHUB_REF_NAME" = "$(sed -n 's/^productRelease=//p' course.properties)"
+          test "$(git rev-list -n 1 "$GITHUB_REF_NAME")" = "$(git rev-parse HEAD)"
+          test "$(git rev-list -n 1 course/m03-complete)" = "$(git rev-parse HEAD)"
+
+      - name: Upload M03 evidence
+        if: ${{ steps.boundary.outputs.evidence_generated == 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: matching-m03-evidence-${{ github.sha }}
+          path: build/lab-evidence/M03
+          if-no-files-found: error

@@ -37,18 +37,35 @@ final class M03PropertyJudge {
     int differentialComparisons = 0;
     int ledgerChecks = 0;
     int bookChecks = 0;
-    try {
-      M03Candidate candidate = Objects.requireNonNull(candidateFactory.create(), "candidate");
-      ReferenceMatcher reference = new LinearReferenceModel();
-      M03EventLedger ledger = new M03EventLedger();
-      for (int index = 0; index < immutableCommands.size(); index++) {
-        ReferenceCommand command = immutableCommands.get(index);
-        SemanticOutcome expected =
-            Objects.requireNonNull(reference.apply(command), "reference outcome");
-        SemanticOutcome actual =
-            Objects.requireNonNull(candidate.apply(command), "candidate outcome");
-        trace.add(new Step(command, expected, actual));
 
+    M03Candidate candidate;
+    ReferenceMatcher reference;
+    M03EventLedger ledger;
+    try {
+      candidate = Objects.requireNonNull(candidateFactory.create(), "candidate");
+      reference = new LinearReferenceModel();
+      ledger = new M03EventLedger();
+    } catch (RuntimeException failure) {
+      return systemObservation(trace, differentialComparisons, ledgerChecks, bookChecks, failure);
+    }
+
+    for (int index = 0; index < immutableCommands.size(); index++) {
+      ReferenceCommand command = immutableCommands.get(index);
+      SemanticOutcome expected;
+      try {
+        expected = Objects.requireNonNull(reference.apply(command), "reference outcome");
+      } catch (RuntimeException failure) {
+        return systemObservation(trace, differentialComparisons, ledgerChecks, bookChecks, failure);
+      }
+      SemanticOutcome actual;
+      try {
+        actual = Objects.requireNonNull(candidate.apply(command), "candidate outcome");
+      } catch (RuntimeException failure) {
+        return systemObservation(trace, differentialComparisons, ledgerChecks, bookChecks, failure);
+      }
+      trace.add(new Step(command, expected, actual));
+
+      try {
         ledger.verifyAndApply(command, actual);
         ledgerChecks++;
         bookChecks++;
@@ -61,50 +78,71 @@ final class M03PropertyJudge {
               "EXACT_BATCH_DIFFERENTIAL", "BOOK_AFTER", "candidate book differs from reference");
         }
         differentialComparisons++;
+      } catch (PropertyFailure failure) {
+        return studentObservation(
+            historyId, seed, trace, differentialComparisons, ledgerChecks, bookChecks, failure);
+      } catch (RuntimeException failure) {
+        return systemObservation(trace, differentialComparisons, ledgerChecks, bookChecks, failure);
       }
-      return new Observation(
-          PASS,
-          immutableCommands.size(),
-          differentialComparisons,
-          ledgerChecks,
-          bookChecks,
-          null,
-          trace,
-          "all generated properties passed");
-    } catch (PropertyFailure failure) {
-      int commandIndex = Math.max(0, trace.size() - 1);
-      Step failedStep = trace.isEmpty() ? null : trace.getLast();
-      Failure detail =
-          new Failure(
-              historyId,
-              seed,
-              commandIndex,
-              failure.propertyId(),
-              failure.divergenceKind(),
-              failedStep == null ? null : failedStep.command(),
-              failedStep == null ? null : failedStep.expected(),
-              failedStep == null ? null : failedStep.actual(),
-              failure.getMessage());
-      return new Observation(
-          STUDENT_FAILURE,
-          commandIndex,
-          differentialComparisons,
-          ledgerChecks,
-          bookChecks,
-          detail,
-          trace,
-          failure.getMessage());
-    } catch (RuntimeException failure) {
-      return new Observation(
-          SYSTEM_ERROR,
-          Math.max(0, trace.size() - 1),
-          differentialComparisons,
-          ledgerChecks,
-          bookChecks,
-          null,
-          trace,
-          stableSystemMessage(failure));
     }
+    return new Observation(
+        PASS,
+        immutableCommands.size(),
+        differentialComparisons,
+        ledgerChecks,
+        bookChecks,
+        null,
+        trace,
+        "all generated properties passed");
+  }
+
+  private static Observation studentObservation(
+      String historyId,
+      String seed,
+      List<Step> trace,
+      int differentialComparisons,
+      int ledgerChecks,
+      int bookChecks,
+      PropertyFailure failure) {
+    int commandIndex = Math.max(0, trace.size() - 1);
+    Step failedStep = trace.isEmpty() ? null : trace.getLast();
+    Failure detail =
+        new Failure(
+            historyId,
+            seed,
+            commandIndex,
+            failure.propertyId(),
+            failure.divergenceKind(),
+            failedStep == null ? null : failedStep.command(),
+            failedStep == null ? null : failedStep.expected(),
+            failedStep == null ? null : failedStep.actual(),
+            failure.getMessage());
+    return new Observation(
+        STUDENT_FAILURE,
+        commandIndex,
+        differentialComparisons,
+        ledgerChecks,
+        bookChecks,
+        detail,
+        trace,
+        failure.getMessage());
+  }
+
+  private static Observation systemObservation(
+      List<Step> trace,
+      int differentialComparisons,
+      int ledgerChecks,
+      int bookChecks,
+      RuntimeException failure) {
+    return new Observation(
+        SYSTEM_ERROR,
+        Math.max(0, trace.size() - 1),
+        differentialComparisons,
+        ledgerChecks,
+        bookChecks,
+        null,
+        trace,
+        stableSystemMessage(failure));
   }
 
   private static String stableSystemMessage(RuntimeException exception) {

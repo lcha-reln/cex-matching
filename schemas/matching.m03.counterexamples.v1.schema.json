@@ -24,7 +24,75 @@
       "type": "array",
       "minItems": 6,
       "maxItems": 6,
-      "items": { "$ref": "#/$defs/scenario" }
+      "prefixItems": [
+        {
+          "allOf": [
+            { "$ref": "#/$defs/scenario" },
+            {
+              "properties": {
+                "scenarioId": { "const": "best-price-last" },
+                "mutantId": { "const": "M03-BEST-PRICE-LAST" }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/scenario" },
+            {
+              "properties": {
+                "scenarioId": { "const": "same-price-lifo" },
+                "mutantId": { "const": "M03-SAME-PRICE-LIFO" }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/scenario" },
+            {
+              "properties": {
+                "scenarioId": { "const": "taker-price-trade" },
+                "mutantId": { "const": "M03-TAKER-PRICE-TRADE" }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/scenario" },
+            {
+              "properties": {
+                "scenarioId": { "const": "trade-quantity-overflow" },
+                "mutantId": { "const": "M03-TRADE-QUANTITY-OVERFLOW" }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/scenario" },
+            {
+              "properties": {
+                "scenarioId": { "const": "cancel-ghost-book" },
+                "mutantId": { "const": "M03-CANCEL-GHOST-BOOK" }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/scenario" },
+            {
+              "properties": {
+                "scenarioId": { "const": "canceled-id-reuse" },
+                "mutantId": { "const": "M03-CANCELED-ID-REUSE" }
+              }
+            }
+          ]
+        }
+      ],
+      "items": false
     }
   },
   "$defs": {
@@ -37,6 +105,8 @@
         "classification",
         "propertyId",
         "divergenceKind",
+        "historyIndex",
+        "lane",
         "seed",
         "originalCommandCount",
         "minimizedCommandCount",
@@ -62,6 +132,10 @@
         "classification": { "const": "STUDENT_FAILURE" },
         "propertyId": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" },
         "divergenceKind": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" },
+        "historyIndex": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "lane": {
+          "enum": ["BEST_PRICE", "SAME_PRICE_FIFO", "MAKER_PRICE", "CANCELED_IDENTITY"]
+        },
         "seed": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
         "originalCommandCount": { "const": 64 },
         "minimizedCommandCount": { "type": "integer", "minimum": 1, "maximum": 63 },

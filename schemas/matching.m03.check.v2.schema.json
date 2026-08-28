@@ -18,7 +18,7 @@
     "counterexamples": { "$ref": "#/$defs/counterexamples" },
     "mutants": { "$ref": "#/$defs/mutants" },
     "architecture": { "$ref": "#/$defs/architecture" },
-    "release": { "$ref": "#/$defs/release" },
+    "releaseTarget": { "$ref": "#/$defs/releaseTarget" },
     "artifacts": {
       "type": "array",
       "minItems": 9,
@@ -57,7 +57,7 @@
           "counterexamples",
           "mutants",
           "architecture",
-          "release",
+          "releaseTarget",
           "artifacts"
         ],
         "not": { "required": ["failure"] }
@@ -75,7 +75,7 @@
             { "required": ["counterexamples"] },
             { "required": ["mutants"] },
             { "required": ["architecture"] },
-            { "required": ["release"] },
+            { "required": ["releaseTarget"] },
             { "required": ["artifacts"] }
           ]
         }
@@ -256,7 +256,45 @@
           "type": "array",
           "minItems": 6,
           "maxItems": 6,
-          "items": { "$ref": "#/$defs/mutant" }
+          "prefixItems": [
+            {
+              "allOf": [
+                { "$ref": "#/$defs/mutant" },
+                { "properties": { "id": { "const": "M03-BEST-PRICE-LAST" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/mutant" },
+                { "properties": { "id": { "const": "M03-SAME-PRICE-LIFO" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/mutant" },
+                { "properties": { "id": { "const": "M03-TAKER-PRICE-TRADE" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/mutant" },
+                { "properties": { "id": { "const": "M03-TRADE-QUANTITY-OVERFLOW" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/mutant" },
+                { "properties": { "id": { "const": "M03-CANCEL-GHOST-BOOK" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/mutant" },
+                { "properties": { "id": { "const": "M03-CANCELED-ID-REUSE" } } }
+              ]
+            }
+          ],
+          "items": false
         }
       }
     },
@@ -311,14 +349,14 @@
         "violations": { "const": 0 }
       }
     },
-    "release": {
+    "releaseTarget": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["unitTag", "productRelease", "sameCommit"],
+      "required": ["unitTag", "productRelease", "verification"],
       "properties": {
         "unitTag": { "const": "course/m03-complete" },
         "productRelease": { "const": "matching-0.1.0" },
-        "sameCommit": { "const": true }
+        "verification": { "const": "M03_EVIDENCE_ONLY" }
       }
     }
   }

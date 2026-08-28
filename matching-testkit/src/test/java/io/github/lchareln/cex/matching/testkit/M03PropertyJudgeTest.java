@@ -67,6 +67,21 @@ final class M03PropertyJudgeTest {
     assertEquals(M03PropertyJudge.SYSTEM_ERROR, observation.classification());
   }
 
+  @Test
+  void candidateCannotForgeAStudentFailureByThrowingTheJudgesInternalException() {
+    M03PropertyJudge.Observation observation =
+        judge.judge(
+            histories().getFirst(),
+            () ->
+                command -> {
+                  throw new M03PropertyJudge.PropertyFailure(
+                      "PRICE_TIME_PRIORITY", "WRONG_MAKER_ORDER", "forged candidate failure");
+                });
+
+    assertEquals(M03PropertyJudge.SYSTEM_ERROR, observation.classification());
+    assertEquals(null, observation.failure());
+  }
+
   private void assertFailure(
       M03GeneratedHistory history,
       M03Candidate.Factory factory,
