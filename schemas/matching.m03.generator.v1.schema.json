@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m03.generator.v1.schema.json",
+  "title": "Matching M03 deterministic generated-history contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "algorithm",
+    "baseSeed",
+    "histories",
+    "commandsPerHistory",
+    "lanes",
+    "randomDomain"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "matching.m03.generator.v1" },
+    "algorithm": { "const": "splitmix64-v1" },
+    "baseSeed": { "type": "string", "pattern": "^[0-9]+$" },
+    "histories": { "type": "integer", "minimum": 1, "maximum": 4096 },
+    "commandsPerHistory": { "type": "integer", "minimum": 1, "maximum": 1024 },
+    "lanes": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/lane" }
+    },
+    "randomDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "placeWeight",
+        "cancelWeight",
+        "invalidOneIn",
+        "validInstrumentId",
+        "invalidInstrumentId",
+        "minimumOrderId",
+        "maximumOrderId",
+        "validSides",
+        "invalidSide",
+        "minimumPriceTicks",
+        "maximumPriceTicks",
+        "minimumQuantityLots",
+        "maximumQuantityLots"
+      ],
+      "properties": {
+        "placeWeight": { "type": "integer", "minimum": 1 },
+        "cancelWeight": { "type": "integer", "minimum": 1 },
+        "invalidOneIn": { "type": "integer", "minimum": 2 },
+        "validInstrumentId": { "const": "BTC-USDT" },
+        "invalidInstrumentId": { "type": "string", "minLength": 1 },
+        "minimumOrderId": { "type": "integer", "minimum": 1 },
+        "maximumOrderId": { "type": "integer", "minimum": 1 },
+        "validSides": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [{ "const": "BUY" }, { "const": "SELL" }],
+          "items": false
+        },
+        "invalidSide": { "type": "string", "minLength": 1 },
+        "minimumPriceTicks": { "type": "integer", "minimum": 1 },
+        "maximumPriceTicks": { "type": "integer", "minimum": 1 },
+        "minimumQuantityLots": { "type": "integer", "minimum": 1 },
+        "maximumQuantityLots": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "historyModulo", "prefix"],
+      "properties": {
+        "id": {
+          "enum": ["BEST_PRICE", "SAME_PRICE_FIFO", "MAKER_PRICE", "CANCELED_IDENTITY"]
+        },
+        "historyModulo": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "prefix": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/command" }
+        }
+      }
+    },
+    "command": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": { "const": "PLACE" },
+            "input": { "$ref": "#/$defs/placeInput" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": { "const": "CANCEL" },
+            "input": { "$ref": "#/$defs/cancelInput" }
+          }
+        }
+      ]
+    },
+    "placeInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrumentId", "orderId", "side", "priceTicks", "quantityLots"],
+      "properties": {
+        "instrumentId": { "type": "string", "minLength": 1 },
+        "orderId": { "type": "integer", "minimum": 0 },
+        "side": { "type": "string", "minLength": 1 },
+        "priceTicks": { "type": "integer", "minimum": 0 },
+        "quantityLots": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "cancelInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrumentId", "orderId"],
+      "properties": {
+        "instrumentId": { "type": "string", "minLength": 1 },
+        "orderId": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

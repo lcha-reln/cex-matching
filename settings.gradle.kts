@@ -12,3 +12,4 @@ plugins {
 rootProject.name = "cex-matching"
 
 include("matching-core", "matching-testkit")
+include("matching-reference")

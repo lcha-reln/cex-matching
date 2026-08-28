@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m03.check.v1.schema.json",
+  "title": "Matching M03 start boundary check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "unit",
+    "status",
+    "contractPlanVersion",
+    "objective",
+    "inheritedM02",
+    "generator",
+    "independenceBoundary",
+    "missingCapabilities"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "matching.m03.check.v1" },
+    "unit": { "const": "M03" },
+    "status": { "const": "GOAL_NOT_IMPLEMENTED" },
+    "contractPlanVersion": { "const": "0.5" },
+    "objective": {
+      "const": "Prove the M02 matcher against an independent generated reference model with persisted minimal counterexamples."
+    },
+    "inheritedM02": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "checkSchemaVersion", "scenarios", "commands", "canonicalDigest"],
+      "properties": {
+        "status": { "const": "PASS" },
+        "checkSchemaVersion": { "const": "matching.m02.check.v2" },
+        "scenarios": { "const": 10 },
+        "commands": { "const": 34 },
+        "canonicalDigest": {
+          "const": "sha256:32054d63accba99b19db823c41f74bda73dc3b8a009b528f2834d2bc70839d16"
+        }
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schemaPath",
+        "sha256",
+        "algorithm",
+        "baseSeed",
+        "histories",
+        "commandsPerHistory",
+        "totalCommands",
+        "lanes",
+        "historiesPerLane",
+        "schemaProbes"
+      ],
+      "properties": {
+        "path": {
+          "const": "matching-testkit/src/test/resources/m03/fixtures/property-suite-v1.json"
+        },
+        "schemaPath": { "const": "schemas/matching.m03.generator.v1.schema.json" },
+        "sha256": {
+          "const": "3e051347b9bd42aac431d02949c0c1b72daa667d10a03cc8aeb09a6b5a74d24e"
+        },
+        "algorithm": { "const": "splitmix64-v1" },
+        "baseSeed": { "const": "6824" },
+        "histories": { "const": 256 },
+        "commandsPerHistory": { "const": 64 },
+        "totalCommands": { "const": 16384 },
+        "lanes": { "const": 4 },
+        "historiesPerLane": { "const": 64 },
+        "schemaProbes": { "const": 6 }
+      }
+    },
+    "independenceBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "module",
+        "coreDependency",
+        "testkitDependency",
+        "semanticSources",
+        "representation"
+      ],
+      "properties": {
+        "module": { "const": "matching-reference" },
+        "coreDependency": { "const": false },
+        "testkitDependency": { "const": false },
+        "semanticSources": { "const": 0 },
+        "representation": { "const": "REFERENCE_OWNED" }
+      }
+    },
+    "missingCapabilities": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "prefixItems": [
+        { "const": "INDEPENDENT_REFERENCE_MODEL" },
+        { "const": "DETERMINISTIC_HISTORY_GENERATOR" },
+        { "const": "STATEFUL_DIFFERENTIAL_PROPERTY_JUDGE" },
+        { "const": "DETERMINISTIC_COUNTEREXAMPLE_SHRINKER" },
+        { "const": "REPLAYABLE_COUNTEREXAMPLE_ARTIFACT" }
+      ],
+      "items": false
+    }
+  }
+}

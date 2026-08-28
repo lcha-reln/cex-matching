@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "io.github.lchareln.cex"
-version = "0.0.0-m02-complete"
+version = "0.0.0-m03-start"
 
 spotless {
     format("rootMisc") {
@@ -79,7 +79,7 @@ subprojects {
 }
 
 tasks.named("assemble") {
-    dependsOn(":matching-core:assemble", ":matching-testkit:assemble")
+    dependsOn(":matching-core:assemble", ":matching-reference:assemble", ":matching-testkit:assemble")
 }
 
 tasks.named("check") {
@@ -120,4 +120,10 @@ tasks.register("m02Evidence") {
     group = "verification"
     description = "Generates and validates the clean-tree M02 evidence manifest."
     dependsOn(":matching-testkit:m02Evidence")
+}
+
+tasks.register("m03Check") {
+    group = "verification"
+    description = "Runs the declared M03 independent generated-model boundary."
+    dependsOn(":matching-testkit:m03Check")
 }

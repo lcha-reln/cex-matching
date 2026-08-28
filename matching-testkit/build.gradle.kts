@@ -5,6 +5,7 @@ plugins {
 
 dependencies {
     api(project(":matching-core"))
+    implementation(project(":matching-reference"))
     implementation(libs.jackson.databind)
     implementation(libs.json.schema.validator)
     runtimeOnly(libs.slf4j.nop)
@@ -29,6 +30,7 @@ val m01UnitTag = providers.gradleProperty("m01.unitTag").orElse("course/m01-comp
 val m02ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m02")
 val m02EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M02")
 val m02UnitTag = providers.gradleProperty("m02.unitTag").orElse("course/m02-complete")
+val m03ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m03")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -109,4 +111,17 @@ tasks.register<JavaExec>("m02Evidence") {
         m02UnitTag.get(),
     )
     doNotTrackState("Evidence must re-check HEAD and working-tree cleanliness on every invocation")
+}
+
+tasks.register<JavaExec>("m03Check") {
+    group = "verification"
+    description = "Runs the declared M03 generated-property start boundary."
+    dependsOn("test", ":matching-core:test", ":matching-reference:check", "classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M03CheckMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m03ReportDirectory.get().asFile.absolutePath,
+    )
+    doNotTrackState("M03 must never reuse a stale boundary report")
 }
