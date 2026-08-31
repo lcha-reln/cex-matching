@@ -44,6 +44,7 @@ public final class M08RuntimeJudgeProbe {
       require(ignored.state() == RuntimeState.OPEN, "unexpected poison recovery state");
       throw new M08SemanticFailure("poison command did not block recovery");
     } catch (RecoveryException expected) {
+      requireExpectedRecoveryCause(expected, recoveryPoison);
       poisonBlockedRecovery = true;
     } catch (PoisonException escaped) {
       if (escaped != recoveryPoison) {
@@ -75,6 +76,13 @@ public final class M08RuntimeJudgeProbe {
   private static void require(boolean condition, String message) {
     if (!condition) {
       throw new M08SemanticFailure(message);
+    }
+  }
+
+  private static void requireExpectedRecoveryCause(
+      RecoveryException failure, Throwable expectedCause) {
+    if (failure.getCause() != expectedCause) {
+      throw new IllegalStateException("unexpected recovery failure instead of poison", failure);
     }
   }
 

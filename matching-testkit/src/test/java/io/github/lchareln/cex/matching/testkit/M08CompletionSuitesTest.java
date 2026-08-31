@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.lchareln.cex.matching.local.M08RuntimeJudgeProbe;
+import io.github.lchareln.cex.matching.local.RecoveryException;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -119,6 +120,31 @@ class M08CompletionSuitesTest {
           M08CheckRunner.classifyFailure(failure),
           seam.getSimpleName());
     }
+  }
+
+  @Test
+  void poisonRecoveryAcceptsOnlyTheExactInjectedCause() throws Exception {
+    Method classifier =
+        M08RuntimeJudgeProbe.class.getDeclaredMethod(
+            "requireExpectedRecoveryCause", RecoveryException.class, Throwable.class);
+    classifier.setAccessible(true);
+
+    RuntimeException expectedPoison = new RuntimeException("expected poison");
+    classifier.invoke(
+        null, new RecoveryException("expected recovery failure", expectedPoison), expectedPoison);
+
+    RuntimeException unrelatedFailure = new RuntimeException("unrelated failure");
+    InvocationTargetException invocation =
+        assertThrows(
+            InvocationTargetException.class,
+            () ->
+                classifier.invoke(
+                    null,
+                    new RecoveryException("unrelated recovery failure", unrelatedFailure),
+                    expectedPoison));
+    IllegalStateException failure =
+        assertInstanceOf(IllegalStateException.class, invocation.getCause());
+    assertEquals(M08CheckRunner.SYSTEM_ERROR, M08CheckRunner.classifyFailure(failure));
   }
 
   @Test
