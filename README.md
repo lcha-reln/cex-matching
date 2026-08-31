@@ -13,17 +13,19 @@ M05 completes one more closed axis: a content-addressed, versioned absolute orde
 delivered through Prepare/Activate and an in-memory application-sequence fence. M06 completes the
 next closed axis: `OPEN/CANCEL_ONLY/HALTED`, a safe serialized transition graph, and deterministic
 HALTED-only Mass Cancel in global acceptance order.
-STP, persistence, networking, performance work, and Aeron Cluster remain later units.
+M07 now freezes the next deliberately narrow RED boundary: an upstream-resolved opaque participant
+group and taker-owned self-trade-prevention instruction. Persistence, networking, performance work,
+and Aeron Cluster remain later units.
 
 ## Current course boundary
 
 - Profile: `SPOT-CEX-1.0`
-- Plan version: `0.8`
-- Unit: `M06`
-- Declared start ref: `course/m06-start`
-- Declared complete ref: `course/m06-complete`
-- Latest product stopping point: `matching-0.1.0` at M03; M04–M06 have no product release
-- Lifecycle at this boundary: `COMPLETE / PASS`
+- Plan version: `0.9`
+- Unit: `M07`
+- Declared start ref: `course/m07-start`
+- Declared complete ref: `course/m07-complete`
+- Latest product stopping point: `matching-0.1.0` at M03; M04–M07 have no product release
+- Lifecycle at this boundary: `READY / GOAL_NOT_IMPLEMENTED`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -31,22 +33,27 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The completed boundary is verified with:
+The inherited completed boundary and the intentional M07 RED boundary are verified separately:
 
 ```bash
 ./gradlew clean build --no-daemon
-./gradlew m06Check --no-daemon
+./gradlew m07Check --no-daemon # expected to exit non-zero at course/m07-start
 ```
 
-The root build is gated by `m06Check`. The completion judge executes the exact 15-scenario /
-64-command fixed corpus, regenerates seed `6606` into 160 SplitMix64 histories of 64 commands across
-five lanes, and compares production with both the independent flat-list model and an event-derived
-ledger at all 10,240 generated command boundaries. It publishes 26/26 concrete coverage witnesses,
-kills all ten required mutants as `STUDENT_FAILURE`, excludes the throwing `SYSTEM_ERROR` control
-from mutant kills, and strictly replays ten persisted one-minimal counterexamples. The strict
-`matching.m06.check.v2` report is written beneath `build/reports/m06/`. This is finite deterministic
-evidence, not exhaustive exploration, formal verification, replication evidence, or a production
-readiness claim. The exact contract is in [`docs/specs/m06.md`](docs/specs/m06.md).
+The root build remains gated by the completed `m06Check`. `m07Check` validates only the frozen
+16-scenario / 72-command input contract, seed `5707`, 160-by-64 generator declaration, five lanes,
+24 obligations, eight mutant identities, and five tutorial coordinates. It then writes the strict
+`matching.m07.check.v1` report with `GOAL_NOT_IMPLEMENTED` and exits non-zero. It publishes no M07
+output digest, mutant kill, counterexample, implementation, or evidence facts. The exact contract
+is in [`docs/specs/m07.md`](docs/specs/m07.md).
+
+M07 treats a positive participant group as an opaque equality key supplied by an upstream policy
+boundary. Group `0/NONE` preserves every legacy entrypoint. For a real same-positive-group encounter,
+only the incoming taker's `CANCEL_TAKER`, `CANCEL_MAKER`, or `CANCEL_BOTH` instruction is operative;
+FOK preflight is STP-aware, while Post-only observes the raw book before any STP action. None of
+those semantics is claimed implemented at the start ref.
+
+## Inherited M06 completion
 
 The M06F1 fixed command history is 8,113 bytes / 65 lines with digest
 `sha256:2f9126e7100581020d2a56dd7da4736ab026a7f9533b051bde4490cda210855b`. The M06H1
@@ -166,11 +173,11 @@ matching-reference independent model; main/runtime is JDK-only with no project o
 matching-testkit    generators, differential judge, replay, mutants, and evidence tooling
 ```
 
-M06 keeps exactly these three modules. It creates no runtime, protocol, cluster, storage, database,
-Counter, or Rest module. Completion reports are written beneath `build/reports/m06/`; tag-bound
-evidence is published only from the clean annotated completion commit after production, reference,
-event-ledger, mutant, replay, architecture, and hash gates pass. Historical M00–M05 evidence remains
-attached to its immutable completion tags.
+M07 keeps exactly these three modules. It creates no runtime, protocol, cluster, storage, database,
+Counter, or Rest module. The start ref writes only a structured RED report beneath
+`build/reports/m07/`; later tag-bound evidence may be published only from a clean annotated
+completion commit after production, reference, event-ledger, mutant, replay, architecture, and hash
+gates pass. Historical M00–M06 evidence remains attached to its immutable completion tags.
 
 Course dashboard: <https://lcha-reln.github.io/signal-grid-blog/practice/high-availability-cex/>
 

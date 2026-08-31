@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m07.generator.v1.schema.json",
+  "title": "Matching M07 deterministic self-trade-prevention generator",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "algorithm", "baseSeed", "histories", "commandsPerHistory", "lanes", "randomDomain", "coverageRequirements", "requiredMutants", "tutorialPermalinks"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m07.generator.v1"},
+    "algorithm": {"const": "splitmix64-v1"},
+    "baseSeed": {"const": "5707"},
+    "histories": {"const": 160},
+    "commandsPerHistory": {"const": 64},
+    "lanes": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "prefixItems": [
+        {"$ref": "#/$defs/validationLane"},
+        {"$ref": "#/$defs/cancelTakerLane"},
+        {"$ref": "#/$defs/cancelMakerLane"},
+        {"$ref": "#/$defs/cancelBothLane"},
+        {"$ref": "#/$defs/mixedLane"}
+      ],
+      "items": false
+    },
+    "randomDomain": {"$ref": "#/$defs/randomDomain"},
+    "coverageRequirements": {
+      "type": "array",
+      "minItems": 24,
+      "maxItems": 24,
+      "uniqueItems": true,
+      "prefixItems": [
+        {"const": "INVALID_STP_GROUP_ID"},
+        {"const": "INVALID_STP_POLICY"},
+        {"const": "INVALID_STP_INSTRUCTION"},
+        {"const": "VALIDATION_FAILURE_ATOMIC"},
+        {"const": "LEGACY_ZERO_NONE_COMPATIBILITY"},
+        {"const": "GROUP_ZERO_NEVER_SELF"},
+        {"const": "DIFFERENT_GROUP_TRADE"},
+        {"const": "SAME_GROUP_NO_TRADE"},
+        {"const": "CANCEL_TAKER_CANCELS_FULL_REMAINDER"},
+        {"const": "CANCEL_TAKER_PRESERVES_MAKER"},
+        {"const": "CANCEL_MAKER_CANCELS_MAKER"},
+        {"const": "CANCEL_MAKER_CONTINUES_SAME_LEVEL"},
+        {"const": "CANCEL_MAKER_CONTINUES_CROSS_LEVEL"},
+        {"const": "CANCEL_BOTH_CANCELS_BOTH"},
+        {"const": "PRICE_TIME_EVENT_INTERLEAVING"},
+        {"const": "PARTIAL_TRADE_BEFORE_STP"},
+        {"const": "GTC_REMAINDER_RESTS"},
+        {"const": "IOC_STP_AND_REMAINDER_REASONS"},
+        {"const": "FOK_TAKER_OR_BOTH_PRECHECK"},
+        {"const": "FOK_CANCEL_MAKER_PRECHECK"},
+        {"const": "FOK_FAILURE_ATOMIC"},
+        {"const": "POST_ONLY_RAW_BOOK_FIRST"},
+        {"const": "RULE_SET_ATTRIBUTION"},
+        {"const": "MARKET_MODE_BEFORE_STP"}
+      ],
+      "items": false
+    },
+    "requiredMutants": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "prefixItems": [
+        {"const": "M07-SAME-GROUP-TRADE-ALLOWED"},
+        {"const": "M07-DIFFERENT-GROUP-CANCELED"},
+        {"const": "M07-CANCEL-TAKER-SKIPS-SELF"},
+        {"const": "M07-CANCEL-MAKER-CANCELS-TAKER"},
+        {"const": "M07-CANCEL-BOTH-LEAVES-MAKER"},
+        {"const": "M07-FOK-COUNTS-RAW-SELF-LIQUIDITY"},
+        {"const": "M07-POST-ONLY-RUNS-STP-FIRST"},
+        {"const": "M07-CANCEL-MAKER-BEST-LEVEL-ONLY"}
+      ],
+      "items": false
+    },
+    "tutorialPermalinks": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "prefixItems": [
+        {"const": "/practice/high-availability-cex/m07/stp-command-and-opaque-participant-group/"},
+        {"const": "/practice/high-availability-cex/m07/cancel-taker-maker-both-state-machine/"},
+        {"const": "/practice/high-availability-cex/m07/stp-price-time-scan-and-cross-level-cases/"},
+        {"const": "/practice/high-availability-cex/m07/stp-with-ioc-fok-post-only-and-rule-sets/"},
+        {"const": "/practice/high-availability-cex/m07/stp-property-evidence-and-mutants/"}
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "laneBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "historyModulo", "historiesPerLane", "prefixScenario"],
+      "properties": {
+        "id": {"type": "string"},
+        "historyModulo": {"type": "integer", "minimum": 0, "maximum": 4},
+        "historiesPerLane": {"const": 32},
+        "prefixScenario": {"type": "string"}
+      }
+    },
+    "validationLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "VALIDATION_AND_LEGACY"}, "historyModulo": {"const": 0}, "prefixScenario": {"const": "GROUP_POLICY_PAIR_VALIDATION"}}}]},
+    "cancelTakerLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "CANCEL_TAKER"}, "historyModulo": {"const": 1}, "prefixScenario": {"const": "CANCEL_TAKER_SAME_GROUP"}}}]},
+    "cancelMakerLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "CANCEL_MAKER_AND_CROSS_LEVEL"}, "historyModulo": {"const": 2}, "prefixScenario": {"const": "CANCEL_MAKER_CROSS_LEVEL"}}}]},
+    "cancelBothLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "CANCEL_BOTH"}, "historyModulo": {"const": 3}, "prefixScenario": {"const": "CANCEL_BOTH_SAME_GROUP"}}}]},
+    "mixedLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "POLICY_RULE_MODE_MIXED"}, "historyModulo": {"const": 4}, "prefixScenario": {"const": "RULE_MODE_ATTRIBUTION_FAILURE_ATOMICITY"}}}]},
+    "randomDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["legacyPlaceWeight", "stpPlaceWeight", "governedStpPlaceWeight", "cancelWeight", "prepareWeight", "activateWeight", "changeModeWeight", "massCancelWeight", "invalidGroupOneIn", "invalidPolicyOneIn", "invalidPairOneIn", "sameGroupOneIn", "minimumParticipantGroupId", "maximumParticipantGroupId", "minimumPriceTicks", "maximumPriceTicks", "maximumQuantityLots", "executionPolicies", "stpPolicies", "marketModes"],
+      "properties": {
+        "legacyPlaceWeight": {"const": 10},
+        "stpPlaceWeight": {"const": 45},
+        "governedStpPlaceWeight": {"const": 10},
+        "cancelWeight": {"const": 10},
+        "prepareWeight": {"const": 5},
+        "activateWeight": {"const": 5},
+        "changeModeWeight": {"const": 10},
+        "massCancelWeight": {"const": 5},
+        "invalidGroupOneIn": {"const": 32},
+        "invalidPolicyOneIn": {"const": 32},
+        "invalidPairOneIn": {"const": 16},
+        "sameGroupOneIn": {"const": 2},
+        "minimumParticipantGroupId": {"const": 1},
+        "maximumParticipantGroupId": {"const": 8},
+        "minimumPriceTicks": {"const": 80},
+        "maximumPriceTicks": {"const": 120},
+        "maximumQuantityLots": {"const": 5},
+        "executionPolicies": {"type": "array", "minItems": 4, "maxItems": 4, "prefixItems": [{"const": "GTC"}, {"const": "IOC"}, {"const": "FOK"}, {"const": "POST_ONLY"}], "items": false},
+        "stpPolicies": {"type": "array", "minItems": 4, "maxItems": 4, "prefixItems": [{"const": "NONE"}, {"const": "CANCEL_TAKER"}, {"const": "CANCEL_MAKER"}, {"const": "CANCEL_BOTH"}], "items": false},
+        "marketModes": {"type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{"const": "OPEN"}, {"const": "CANCEL_ONLY"}, {"const": "HALTED"}], "items": false}
+      }
+    }
+  }
+}

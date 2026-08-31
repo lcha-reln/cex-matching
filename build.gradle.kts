@@ -169,3 +169,9 @@ tasks.register("m06Evidence") {
     description = "Generates and validates clean-tree annotated-tag M06 evidence."
     dependsOn(":matching-testkit:m06Evidence")
 }
+
+tasks.register("m07Check") {
+    group = "verification"
+    description = "Validates the frozen M07 self-trade-prevention RED boundary."
+    dependsOn(":matching-testkit:m07Check")
+}

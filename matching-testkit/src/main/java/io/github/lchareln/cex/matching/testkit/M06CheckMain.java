@@ -42,6 +42,11 @@ public final class M06CheckMain {
       throw new IllegalStateException("cannot read course.properties", failure);
     }
     String value = properties.getProperty("m06Check.expectedStatus");
+    if (value == null) {
+      // Later units replace course.properties with their own declaration. M06 is then an
+      // immutable inherited semantic gate and must execute its completed runner directly.
+      return M06CheckRunner.PASS;
+    }
     if (!M06StartCheckRunner.STATUS.equals(value) && !M06CheckRunner.PASS.equals(value)) {
       throw new IllegalStateException("unsupported M06 expected status: " + value);
     }

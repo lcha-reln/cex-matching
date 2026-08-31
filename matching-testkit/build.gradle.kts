@@ -56,6 +56,7 @@ val m05UnitTag = providers.gradleProperty("m05.unitTag").orElse("course/m05-comp
 val m06ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m06")
 val m06EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M06")
 val m06UnitTag = providers.gradleProperty("m06.unitTag").orElse("course/m06-complete")
+val m07ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m07")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -249,4 +250,17 @@ tasks.register<JavaExec>("m06Evidence") {
         m06UnitTag.get(),
     )
     doNotTrackState("Evidence must re-check the M06 tag and working-tree cleanliness on every invocation")
+}
+
+tasks.register<JavaExec>("m07Check") {
+    group = "verification"
+    description = "Validates the frozen M07 self-trade-prevention RED boundary."
+    dependsOn("test", ":matching-core:test", ":matching-reference:check", "classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M07CheckMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m07ReportDirectory.get().asFile.absolutePath,
+    )
+    doNotTrackState("M07 must never reuse a stale RED report")
 }

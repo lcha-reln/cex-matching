@@ -1,0 +1,287 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m07.scenario.v1.schema.json",
+  "title": "Matching M07 fixed self-trade-prevention scenarios",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "scenarios"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m07.scenario.v1"},
+    "scenarios": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 16,
+      "prefixItems": [
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "RAW_GROUP_VALIDATION"}, "commands": {"minItems": 3, "maxItems": 3}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "RAW_POLICY_VALIDATION"}, "commands": {"minItems": 4, "maxItems": 4}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "GROUP_POLICY_PAIR_VALIDATION"}, "commands": {"minItems": 5, "maxItems": 5}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "LEGACY_NONE_REGRESSION"}, "commands": {"minItems": 4, "maxItems": 4}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "DIFFERENT_GROUP_TRADES"}, "commands": {"minItems": 4, "maxItems": 4}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "CANCEL_TAKER_SAME_GROUP"}, "commands": {"minItems": 3, "maxItems": 3}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "CANCEL_MAKER_SAME_GROUP"}, "commands": {"minItems": 3, "maxItems": 3}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "CANCEL_BOTH_SAME_GROUP"}, "commands": {"minItems": 3, "maxItems": 3}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "SAME_PRICE_FIFO_INTERLEAVE"}, "commands": {"minItems": 6, "maxItems": 6}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "CANCEL_MAKER_CROSS_LEVEL"}, "commands": {"minItems": 6, "maxItems": 6}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "PARTIAL_BEFORE_STP"}, "commands": {"minItems": 5, "maxItems": 5}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "GTC_REMAINDER_AFTER_STP"}, "commands": {"minItems": 4, "maxItems": 4}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "IOC_STP_REMAINDER"}, "commands": {"minItems": 4, "maxItems": 4}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "FOK_STP_AWARE_ATOMICITY"}, "commands": {"minItems": 7, "maxItems": 7}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "POST_ONLY_RAW_BOOK_PRIORITY"}, "commands": {"minItems": 4, "maxItems": 4}}}]},
+        {"allOf": [{"$ref": "#/$defs/scenario"}, {"properties": {"scenarioId": {"const": "RULE_MODE_ATTRIBUTION_FAILURE_ATOMICITY"}, "commands": {"minItems": 7, "maxItems": 7}}}]}
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarioId", "proofObligations", "commands"],
+      "properties": {
+        "scenarioId": {"$ref": "#/$defs/scenarioId"},
+        "proofObligations": {"type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": true, "items": {"$ref": "#/$defs/coverageId"}},
+        "commands": {"type": "array", "minItems": 1, "maxItems": 7, "items": {"$ref": "#/$defs/command"}}
+      }
+    },
+    "scenarioId": {
+      "enum": [
+        "RAW_GROUP_VALIDATION",
+        "RAW_POLICY_VALIDATION",
+        "GROUP_POLICY_PAIR_VALIDATION",
+        "LEGACY_NONE_REGRESSION",
+        "DIFFERENT_GROUP_TRADES",
+        "CANCEL_TAKER_SAME_GROUP",
+        "CANCEL_MAKER_SAME_GROUP",
+        "CANCEL_BOTH_SAME_GROUP",
+        "SAME_PRICE_FIFO_INTERLEAVE",
+        "CANCEL_MAKER_CROSS_LEVEL",
+        "PARTIAL_BEFORE_STP",
+        "GTC_REMAINDER_AFTER_STP",
+        "IOC_STP_REMAINDER",
+        "FOK_STP_AWARE_ATOMICITY",
+        "POST_ONLY_RAW_BOOK_PRIORITY",
+        "RULE_MODE_ATTRIBUTION_FAILURE_ATOMICITY"
+      ]
+    },
+    "command": {
+      "oneOf": [
+        {"$ref": "#/$defs/legacyPlace"},
+        {"$ref": "#/$defs/stpPlace"},
+        {"$ref": "#/$defs/governedStpPlace"},
+        {"$ref": "#/$defs/cancel"},
+        {"$ref": "#/$defs/prepare"},
+        {"$ref": "#/$defs/activate"},
+        {"$ref": "#/$defs/changeMarketMode"},
+        {"$ref": "#/$defs/massCancel"}
+      ]
+    },
+    "legacyPlace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "type", "entrypoint", "input"],
+      "properties": {
+        "caseId": {"$ref": "#/$defs/caseId"},
+        "type": {"const": "PLACE"},
+        "entrypoint": {"const": "LEGACY"},
+        "input": {"$ref": "#/$defs/placeInput"}
+      }
+    },
+    "stpPlace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "type", "entrypoint", "participantGroupId", "stpPolicy", "input"],
+      "properties": {
+        "caseId": {"$ref": "#/$defs/caseId"},
+        "type": {"const": "PLACE"},
+        "entrypoint": {"const": "STP"},
+        "participantGroupId": {"$ref": "#/$defs/rawParticipantGroupId"},
+        "stpPolicy": {"$ref": "#/$defs/rawStpPolicy"},
+        "input": {"$ref": "#/$defs/placeInput"}
+      }
+    },
+    "governedStpPlace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "type", "entrypoint", "participantGroupId", "stpPolicy", "expectedRuleSet", "input"],
+      "properties": {
+        "caseId": {"$ref": "#/$defs/caseId"},
+        "type": {"const": "PLACE"},
+        "entrypoint": {"const": "GOVERNED_STP"},
+        "participantGroupId": {"$ref": "#/$defs/rawParticipantGroupId"},
+        "stpPolicy": {"$ref": "#/$defs/rawStpPolicy"},
+        "expectedRuleSet": {"$ref": "#/$defs/identity"},
+        "input": {"$ref": "#/$defs/placeInput"}
+      }
+    },
+    "cancel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "type", "input"],
+      "properties": {
+        "caseId": {"$ref": "#/$defs/caseId"},
+        "type": {"const": "CANCEL"},
+        "input": {"$ref": "#/$defs/cancelInput"}
+      }
+    },
+    "prepare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "type", "input"],
+      "properties": {
+        "caseId": {"$ref": "#/$defs/caseId"},
+        "type": {"const": "PREPARE_RULE_SET"},
+        "input": {"$ref": "#/$defs/prepareInput"}
+      }
+    },
+    "activate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "type", "input"],
+      "properties": {
+        "caseId": {"$ref": "#/$defs/caseId"},
+        "type": {"const": "ACTIVATE_RULE_SET"},
+        "input": {"$ref": "#/$defs/activateInput"}
+      }
+    },
+    "changeMarketMode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "type", "input"],
+      "properties": {
+        "caseId": {"$ref": "#/$defs/caseId"},
+        "type": {"const": "CHANGE_MARKET_MODE"},
+        "input": {"$ref": "#/$defs/changeMarketModeInput"}
+      }
+    },
+    "massCancel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "type", "input"],
+      "properties": {
+        "caseId": {"$ref": "#/$defs/caseId"},
+        "type": {"const": "MASS_CANCEL"},
+        "input": {"$ref": "#/$defs/massCancelInput"}
+      }
+    },
+    "caseId": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "positiveLong": {"type": "integer", "minimum": 1, "maximum": 9223372036854775807},
+    "nonNegativeLong": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+    "rawParticipantGroupId": {"type": "integer", "minimum": -1, "maximum": 9223372036854775807},
+    "rawStpPolicy": {"enum": ["NONE", "CANCEL_TAKER", "CANCEL_MAKER", "CANCEL_BOTH", "UNKNOWN", "cancel_taker", " CANCEL_TAKER"]},
+    "mode": {"enum": ["OPEN", "CANCEL_ONLY", "HALTED"]},
+    "operatorId": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": ".*\\S.*"},
+    "contentHash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "contentHash"],
+      "properties": {
+        "version": {"$ref": "#/$defs/nonNegativeLong"},
+        "contentHash": {"$ref": "#/$defs/contentHash"}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "instrumentId", "version", "lowerInclusive", "upperInclusive", "contentHash"],
+      "properties": {
+        "schemaVersion": {"const": "matching.market-rule-set.v1"},
+        "instrumentId": {"const": "BTC-USDT"},
+        "version": {"$ref": "#/$defs/nonNegativeLong"},
+        "lowerInclusive": {"$ref": "#/$defs/positiveLong"},
+        "upperInclusive": {"$ref": "#/$defs/positiveLong"},
+        "contentHash": {"$ref": "#/$defs/contentHash"}
+      }
+    },
+    "placeInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrumentId", "orderId", "side", "priceTicks", "quantityLots", "executionPolicy"],
+      "properties": {
+        "instrumentId": {"const": "BTC-USDT"},
+        "orderId": {"$ref": "#/$defs/positiveLong"},
+        "side": {"enum": ["BUY", "SELL"]},
+        "priceTicks": {"type": "integer", "minimum": 80, "maximum": 120},
+        "quantityLots": {"type": "integer", "minimum": 1, "maximum": 10},
+        "executionPolicy": {"enum": ["GTC", "IOC", "FOK", "POST_ONLY"]}
+      }
+    },
+    "cancelInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrumentId", "orderId"],
+      "properties": {
+        "instrumentId": {"const": "BTC-USDT"},
+        "orderId": {"$ref": "#/$defs/positiveLong"}
+      }
+    },
+    "prepareInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedActive", "artifact"],
+      "properties": {
+        "expectedActive": {"$ref": "#/$defs/identity"},
+        "artifact": {"$ref": "#/$defs/artifact"}
+      }
+    },
+    "activateInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedApplicationSequence", "expectedActive", "target"],
+      "properties": {
+        "expectedApplicationSequence": {"$ref": "#/$defs/positiveLong"},
+        "expectedActive": {"$ref": "#/$defs/identity"},
+        "target": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "changeMarketModeInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedApplicationSequence", "expectedMode", "targetMode", "operatorId"],
+      "properties": {
+        "expectedApplicationSequence": {"$ref": "#/$defs/positiveLong"},
+        "expectedMode": {"$ref": "#/$defs/mode"},
+        "targetMode": {"$ref": "#/$defs/mode"},
+        "operatorId": {"$ref": "#/$defs/operatorId"}
+      }
+    },
+    "massCancelInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedApplicationSequence", "expectedMode", "operatorId"],
+      "properties": {
+        "expectedApplicationSequence": {"$ref": "#/$defs/positiveLong"},
+        "expectedMode": {"$ref": "#/$defs/mode"},
+        "operatorId": {"$ref": "#/$defs/operatorId"}
+      }
+    },
+    "coverageId": {
+      "enum": [
+        "INVALID_STP_GROUP_ID",
+        "INVALID_STP_POLICY",
+        "INVALID_STP_INSTRUCTION",
+        "VALIDATION_FAILURE_ATOMIC",
+        "LEGACY_ZERO_NONE_COMPATIBILITY",
+        "GROUP_ZERO_NEVER_SELF",
+        "DIFFERENT_GROUP_TRADE",
+        "SAME_GROUP_NO_TRADE",
+        "CANCEL_TAKER_CANCELS_FULL_REMAINDER",
+        "CANCEL_TAKER_PRESERVES_MAKER",
+        "CANCEL_MAKER_CANCELS_MAKER",
+        "CANCEL_MAKER_CONTINUES_SAME_LEVEL",
+        "CANCEL_MAKER_CONTINUES_CROSS_LEVEL",
+        "CANCEL_BOTH_CANCELS_BOTH",
+        "PRICE_TIME_EVENT_INTERLEAVING",
+        "PARTIAL_TRADE_BEFORE_STP",
+        "GTC_REMAINDER_RESTS",
+        "IOC_STP_AND_REMAINDER_REASONS",
+        "FOK_TAKER_OR_BOTH_PRECHECK",
+        "FOK_CANCEL_MAKER_PRECHECK",
+        "FOK_FAILURE_ATOMIC",
+        "POST_ONLY_RAW_BOOK_FIRST",
+        "RULE_SET_ATTRIBUTION",
+        "MARKET_MODE_BEFORE_STP"
+      ]
+    }
+  }
+}

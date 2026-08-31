@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m07.check.v1.schema.json",
+  "title": "Matching M07 structured RED check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "status", "contractPlanVersion", "objective", "courseDeclaration", "inheritedBaseline", "fixedCorpus", "generator", "stpContract", "tutorialPermalinks", "requiredMutants", "missingCapabilities", "releaseTarget"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m07.check.v1"},
+    "unit": {"const": "M07"},
+    "status": {"const": "GOAL_NOT_IMPLEMENTED"},
+    "contractPlanVersion": {"const": "0.9"},
+    "objective": {"const": "Add opaque participant groups and taker-owned self-trade prevention to the deterministic matcher."},
+    "courseDeclaration": {"$ref": "#/$defs/courseDeclaration"},
+    "inheritedBaseline": {"$ref": "#/$defs/inheritedBaseline"},
+    "fixedCorpus": {"$ref": "#/$defs/fixedCorpus"},
+    "generator": {"$ref": "#/$defs/generator"},
+    "stpContract": {"$ref": "#/$defs/stpContract"},
+    "tutorialPermalinks": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "prefixItems": [
+        {"const": "stp-command-and-opaque-participant-group"},
+        {"const": "cancel-taker-maker-both-state-machine"},
+        {"const": "stp-price-time-scan-and-cross-level-cases"},
+        {"const": "stp-with-ioc-fok-post-only-and-rule-sets"},
+        {"const": "stp-property-evidence-and-mutants"}
+      ],
+      "items": false
+    },
+    "requiredMutants": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "prefixItems": [
+        {"const": "M07-SAME-GROUP-TRADE-ALLOWED"},
+        {"const": "M07-DIFFERENT-GROUP-CANCELED"},
+        {"const": "M07-CANCEL-TAKER-SKIPS-SELF"},
+        {"const": "M07-CANCEL-MAKER-CANCELS-TAKER"},
+        {"const": "M07-CANCEL-BOTH-LEAVES-MAKER"},
+        {"const": "M07-FOK-COUNTS-RAW-SELF-LIQUIDITY"},
+        {"const": "M07-POST-ONLY-RUNS-STP-FIRST"},
+        {"const": "M07-CANCEL-MAKER-BEST-LEVEL-ONLY"}
+      ],
+      "items": false
+    },
+    "missingCapabilities": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Z0-9_]+$"}
+    },
+    "releaseTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "verification"],
+      "properties": {
+        "unitTag": {"const": "course/m07-complete"},
+        "productRelease": {"type": "null"},
+        "verification": {"const": "M07_EVIDENCE_ONLY"}
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "courseDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case", "profile", "planVersion", "project", "unit", "lifecycle", "designDepth", "startRef", "completeRef", "m07Check.expectedStatus", "evidencePath"],
+      "properties": {
+        "case": {"const": "high-availability-cex"},
+        "profile": {"const": "SPOT-CEX-1.0"},
+        "planVersion": {"const": "0.9"},
+        "project": {"const": "matching"},
+        "unit": {"const": "M07"},
+        "lifecycle": {"const": "READY"},
+        "designDepth": {"const": "CONTRACT"},
+        "startRef": {"const": "course/m07-start"},
+        "completeRef": {"const": "course/m07-complete"},
+        "m07Check.expectedStatus": {"const": "GOAL_NOT_IMPLEMENTED"},
+        "evidencePath": {"const": "build/lab-evidence/M07/manifest.json"}
+      }
+    },
+    "inheritedBaseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "completeRef", "contractPlanVersion", "expectedStatus", "verification"],
+      "properties": {
+        "unit": {"const": "M06"},
+        "completeRef": {"const": "course/m06-complete"},
+        "contractPlanVersion": {"const": "0.8"},
+        "expectedStatus": {"const": "PASS"},
+        "verification": {"const": "ROOT_BUILD_GATES_M06"}
+      }
+    },
+    "fixedCorpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "schemaPath", "sha256", "scenarios", "commands", "commandCounts", "proofObligations", "schemaProbes"],
+      "properties": {
+        "path": {"const": "matching-testkit/src/test/resources/m07/fixtures/self-trade-prevention-v1.json"},
+        "schemaPath": {"const": "schemas/matching.m07.scenario.v1.schema.json"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "scenarios": {"const": 16},
+        "commands": {"const": 72},
+        "commandCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["PLACE", "CANCEL", "PREPARE_RULE_SET", "ACTIVATE_RULE_SET", "CHANGE_MARKET_MODE"],
+          "properties": {
+            "PLACE": {"const": 61},
+            "CANCEL": {"const": 8},
+            "PREPARE_RULE_SET": {"const": 1},
+            "ACTIVATE_RULE_SET": {"const": 1},
+            "CHANGE_MARKET_MODE": {"const": 1}
+          }
+        },
+        "proofObligations": {"const": 24},
+        "schemaProbes": {"const": 5}
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "schemaPath", "sha256", "algorithm", "baseSeed", "histories", "commandsPerHistory", "totalCommands", "lanes", "historiesPerLane", "laneIds", "coverageObligations", "schemaProbes"],
+      "properties": {
+        "path": {"const": "matching-testkit/src/test/resources/m07/fixtures/property-suite-v1.json"},
+        "schemaPath": {"const": "schemas/matching.m07.generator.v1.schema.json"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "algorithm": {"const": "splitmix64-v1"},
+        "baseSeed": {"const": "5707"},
+        "histories": {"const": 160},
+        "commandsPerHistory": {"const": 64},
+        "totalCommands": {"const": 10240},
+        "lanes": {"const": 5},
+        "historiesPerLane": {"const": 32},
+        "laneIds": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "prefixItems": [
+            {"const": "VALIDATION_AND_LEGACY"},
+            {"const": "CANCEL_TAKER"},
+            {"const": "CANCEL_MAKER_AND_CROSS_LEVEL"},
+            {"const": "CANCEL_BOTH"},
+            {"const": "POLICY_RULE_MODE_MIXED"}
+          ],
+          "items": false
+        },
+        "coverageObligations": {"const": 24},
+        "schemaProbes": {"const": 5}
+      }
+    },
+    "stpContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["participantBoundary", "accountRelationshipLookupInCore", "groupZeroNeverSelf", "policies", "validPairs", "legacyEntrypoints", "legacyMapping", "rawValidationOrder", "statefulPrecedence", "dispositionOwner", "samePositiveGroupTradeAllowed", "cancelTakerQuantity", "cancelMakerQuantity", "cancelMakerContinuesScan", "fokPreflight", "postOnlyPreflight", "marketModeGateBeforeStp"],
+      "properties": {
+        "participantBoundary": {"const": "UPSTREAM_RESOLVED_OPAQUE_EQUALITY_KEY"},
+        "accountRelationshipLookupInCore": {"const": false},
+        "groupZeroNeverSelf": {"const": true},
+        "policies": {"type": "array", "minItems": 4, "maxItems": 4, "prefixItems": [{"const": "NONE"}, {"const": "CANCEL_TAKER"}, {"const": "CANCEL_MAKER"}, {"const": "CANCEL_BOTH"}], "items": false},
+        "validPairs": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"const": "group==0&&policy==NONE"}, {"const": "group>0&&policy!=NONE"}], "items": false},
+        "legacyEntrypoints": {"type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{"const": "place"}, {"const": "placeRequest"}, {"const": "placeGoverned"}], "items": false},
+        "legacyMapping": {"const": "0/NONE"},
+        "rawValidationOrder": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"type": "string"}},
+        "statefulPrecedence": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"type": "string"}},
+        "dispositionOwner": {"const": "INCOMING_TAKER"},
+        "samePositiveGroupTradeAllowed": {"const": false},
+        "cancelTakerQuantity": {"const": "COMPLETE_CURRENT_TAKER_REMAINDER"},
+        "cancelMakerQuantity": {"const": "COMPLETE_CURRENT_MAKER_REMAINDER"},
+        "cancelMakerContinuesScan": {"const": true},
+        "fokPreflight": {"const": "READ_ONLY_STP_AWARE"},
+        "postOnlyPreflight": {"const": "RAW_OPPOSITE_BOOK_BEFORE_STP"},
+        "marketModeGateBeforeStp": {"const": true}
+      }
+    }
+  }
+}
