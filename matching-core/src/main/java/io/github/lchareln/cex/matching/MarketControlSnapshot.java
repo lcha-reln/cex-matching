@@ -10,13 +10,21 @@ public record MarketControlSnapshot(
     long controlRevision,
     Optional<ActivationFence> lastActivationFence,
     ApplicationSequence nextApplicationSequence,
-    AcceptanceSequence nextAcceptanceSequence) {
+    AcceptanceSequence nextAcceptanceSequence,
+    MarketMode marketMode,
+    long modeRevision,
+    Optional<ModeTransitionFence> lastModeTransitionFence,
+    Optional<MassCancelFence> lastMassCancelFence) {
   public MarketControlSnapshot {
     Objects.requireNonNull(activeRuleSet, "activeRuleSet");
     preparedRuleSet = Objects.requireNonNull(preparedRuleSet, "preparedRuleSet");
     lastActivationFence = Objects.requireNonNull(lastActivationFence, "lastActivationFence");
     Objects.requireNonNull(nextApplicationSequence, "nextApplicationSequence");
     Objects.requireNonNull(nextAcceptanceSequence, "nextAcceptanceSequence");
+    Objects.requireNonNull(marketMode, "marketMode");
+    lastModeTransitionFence =
+        Objects.requireNonNull(lastModeTransitionFence, "lastModeTransitionFence");
+    lastMassCancelFence = Objects.requireNonNull(lastMassCancelFence, "lastMassCancelFence");
     if (!activeRuleSet.contentHashMatches()) {
       throw new IllegalArgumentException("active rule-set content hash must match");
     }
@@ -40,6 +48,60 @@ public record MarketControlSnapshot(
             throw new IllegalArgumentException("last activation fence revision changed");
           }
         });
+    if (modeRevision < 0 || (modeRevision == 0) != lastModeTransitionFence.isEmpty()) {
+      throw new IllegalArgumentException("mode revision and transition fence must agree");
+    }
+    if (modeRevision == 0 && marketMode != MarketMode.OPEN) {
+      throw new IllegalArgumentException("untransitioned market mode must be OPEN");
+    }
+    lastModeTransitionFence.ifPresent(
+        fence -> {
+          if (fence.modeRevision() != modeRevision || fence.activeMode() != marketMode) {
+            throw new IllegalArgumentException("last mode transition and active mode must agree");
+          }
+          if (fence.appliedCommandSequence().value() >= nextApplicationSequence.value()
+              || fence.nextAcceptanceSequence().value() > nextAcceptanceSequence.value()) {
+            throw new IllegalArgumentException("last mode transition is ahead of snapshot state");
+          }
+        });
+    lastMassCancelFence.ifPresent(
+        fence -> {
+          if (modeRevision == 0
+              || fence.modeRevision() > modeRevision
+              || fence.appliedCommandSequence().value() >= nextApplicationSequence.value()) {
+            throw new IllegalArgumentException("last Mass Cancel is ahead of snapshot state");
+          }
+          fence
+              .lastCanceledSequence()
+              .ifPresent(
+                  sequence -> {
+                    if (sequence.value() >= nextAcceptanceSequence.value()) {
+                      throw new IllegalArgumentException(
+                          "last Mass Cancel canceled an unaccepted sequence");
+                    }
+                  });
+        });
+  }
+
+  /** Preserves the M05 snapshot constructor with bootstrap operating-mode state. */
+  public MarketControlSnapshot(
+      MarketRuleSetArtifact activeRuleSet,
+      Optional<MarketRuleSetArtifact> preparedRuleSet,
+      long controlRevision,
+      Optional<ActivationFence> lastActivationFence,
+      ApplicationSequence nextApplicationSequence,
+      AcceptanceSequence nextAcceptanceSequence) {
+    this(
+        activeRuleSet,
+        preparedRuleSet,
+        controlRevision,
+        lastActivationFence,
+        nextApplicationSequence,
+        nextAcceptanceSequence,
+        MarketMode.OPEN,
+        0,
+        Optional.empty(),
+        Optional.empty());
   }
 
   public RuleSetIdentity activeIdentity() {

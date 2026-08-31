@@ -7,7 +7,9 @@ public sealed interface MarketControlEvent
     permits MarketControlEvent.RuleSetPrepared,
         MarketControlEvent.PrepareRejected,
         MarketControlEvent.RuleSetActivated,
-        MarketControlEvent.ActivateRejected {
+        MarketControlEvent.ActivateRejected,
+        MarketControlEvent.ModeChanged,
+        MarketControlEvent.ModeChangeRejected {
 
   ApplicationSequence applicationSequence();
 
@@ -76,6 +78,45 @@ public sealed interface MarketControlEvent
       Objects.requireNonNull(applicationSequence, "applicationSequence");
       Objects.requireNonNull(activeRuleSet, "activeRuleSet");
       Objects.requireNonNull(target, "target");
+      Objects.requireNonNull(code, "code");
+    }
+  }
+
+  /** The requested operating mode became active at one serialized application boundary. */
+  record ModeChanged(
+      ApplicationSequence applicationSequence,
+      OperatorId operatorId,
+      MarketMode previousMode,
+      MarketMode activeMode,
+      ModeTransitionFence transitionFence)
+      implements MarketControlEvent {
+    public ModeChanged {
+      Objects.requireNonNull(applicationSequence, "applicationSequence");
+      Objects.requireNonNull(operatorId, "operatorId");
+      Objects.requireNonNull(previousMode, "previousMode");
+      Objects.requireNonNull(activeMode, "activeMode");
+      Objects.requireNonNull(transitionFence, "transitionFence");
+      if (!applicationSequence.equals(transitionFence.appliedCommandSequence())
+          || previousMode != transitionFence.previousMode()
+          || activeMode != transitionFence.activeMode()) {
+        throw new IllegalArgumentException("mode event and transition fence must agree");
+      }
+    }
+  }
+
+  /** A mode request failed while retaining current mode, book, rules, and acceptance state. */
+  record ModeChangeRejected(
+      ApplicationSequence applicationSequence,
+      OperatorId operatorId,
+      MarketMode observedMode,
+      MarketMode targetMode,
+      ChangeMarketModeRejectionCode code)
+      implements MarketControlEvent {
+    public ModeChangeRejected {
+      Objects.requireNonNull(applicationSequence, "applicationSequence");
+      Objects.requireNonNull(operatorId, "operatorId");
+      Objects.requireNonNull(observedMode, "observedMode");
+      Objects.requireNonNull(targetMode, "targetMode");
       Objects.requireNonNull(code, "code");
     }
   }

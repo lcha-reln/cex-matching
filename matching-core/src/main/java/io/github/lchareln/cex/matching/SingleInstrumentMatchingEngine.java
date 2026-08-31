@@ -2,6 +2,7 @@ package io.github.lchareln.cex.matching;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -13,7 +14,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
-/** Single-writer, in-memory price-time matcher with M05 versioned order-entry governance. */
+/** Single-writer, in-memory price-time matcher with M06 deterministic market controls. */
 public final class SingleInstrumentMatchingEngine {
   private final PlaceLimitOrderValidator placeValidator = new PlaceLimitOrderValidator();
   private final ExecutionPolicyValidator executionPolicyValidator = new ExecutionPolicyValidator();
@@ -29,6 +30,10 @@ public final class SingleInstrumentMatchingEngine {
   private MarketRuleSetArtifact preparedRuleSet;
   private long controlRevision;
   private ActivationFence lastActivationFence;
+  private MarketMode marketMode = MarketMode.OPEN;
+  private long modeRevision;
+  private ModeTransitionFence lastModeTransitionFence;
+  private MassCancelFence lastMassCancelFence;
 
   public SingleInstrumentMatchingEngine() {
     this(1, 1);
@@ -105,6 +110,13 @@ public final class SingleInstrumentMatchingEngine {
                   command.orderId(), PlaceRejectionCode.PRICE_OUTSIDE_ACTIVE_BAND)),
           applied);
     }
+    if (marketMode != MarketMode.OPEN) {
+      return businessResult(
+          List.of(
+              new MatchingEvent.PlaceRejected(
+                  command.orderId(), PlaceRejectionCode.MARKET_NOT_OPEN)),
+          applied);
+    }
     if (policy == ExecutionPolicy.FOK && !canFillCompletely(command)) {
       return businessResult(
           List.of(
@@ -157,7 +169,7 @@ public final class SingleInstrumentMatchingEngine {
     if (taker.remainingQuantityLots == 0) {
       taker.markFilled();
     } else if (policy == ExecutionPolicy.IOC) {
-      long canceledQuantityLots = taker.cancelAcceptedRemainder();
+      long canceledQuantityLots = taker.cancelAcceptedRemainder(applied.current());
       events.add(
           new MatchingEvent.RemainderCanceled(
               taker.sequence,
@@ -197,6 +209,13 @@ public final class SingleInstrumentMatchingEngine {
     }
 
     CancelOrder command = cancelValidator.normalize(input);
+    if (marketMode == MarketMode.HALTED) {
+      return businessResult(
+          List.of(
+              new MatchingEvent.CancelRejected(
+                  command.orderId(), CancelRejectionCode.MARKET_NOT_CANCELABLE)),
+          applied);
+    }
     OrderState order = ordersById.get(command.orderId());
     if (order == null) {
       return businessResult(
@@ -244,7 +263,7 @@ public final class SingleInstrumentMatchingEngine {
     if (level.isEmpty() && !side.remove(order.priceTicks.value(), level)) {
       throw new IllegalStateException("empty price level disappeared during single-writer cancel");
     }
-    order.markCanceled();
+    order.markCanceled(CancellationOrigin.USER_REQUEST, applied.current());
 
     assertConsistentState();
     return businessResult(List.of(canceled), applied);
@@ -360,6 +379,126 @@ public final class SingleInstrumentMatchingEngine {
     return controlResult(event, applied);
   }
 
+  /** Changes the replicated-ready operating mode at the declared application boundary. */
+  public MarketControlBatch changeMarketMode(ChangeMarketMode command) {
+    Objects.requireNonNull(command, "command");
+    assertConsistentState();
+    AppliedCommand applied = nextAppliedCommand();
+
+    if (!command.expectedApplicationSequence().equals(applied.current())) {
+      return modeChangeRejection(
+          command, ChangeMarketModeRejectionCode.APPLICATION_SEQUENCE_MISMATCH, applied);
+    }
+    if (command.expectedMode() != marketMode) {
+      return modeChangeRejection(
+          command, ChangeMarketModeRejectionCode.EXPECTED_MODE_MISMATCH, applied);
+    }
+    if (command.targetMode() == marketMode) {
+      return modeChangeRejection(command, ChangeMarketModeRejectionCode.NO_MODE_CHANGE, applied);
+    }
+    if (!isPermittedTransition(marketMode, command.targetMode())) {
+      return modeChangeRejection(
+          command, ChangeMarketModeRejectionCode.INVALID_TRANSITION, applied);
+    }
+
+    final long nextModeRevision;
+    try {
+      nextModeRevision = Math.incrementExact(modeRevision);
+    } catch (ArithmeticException failure) {
+      throw new IllegalStateException("mode revision exhausted before state mutation", failure);
+    }
+    MarketMode previousMode = marketMode;
+    ModeTransitionFence fence =
+        new ModeTransitionFence(
+            applied.current(),
+            nextModeRevision,
+            previousMode,
+            command.targetMode(),
+            new AcceptanceSequence(nextAcceptanceSequence));
+    marketMode = command.targetMode();
+    modeRevision = nextModeRevision;
+    lastModeTransitionFence = fence;
+
+    MarketControlEvent.ModeChanged event =
+        new MarketControlEvent.ModeChanged(
+            applied.current(), command.operatorId(), previousMode, command.targetMode(), fence);
+    assertConsistentState();
+    return controlResult(event, applied);
+  }
+
+  /** Atomically terminates every resting order in global acceptance-sequence order. */
+  public MassCancelBatch massCancel(MassCancel command) {
+    Objects.requireNonNull(command, "command");
+    assertConsistentState();
+    AppliedCommand applied = nextAppliedCommand();
+
+    if (!command.expectedApplicationSequence().equals(applied.current())) {
+      return massCancelRejection(
+          command, MassCancelRejectionCode.APPLICATION_SEQUENCE_MISMATCH, applied);
+    }
+    if (command.expectedMode() != marketMode) {
+      return massCancelRejection(command, MassCancelRejectionCode.EXPECTED_MODE_MISMATCH, applied);
+    }
+    if (marketMode != MarketMode.HALTED) {
+      return massCancelRejection(command, MassCancelRejectionCode.MARKET_NOT_HALTED, applied);
+    }
+
+    List<OrderState> frozenOrders =
+        ordersById.values().stream()
+            .filter(order -> order.lifecycle == Lifecycle.RESTING)
+            .sorted(Comparator.comparingLong(order -> order.sequence.value()))
+            .toList();
+    long canceledOrderCount = frozenOrders.size();
+    final int eventCapacity;
+    try {
+      eventCapacity = Math.addExact(frozenOrders.size(), 2);
+    } catch (ArithmeticException failure) {
+      throw new IllegalStateException(
+          "Mass Cancel event capacity exhausted before mutation", failure);
+    }
+    List<MassCancelEvent> events = new ArrayList<>(eventCapacity);
+    events.add(
+        new MassCancelEvent.Started(
+            applied.current(), command.operatorId(), marketMode, modeRevision, canceledOrderCount));
+    for (OrderState order : frozenOrders) {
+      events.add(
+          new MassCancelEvent.OrderCanceled(
+              applied.current(),
+              command.operatorId(),
+              order.sequence,
+              order.orderId,
+              order.side,
+              order.priceTicks,
+              new QuantityLots(order.remainingQuantityLots),
+              order.admissionRuleSet,
+              activeRuleSet.identity()));
+    }
+    events.add(
+        new MassCancelEvent.Completed(
+            applied.current(), command.operatorId(), marketMode, modeRevision, canceledOrderCount));
+
+    Optional<AcceptanceSequence> firstCanceled =
+        frozenOrders.isEmpty() ? Optional.empty() : Optional.of(frozenOrders.getFirst().sequence);
+    Optional<AcceptanceSequence> lastCanceled =
+        frozenOrders.isEmpty() ? Optional.empty() : Optional.of(frozenOrders.getLast().sequence);
+    MassCancelFence fence =
+        new MassCancelFence(
+            applied.current(),
+            modeRevision,
+            command.operatorId(),
+            canceledOrderCount,
+            firstCanceled,
+            lastCanceled);
+
+    for (OrderState order : frozenOrders) {
+      removeRestingOrder(order);
+      order.markCanceled(CancellationOrigin.OPERATOR_MASS_CANCEL, applied.current());
+    }
+    lastMassCancelFence = fence;
+    assertConsistentState();
+    return massCancelResult(events, applied);
+  }
+
   /** Returns a detached immutable full-depth snapshot. */
   public OrderBookSnapshot snapshot() {
     assertConsistentState();
@@ -393,6 +532,27 @@ public final class SingleInstrumentMatchingEngine {
         || (lastActivationFence != null
             && lastActivationFence.controlRevision() != controlRevision)) {
       throw new IllegalStateException("control revision and last activation fence disagree");
+    }
+    if (marketMode == null
+        || modeRevision < 0
+        || (modeRevision == 0) != (lastModeTransitionFence == null)
+        || (lastModeTransitionFence != null
+            && (lastModeTransitionFence.modeRevision() != modeRevision
+                || lastModeTransitionFence.activeMode() != marketMode
+                || lastModeTransitionFence.appliedCommandSequence().value()
+                    > nextApplicationSequence
+                || lastModeTransitionFence.nextAcceptanceSequence().value()
+                    > nextAcceptanceSequence))) {
+      throw new IllegalStateException("mode revision and last transition fence disagree");
+    }
+    if (lastMassCancelFence != null
+        && (lastMassCancelFence.modeRevision() > modeRevision
+            || lastMassCancelFence.appliedCommandSequence().value() > nextApplicationSequence
+            || lastMassCancelFence
+                .lastCanceledSequence()
+                .map(sequence -> sequence.value() >= nextAcceptanceSequence)
+                .orElse(false))) {
+      throw new IllegalStateException("last Mass Cancel fence is ahead of matcher state");
     }
 
     Set<OrderId> restingIds = new HashSet<>();
@@ -447,7 +607,7 @@ public final class SingleInstrumentMatchingEngine {
             events,
             detachedSnapshot(),
             new MarketExecutionContext(
-                activeRuleSet.identity(), controlRevision, applied.current()));
+                activeRuleSet.identity(), controlRevision, applied.current(), marketMode));
     commitApplication(applied);
     assertConsistentState();
     return result;
@@ -469,11 +629,38 @@ public final class SingleInstrumentMatchingEngine {
         applied);
   }
 
+  private MarketControlBatch modeChangeRejection(
+      ChangeMarketMode command, ChangeMarketModeRejectionCode code, AppliedCommand applied) {
+    return controlResult(
+        new MarketControlEvent.ModeChangeRejected(
+            applied.current(), command.operatorId(), marketMode, command.targetMode(), code),
+        applied);
+  }
+
+  private MassCancelBatch massCancelRejection(
+      MassCancel command, MassCancelRejectionCode code, AppliedCommand applied) {
+    return massCancelResult(
+        List.of(
+            new MassCancelEvent.Rejected(
+                applied.current(), command.operatorId(), marketMode, code)),
+        applied);
+  }
+
   private MarketControlBatch controlResult(MarketControlEvent event, AppliedCommand applied) {
     assertConsistentState();
     MarketControlBatch result =
         new MarketControlBatch(
             List.of(event), detachedMarketControlSnapshot(applied.following()), detachedSnapshot());
+    commitApplication(applied);
+    assertConsistentState();
+    return result;
+  }
+
+  private MassCancelBatch massCancelResult(List<MassCancelEvent> events, AppliedCommand applied) {
+    assertConsistentState();
+    MassCancelBatch result =
+        new MassCancelBatch(
+            events, detachedMarketControlSnapshot(applied.following()), detachedSnapshot());
     commitApplication(applied);
     assertConsistentState();
     return result;
@@ -495,6 +682,28 @@ public final class SingleInstrumentMatchingEngine {
         side.computeIfAbsent(order.priceTicks.value(), ignored -> new PriceLevelState());
     level.add(order);
     order.markResting();
+  }
+
+  private void removeRestingOrder(OrderState order) {
+    if (order.lifecycle != Lifecycle.RESTING || order.remainingQuantityLots <= 0) {
+      throw new IllegalStateException("only a positive resting order can leave the book");
+    }
+    NavigableMap<Long, PriceLevelState> side = order.side == Side.BUY ? bids : asks;
+    PriceLevelState level = side.get(order.priceTicks.value());
+    if (level == null || level.order(order.orderId) != order || !level.remove(order)) {
+      throw new IllegalStateException("active order disappeared during single-writer removal");
+    }
+    if (level.isEmpty() && !side.remove(order.priceTicks.value(), level)) {
+      throw new IllegalStateException("empty price level disappeared during single-writer removal");
+    }
+  }
+
+  private static boolean isPermittedTransition(MarketMode current, MarketMode target) {
+    return switch (current) {
+      case OPEN -> target == MarketMode.CANCEL_ONLY || target == MarketMode.HALTED;
+      case CANCEL_ONLY -> target == MarketMode.OPEN || target == MarketMode.HALTED;
+      case HALTED -> target == MarketMode.CANCEL_ONLY;
+    };
   }
 
   private void match(
@@ -615,7 +824,11 @@ public final class SingleInstrumentMatchingEngine {
         controlRevision,
         Optional.ofNullable(lastActivationFence),
         new ApplicationSequence(nextApplication),
-        new AcceptanceSequence(nextAcceptanceSequence));
+        new AcceptanceSequence(nextAcceptanceSequence),
+        marketMode,
+        modeRevision,
+        Optional.ofNullable(lastModeTransitionFence),
+        Optional.ofNullable(lastMassCancelFence));
   }
 
   private static List<OrderBookSnapshot.PriceLevel> snapshotSide(
@@ -644,6 +857,12 @@ public final class SingleInstrumentMatchingEngine {
     RESTING,
     FILLED,
     CANCELED
+  }
+
+  private enum CancellationOrigin {
+    USER_REQUEST,
+    OPERATOR_MASS_CANCEL,
+    IOC_REMAINDER
   }
 
   private record AppliedCommand(ApplicationSequence current, long following) {
@@ -709,6 +928,8 @@ public final class SingleInstrumentMatchingEngine {
     private long filledQuantityLots;
     private long canceledQuantityLots;
     private Lifecycle lifecycle = Lifecycle.ACCEPTED;
+    private CancellationOrigin cancellationOrigin;
+    private ApplicationSequence cancellationApplicationSequence;
 
     private OrderState(
         AcceptanceSequence sequence,
@@ -751,22 +972,28 @@ public final class SingleInstrumentMatchingEngine {
       lifecycle = Lifecycle.FILLED;
     }
 
-    private void markCanceled() {
+    private void markCanceled(CancellationOrigin origin, ApplicationSequence applicationSequence) {
       if (lifecycle != Lifecycle.RESTING || remainingQuantityLots <= 0) {
         throw new IllegalStateException("invalid canceled transition");
       }
+      cancellationOrigin = Objects.requireNonNull(origin, "origin");
+      cancellationApplicationSequence =
+          Objects.requireNonNull(applicationSequence, "applicationSequence");
       canceledQuantityLots = remainingQuantityLots;
       remainingQuantityLots = 0;
       lifecycle = Lifecycle.CANCELED;
     }
 
-    private long cancelAcceptedRemainder() {
+    private long cancelAcceptedRemainder(ApplicationSequence applicationSequence) {
       if (lifecycle != Lifecycle.ACCEPTED
           || executionPolicy != ExecutionPolicy.IOC
           || remainingQuantityLots <= 0) {
         throw new IllegalStateException("invalid IOC remainder cancellation");
       }
       long canceled = remainingQuantityLots;
+      cancellationOrigin = CancellationOrigin.IOC_REMAINDER;
+      cancellationApplicationSequence =
+          Objects.requireNonNull(applicationSequence, "applicationSequence");
       canceledQuantityLots = canceled;
       remainingQuantityLots = 0;
       lifecycle = Lifecycle.CANCELED;
@@ -802,6 +1029,10 @@ public final class SingleInstrumentMatchingEngine {
       if (lifecycle == Lifecycle.CANCELED
           && (remainingQuantityLots != 0 || canceledQuantityLots <= 0)) {
         throw new IllegalStateException("canceled order has an invalid quantity partition");
+      }
+      if ((lifecycle == Lifecycle.CANCELED)
+          != (cancellationOrigin != null && cancellationApplicationSequence != null)) {
+        throw new IllegalStateException("canceled order lost its terminal attribution");
       }
       if (executionPolicy == ExecutionPolicy.IOC && lifecycle == Lifecycle.RESTING) {
         throw new IllegalStateException("IOC order cannot remain resting");

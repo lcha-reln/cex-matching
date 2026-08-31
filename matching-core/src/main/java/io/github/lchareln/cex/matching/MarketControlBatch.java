@@ -51,6 +51,21 @@ public record MarketControlBatch(
           throw new IllegalArgumentException("activate rejection and active snapshot must agree");
         }
       }
+      case MarketControlEvent.ModeChanged changed -> {
+        if (changed.activeMode() != controlAfter.marketMode()
+            || changed.transitionFence().modeRevision() != controlAfter.modeRevision()
+            || !controlAfter
+                .lastModeTransitionFence()
+                .orElseThrow()
+                .equals(changed.transitionFence())) {
+          throw new IllegalArgumentException("mode event and control snapshot must agree");
+        }
+      }
+      case MarketControlEvent.ModeChangeRejected rejected -> {
+        if (rejected.observedMode() != controlAfter.marketMode()) {
+          throw new IllegalArgumentException("mode rejection and control snapshot must agree");
+        }
+      }
     }
   }
 }

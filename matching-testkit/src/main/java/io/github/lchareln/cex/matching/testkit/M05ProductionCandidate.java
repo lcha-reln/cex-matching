@@ -188,6 +188,10 @@ final class M05ProductionCandidate implements M05Candidate {
               fence(activated.activationFence()));
       case MarketControlEvent.ActivateRejected rejected ->
           new M05SemanticEvent.ActivateRuleSetRejected(rejected.code().name());
+      case MarketControlEvent.ModeChanged ignored ->
+          throw new IllegalStateException("M05 projection received an M06 mode transition");
+      case MarketControlEvent.ModeChangeRejected ignored ->
+          throw new IllegalStateException("M05 projection received an M06 mode rejection");
     };
   }
 
