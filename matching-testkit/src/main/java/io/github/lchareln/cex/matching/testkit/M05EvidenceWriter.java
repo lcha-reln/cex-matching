@@ -192,7 +192,7 @@ public final class M05EvidenceWriter {
         "Activation leaves resting orders untouched while Accepted, Trade, Rested, Cancel, and rejection events retain admission and execution rule identity.",
         check.path("invariants"),
         staging,
-        List.of("reports/invariants.json", "reports/fixed-event-batches.json"));
+        List.of("reports/check.json"));
     ObjectNode generated = JsonSupport.MAPPER.createObjectNode();
     generated.set("generator", check.path("generator"));
     generated.set("properties", check.path("properties"));
