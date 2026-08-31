@@ -50,6 +50,7 @@ final class M01ProductionCandidate implements M01Candidate {
             case MatchingEvent.PlaceRejected rejected -> throw unexpectedM02Event(rejected);
             case MatchingEvent.CancelRejected rejected -> throw unexpectedM02Event(rejected);
             case MatchingEvent.RemainderCanceled canceled -> throw unexpectedM04Event(canceled);
+            case MatchingEvent.SelfTradePrevented prevented -> throw unexpectedM07Event(prevented);
             case MatchingEvent.Canceled canceled -> throw unexpectedM02Event(canceled);
           });
     }
@@ -64,6 +65,11 @@ final class M01ProductionCandidate implements M01Candidate {
   private static IllegalStateException unexpectedM04Event(MatchingEvent event) {
     return new IllegalStateException(
         "M01 GTC candidate emitted an M04 policy event: " + event.getClass().getSimpleName());
+  }
+
+  private static IllegalStateException unexpectedM07Event(MatchingEvent event) {
+    return new IllegalStateException(
+        "M01 GTC candidate emitted an M07 STP event: " + event.getClass().getSimpleName());
   }
 
   private static M01ScenarioPack.Book book(OrderBookSnapshot snapshot) {

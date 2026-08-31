@@ -76,6 +76,7 @@ final class M03ProductionCandidate implements M03Candidate {
                     value(rested.priceTicks().value()),
                     value(rested.remainingQuantityLots().value()));
             case MatchingEvent.RemainderCanceled canceled -> throw unexpectedM04Event(canceled);
+            case MatchingEvent.SelfTradePrevented prevented -> throw unexpectedM07Event(prevented);
             case MatchingEvent.Canceled canceled ->
                 new SemanticEvent.Canceled(
                     value(canceled.sequence().value()),
@@ -91,6 +92,11 @@ final class M03ProductionCandidate implements M03Candidate {
   private static IllegalStateException unexpectedM04Event(MatchingEvent event) {
     return new IllegalStateException(
         "M03 GTC candidate emitted an M04 policy event: " + event.getClass().getSimpleName());
+  }
+
+  private static IllegalStateException unexpectedM07Event(MatchingEvent event) {
+    return new IllegalStateException(
+        "M03 candidate emitted an M07 STP event: " + event.getClass().getSimpleName());
   }
 
   private static SemanticBook book(OrderBookSnapshot snapshot) {

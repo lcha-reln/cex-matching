@@ -159,6 +159,9 @@ final class M05ProductionCandidate implements M05Candidate {
               canceled.reason().name(),
               identity(canceled.admissionRuleSet()),
               executionRuleSet);
+      case MatchingEvent.SelfTradePrevented prevented ->
+          throw new IllegalStateException(
+              "M05 projection received an M07 STP event: " + prevented.takerOrderId().value());
       case MatchingEvent.Canceled canceled ->
           new M05SemanticEvent.Canceled(
               value(canceled.sequence()),

@@ -86,6 +86,7 @@ final class M04ProductionCandidate implements M04Candidate {
                     value(canceled.priceTicks().value()),
                     value(canceled.canceledQuantityLots().value()),
                     canceled.reason().name());
+            case MatchingEvent.SelfTradePrevented prevented -> throw unexpectedM07Event(prevented);
             case MatchingEvent.Canceled canceled ->
                 new SemanticEvent.Canceled(
                     value(canceled.sequence().value()),
@@ -96,6 +97,11 @@ final class M04ProductionCandidate implements M04Candidate {
           });
     }
     return List.copyOf(result);
+  }
+
+  private static IllegalStateException unexpectedM07Event(MatchingEvent event) {
+    return new IllegalStateException(
+        "M04 candidate emitted an M07 STP event: " + event.getClass().getSimpleName());
   }
 
   private static SemanticBook book(OrderBookSnapshot snapshot) {
