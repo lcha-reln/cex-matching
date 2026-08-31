@@ -17,6 +17,7 @@ public final class LocalMatchingRuntime implements AutoCloseable {
 
   private RuntimeState state = RuntimeState.OPEN;
   private String failureDetail = "";
+  private boolean submitInProgress;
 
   private LocalMatchingRuntime(
       WalConfig config,
@@ -59,17 +60,34 @@ public final class LocalMatchingRuntime implements AutoCloseable {
 
   public synchronized SubmissionResult submit(byte[] canonicalEnvelope) {
     Objects.requireNonNull(canonicalEnvelope, "canonicalEnvelope");
+    if (submitInProgress) {
+      state = RuntimeState.FAILED_CLOSED;
+      failureDetail = "REENTRANT_SUBMIT: a fault callback attempted nested ingress";
+      return new SubmissionResult.FailedClosed(failureDetail);
+    }
     if (state != RuntimeState.OPEN) {
       return new SubmissionResult.FailedClosed(failureDetail);
     }
+    submitInProgress = true;
+    try {
+      return submitOnce(canonicalEnvelope);
+    } finally {
+      submitInProgress = false;
+    }
+  }
+
+  private SubmissionResult submitOnce(byte[] canonicalEnvelope) {
+    // The caller retains its byte array. Own one immutable-by-convention copy so validation,
+    // journal append, apply, and identity binding all refer to exactly the same bytes.
+    byte[] ownedEnvelope = canonicalEnvelope.clone();
 
     final M08Envelope envelope;
     try {
-      envelope = envelopeCodec.decodeCanonical(canonicalEnvelope, config.shardId());
+      envelope = envelopeCodec.decodeCanonical(ownedEnvelope, config.shardId());
     } catch (StructuralRejectionException rejection) {
       return new SubmissionResult.StructuralRejected(rejection.code(), rejection.getMessage());
     }
-    if (!wal.acceptsEnvelope(canonicalEnvelope.length)) {
+    if (!wal.acceptsEnvelope(ownedEnvelope.length)) {
       return new SubmissionResult.StructuralRejected(
           StructuralRejectionCode.ENVELOPE_SIZE_LIMIT,
           "canonical envelope exceeds configured M08W1 record capacity");
@@ -92,22 +110,34 @@ public final class LocalMatchingRuntime implements AutoCloseable {
     long applicationSequence = commandApplier.nextApplicationSequence();
     WalPosition position;
     try {
-      position = wal.append(canonicalEnvelope, applicationSequence);
+      position = wal.append(ownedEnvelope, applicationSequence);
     } catch (WalAppendException failure) {
       return failClosed(failure.attemptedPosition(), "APPEND_OR_FORCE", describeFailure(failure));
     } catch (IOException | RuntimeException failure) {
       return failClosed(Optional.empty(), "APPEND_OR_FORCE", describeFailure(failure));
     }
+    if (state != RuntimeState.OPEN) {
+      return new SubmissionResult.DurabilityUnknown(
+          Optional.of(position), "REENTRANT_SUBMIT", failureDetail);
+    }
 
     try {
       faultInjector.hit(FaultPoint.BEFORE_LIVE_APPLY);
+      requireOpenAfterFaultCallback();
       CanonicalResult result = commandApplier.apply(envelope.command());
       verifyApplied(position, result);
       identities.commit(envelope, position, result);
       faultInjector.hit(FaultPoint.AFTER_LIVE_APPLY_BEFORE_ACK);
+      requireOpenAfterFaultCallback();
       return new SubmissionResult.NewDurablyApplied(position, result);
     } catch (IOException | RuntimeException failure) {
       return failClosed(Optional.of(position), "APPLY_OR_ACK", describeFailure(failure));
+    }
+  }
+
+  private void requireOpenAfterFaultCallback() throws IOException {
+    if (state != RuntimeState.OPEN) {
+      throw new IOException(failureDetail);
     }
   }
 

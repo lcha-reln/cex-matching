@@ -27,8 +27,7 @@ class SegmentedWalRecoveryTest {
 
   @Test
   void genesisAndRolloverPublishForcedHeadersWithContiguousCoordinates() throws Exception {
-    WalConfig config =
-        new WalConfig(temporaryDirectory.resolve("rollover"), SHARD, MAX_SEGMENT, MAX_RECORD);
+    WalConfig config = new WalConfig(directory("rollover"), SHARD, MAX_SEGMENT, MAX_RECORD);
     byte[] fullEnvelope = new byte[M08EnvelopeCodec.MAX_ENVELOPE_BYTES];
     fullEnvelope[0] = 1;
     fullEnvelope[fullEnvelope.length - 1] = 2;
@@ -58,7 +57,7 @@ class SegmentedWalRecoveryTest {
   void rolloverNeverWritesFirstRecordBeforeRenameAndDirectoryForceComplete() throws Exception {
     for (FaultPoint point :
         List.of(FaultPoint.AFTER_SEGMENT_ATOMIC_RENAME, FaultPoint.AFTER_DIRECTORY_FORCE)) {
-      Path directory = temporaryDirectory.resolve("rollover-fault-" + point);
+      Path directory = directory("rollover-fault-" + point);
       WalConfig config = new WalConfig(directory, SHARD, MAX_SEGMENT, MAX_RECORD);
       byte[] fullEnvelope = new byte[M08EnvelopeCodec.MAX_ENVELOPE_BYTES];
       NthFault injector = new NthFault(point, 2);
@@ -82,7 +81,7 @@ class SegmentedWalRecoveryTest {
   void failedTempHeaderPublicationIsNeverRecoveredAsAuthority() throws Exception {
     for (FaultPoint point :
         List.of(FaultPoint.AFTER_SEGMENT_HEADER_WRITE, FaultPoint.AFTER_SEGMENT_HEADER_FORCE)) {
-      Path directory = temporaryDirectory.resolve("header-fault-" + point);
+      Path directory = directory("header-fault-" + point);
       WalConfig config = WalConfig.defaults(directory, SHARD);
       assertThrows(IOException.class, () -> SegmentedWal.open(config, new NthFault(point, 1)));
       try (SegmentedWal recovered = SegmentedWal.open(config, FaultInjector.NONE)) {
@@ -94,7 +93,7 @@ class SegmentedWalRecoveryTest {
 
   @Test
   void secondWriterCannotOpenTheSameDirectory() throws Exception {
-    WalConfig config = WalConfig.defaults(temporaryDirectory.resolve("lock"), SHARD);
+    WalConfig config = WalConfig.defaults(directory("lock"), SHARD);
     try (SegmentedWal first = SegmentedWal.open(config, FaultInjector.NONE)) {
       assertEquals(1, first.nextWalSequence());
       assertThrows(
@@ -104,7 +103,7 @@ class SegmentedWalRecoveryTest {
 
   @Test
   void onlyFinalIncompleteTailIsTruncatedAndForced() throws Exception {
-    WalConfig config = WalConfig.defaults(temporaryDirectory.resolve("final-tail"), SHARD);
+    WalConfig config = WalConfig.defaults(directory("final-tail"), SHARD);
     byte[] envelope = new byte[] {1, 2, 3};
     Path segment = config.directory().resolve("segment-00000000000000000001.m08w1");
     long goodSize;
@@ -129,8 +128,7 @@ class SegmentedWalRecoveryTest {
 
   @Test
   void incompleteTailInNonFinalSegmentFailsClosed() throws Exception {
-    WalConfig config =
-        new WalConfig(temporaryDirectory.resolve("mid-tail"), SHARD, MAX_SEGMENT, MAX_RECORD);
+    WalConfig config = new WalConfig(directory("mid-tail"), SHARD, MAX_SEGMENT, MAX_RECORD);
     byte[] fullEnvelope = new byte[M08EnvelopeCodec.MAX_ENVELOPE_BYTES];
     try (SegmentedWal wal = SegmentedWal.open(config, FaultInjector.NONE)) {
       wal.append(fullEnvelope, 1);
@@ -145,7 +143,7 @@ class SegmentedWalRecoveryTest {
 
   @Test
   void completeMidLogOrFinalCrcCorruptionIsNeverTailRepair() throws Exception {
-    WalConfig config = WalConfig.defaults(temporaryDirectory.resolve("crc"), SHARD);
+    WalConfig config = WalConfig.defaults(directory("crc"), SHARD);
     try (SegmentedWal wal = SegmentedWal.open(config, FaultInjector.NONE)) {
       wal.append(new byte[] {1, 2, 3}, 1);
       wal.append(new byte[] {4, 5, 6}, 2);
@@ -162,7 +160,7 @@ class SegmentedWalRecoveryTest {
 
   @Test
   void corruptCompleteHeaderFailsGenesisRecovery() throws Exception {
-    WalConfig config = WalConfig.defaults(temporaryDirectory.resolve("header"), SHARD);
+    WalConfig config = WalConfig.defaults(directory("header"), SHARD);
     try (SegmentedWal genesis = SegmentedWal.open(config, FaultInjector.NONE)) {
       // Create and force the genesis header.
       assertEquals(1, genesis.nextWalSequence());
@@ -176,7 +174,7 @@ class SegmentedWalRecoveryTest {
 
   @Test
   void declaredButIncompleteFinalFrameIsTailNotCompleteCorruption() throws Exception {
-    WalConfig config = WalConfig.defaults(temporaryDirectory.resolve("declared-tail"), SHARD);
+    WalConfig config = WalConfig.defaults(directory("declared-tail"), SHARD);
     Path segment = config.directory().resolve("segment-00000000000000000001.m08w1");
     long goodSize;
     try (SegmentedWal wal = SegmentedWal.open(config, FaultInjector.NONE)) {
@@ -191,6 +189,24 @@ class SegmentedWalRecoveryTest {
       assertEquals(1, recovered.recoveredRecords().size());
     }
     assertEquals(goodSize, Files.size(segment));
+  }
+
+  @Test
+  void recoveryRejectsASegmentBeyondTheFrozenSizeBound() throws Exception {
+    WalConfig config = WalConfig.defaults(directory("oversized"), SHARD);
+    try (SegmentedWal ignored = SegmentedWal.open(config, FaultInjector.NONE)) {
+      assertEquals(1, ignored.nextWalSequence());
+    }
+    Path segment = config.directory().resolve("segment-00000000000000000001.m08w1");
+    try (FileChannel channel = FileChannel.open(segment, StandardOpenOption.WRITE)) {
+      channel.position(config.maxSegmentBytes());
+      channel.write(ByteBuffer.wrap(new byte[] {1}));
+    }
+    assertThrows(WalCorruptionException.class, () -> SegmentedWal.open(config, FaultInjector.NONE));
+  }
+
+  private Path directory(String name) throws IOException {
+    return Files.createDirectories(temporaryDirectory.resolve(name));
   }
 
   private static final class NthFault implements FaultInjector {

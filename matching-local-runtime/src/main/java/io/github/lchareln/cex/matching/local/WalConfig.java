@@ -3,7 +3,7 @@ package io.github.lchareln.cex.matching.local;
 import java.nio.file.Path;
 import java.util.Objects;
 
-/** Local M08W1 directory and bounded-segment configuration. */
+/** Local M08W1 pre-provisioned directory and bounded-segment configuration. */
 public record WalConfig(Path directory, long shardId, long maxSegmentBytes, int maxRecordBytes) {
   public static final long DEFAULT_MAX_SEGMENT_BYTES = 8L * 1024 * 1024;
   public static final int DEFAULT_MAX_RECORD_BYTES = 2 * 1024 * 1024;

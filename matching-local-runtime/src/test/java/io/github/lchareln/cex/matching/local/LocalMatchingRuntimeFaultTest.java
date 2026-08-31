@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.math.BigInteger;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
@@ -22,7 +23,7 @@ class LocalMatchingRuntimeFaultTest {
 
   @Test
   void tornLengthTailReturnsUnknownFailsClosedAndIsTruncatedOnRestart() throws Exception {
-    Path directory = temporaryDirectory.resolve("torn-length");
+    Path directory = Files.createDirectories(temporaryDirectory.resolve("torn-length"));
     byte[] envelope = envelope(1, 1);
     OneShotFault fault = new OneShotFault(FaultPoint.AFTER_RECORD_LENGTH_WRITE);
 
@@ -56,7 +57,7 @@ class LocalMatchingRuntimeFaultTest {
             FaultPoint.AFTER_LIVE_APPLY_BEFORE_ACK);
     int index = 0;
     for (FaultPoint window : windows) {
-      Path directory = temporaryDirectory.resolve("window-" + index);
+      Path directory = Files.createDirectories(temporaryDirectory.resolve("window-" + index));
       byte[] envelope = envelope(1, index + 1L);
       TestCommandApplier firstApplier = new TestCommandApplier();
       try (LocalMatchingRuntime runtime =
@@ -88,7 +89,7 @@ class LocalMatchingRuntimeFaultTest {
 
   @Test
   void recoveryFaultNeverOpensADegradedRuntime() throws Exception {
-    Path directory = temporaryDirectory.resolve("recovery-fault");
+    Path directory = Files.createDirectories(temporaryDirectory.resolve("recovery-fault"));
     byte[] envelope = envelope(1, 1);
     try (LocalMatchingRuntime runtime =
         LocalMatchingRuntime.openForTesting(
@@ -113,7 +114,7 @@ class LocalMatchingRuntimeFaultTest {
       assertFalse(recovered.semanticStateDigest().isBlank());
     }
 
-    Path poisonDirectory = temporaryDirectory.resolve("apply-poison");
+    Path poisonDirectory = Files.createDirectories(temporaryDirectory.resolve("apply-poison"));
     try (LocalMatchingRuntime poison =
         LocalMatchingRuntime.openForTesting(
             WalConfig.defaults(poisonDirectory, SHARD), new PoisonApplier(), FaultInjector.NONE)) {

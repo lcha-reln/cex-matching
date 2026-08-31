@@ -3,16 +3,21 @@ package io.github.lchareln.cex.matching.local;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.lchareln.cex.matching.MarketMode;
 import io.github.lchareln.cex.matching.MarketRuleSetArtifact;
+import java.io.IOException;
 import java.math.BigInteger;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -86,8 +91,11 @@ class LocalMatchingRuntimeIdentityTest {
           runtime.submit(envelope(1, 1, uuid(1), cancel(1))));
       assertEquals(
           List.of(
+              "BEFORE_RECORD_LENGTH_WRITE",
               "AFTER_RECORD_LENGTH_WRITE",
+              "BEFORE_RECORD_BODY_WRITE",
               "AFTER_RECORD_BODY_WRITE",
+              "BEFORE_RECORD_FORCE",
               "AFTER_RECORD_FORCE",
               "BEFORE_LIVE_APPLY",
               "APPLY",
@@ -98,7 +106,7 @@ class LocalMatchingRuntimeIdentityTest {
 
   @Test
   void journalsBusinessRejectionAndReplaysItsExactResultAfterRestart() throws Exception {
-    Path directory = temporaryDirectory.resolve("business-rejection");
+    Path directory = Files.createDirectories(temporaryDirectory.resolve("business-rejection"));
     byte[] invalidSide =
         codec.encode(
             "producer-a",
@@ -137,8 +145,67 @@ class LocalMatchingRuntimeIdentityTest {
   }
 
   @Test
+  void callerMutationAfterDecodeCannotChangeTheJournaledEnvelope() throws Exception {
+    Path directory = Files.createDirectories(temporaryDirectory.resolve("owned-envelope"));
+    byte[] callerBytes = envelope(1, 1, uuid(1), cancel(1));
+    byte[] expectedBytes = callerBytes.clone();
+    FaultInjector mutateCaller =
+        point -> {
+          if (point == FaultPoint.BEFORE_RECORD_LENGTH_WRITE) {
+            callerBytes[callerBytes.length - 1] ^= 1;
+          }
+        };
+
+    try (LocalMatchingRuntime runtime =
+        LocalMatchingRuntime.open(WalConfig.defaults(directory, SHARD), mutateCaller)) {
+      assertInstanceOf(SubmissionResult.NewDurablyApplied.class, runtime.submit(callerBytes));
+      assertNotEquals(callerBytes[callerBytes.length - 1], expectedBytes[expectedBytes.length - 1]);
+    }
+    try (LocalMatchingRuntime recovered =
+        LocalMatchingRuntime.open(WalConfig.defaults(directory, SHARD))) {
+      assertInstanceOf(SubmissionResult.DuplicateReplayed.class, recovered.submit(expectedBytes));
+    }
+  }
+
+  @Test
+  void reentrantFaultCallbackCannotAckANestedSubmissionOrLosePriorAck() throws Exception {
+    Path directory = Files.createDirectories(temporaryDirectory.resolve("reentrant-submit"));
+    byte[] prior = envelope(1, 1, uuid(1), cancel(1));
+    byte[] outer = envelope(1, 2, uuid(2), cancel(2));
+    byte[] nested = envelope(1, 2, uuid(22), cancel(22));
+    AtomicReference<LocalMatchingRuntime> runtimeReference = new AtomicReference<>();
+    AtomicReference<SubmissionResult> nestedResult = new AtomicReference<>();
+    AtomicBoolean armed = new AtomicBoolean();
+    FaultInjector reentrant =
+        point -> {
+          if (point == FaultPoint.BEFORE_RECORD_LENGTH_WRITE && armed.compareAndSet(true, false)) {
+            nestedResult.set(runtimeReference.get().submit(nested));
+          }
+        };
+
+    try (LocalMatchingRuntime runtime =
+        LocalMatchingRuntime.open(WalConfig.defaults(directory, SHARD), reentrant)) {
+      runtimeReference.set(runtime);
+      assertInstanceOf(SubmissionResult.NewDurablyApplied.class, runtime.submit(prior));
+      armed.set(true);
+      SubmissionResult.DurabilityUnknown unknown =
+          assertInstanceOf(SubmissionResult.DurabilityUnknown.class, runtime.submit(outer));
+      assertEquals("REENTRANT_SUBMIT", unknown.stage());
+      assertInstanceOf(SubmissionResult.FailedClosed.class, nestedResult.get());
+      assertEquals(RuntimeState.FAILED_CLOSED, runtime.state());
+    }
+
+    try (LocalMatchingRuntime recovered =
+        LocalMatchingRuntime.open(WalConfig.defaults(directory, SHARD))) {
+      assertInstanceOf(SubmissionResult.DuplicateReplayed.class, recovered.submit(prior));
+      assertInstanceOf(SubmissionResult.DuplicateReplayed.class, recovered.submit(outer));
+      assertPreflight(PreflightRejectionCode.SLOT_IDENTITY_CONFLICT, recovered.submit(nested));
+    }
+  }
+
+  @Test
   void realCoreAdapterAppliesEveryM06CommandAndRecoversSameDigest() throws Exception {
-    Path directory = temporaryDirectory.resolve("all-commands");
+    Path directory = Files.createDirectories(temporaryDirectory.resolve("all-commands"));
     MarketRuleSetArtifact bootstrap = MarketRuleSetArtifact.bootstrap();
     MarketRuleSetArtifact unhashed =
         new MarketRuleSetArtifact(
@@ -225,8 +292,8 @@ class LocalMatchingRuntimeIdentityTest {
     }
   }
 
-  private WalConfig config(String name) {
-    return WalConfig.defaults(temporaryDirectory.resolve(name), SHARD);
+  private WalConfig config(String name) throws IOException {
+    return WalConfig.defaults(Files.createDirectories(temporaryDirectory.resolve(name)), SHARD);
   }
 
   private byte[] envelope(long epoch, long sequence, UUID commandId, M08Command command) {

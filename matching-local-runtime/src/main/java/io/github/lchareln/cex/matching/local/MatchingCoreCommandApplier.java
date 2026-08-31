@@ -19,8 +19,12 @@ import java.util.Objects;
 
 /** M00-M06 core adapter plus an explicit M07 STP cherry-pick seam. */
 final class MatchingCoreCommandApplier implements CommandApplier {
+  private static final String TRANSCRIPT_DOMAIN = "M08T1_GENESIS_REPLAY_TRANSCRIPT";
+
   private final SingleInstrumentMatchingEngine engine;
   private final StpPlaceExtension stpPlaceExtension;
+  private final M08CommandCodec commandCodec = new M08CommandCodec();
+  private String transcriptDigest = genesisTranscriptDigest();
 
   MatchingCoreCommandApplier() {
     this(new SingleInstrumentMatchingEngine(), null);
@@ -47,7 +51,7 @@ final class MatchingCoreCommandApplier implements CommandApplier {
   @Override
   public CanonicalResult apply(M08Command command) {
     long expected = nextApplicationSequence();
-    CanonicalResult result =
+    AppliedOutcome outcome =
         switch (command) {
           case M08Command.Place place -> fromExecution(applyPlace(place));
           case M08Command.Cancel cancel ->
@@ -80,16 +84,22 @@ final class MatchingCoreCommandApplier implements CommandApplier {
                           massCancel.expectedMode(),
                           new OperatorId(massCancel.operatorId()))));
         };
-    if (result.applicationSequence() != expected || nextApplicationSequence() != expected + 1) {
+    if (outcome.applicationSequence() != expected || nextApplicationSequence() != expected + 1) {
       throw new IllegalStateException("core apply and application sequence disagree");
     }
-    return result;
+    String publicCoreStateDigest = publicCoreStateDigest();
+    transcriptDigest = advanceTranscript(transcriptDigest, command, outcome, publicCoreStateDigest);
+    return CanonicalResult.create(
+        outcome.resultType(),
+        outcome.applicationSequence(),
+        outcome.events(),
+        outcome.context(),
+        combinedSemanticDigest(publicCoreStateDigest));
   }
 
   @Override
   public String semanticStateDigest() {
-    return CanonicalResult.semanticDigest(
-        engine.marketControlSnapshot().toString(), engine.snapshot().toString());
+    return combinedSemanticDigest(publicCoreStateDigest());
   }
 
   private ExecutionBatch applyPlace(M08Command.Place place) {
@@ -114,37 +124,65 @@ final class MatchingCoreCommandApplier implements CommandApplier {
         : engine.placeRequest(request);
   }
 
-  private CanonicalResult fromExecution(ExecutionBatch batch) {
+  private AppliedOutcome fromExecution(ExecutionBatch batch) {
     long sequence = batch.context().applicationSequence().orElseThrow().value();
-    return CanonicalResult.create(
-        "EXECUTION",
-        sequence,
-        describe(batch.events()),
-        batch.context().toString(),
-        semanticStateDigest());
+    return new AppliedOutcome(
+        "EXECUTION", sequence, describe(batch.events()), batch.context().toString());
   }
 
-  private CanonicalResult fromControl(MarketControlBatch batch) {
+  private AppliedOutcome fromControl(MarketControlBatch batch) {
     long sequence = batch.events().getFirst().applicationSequence().value();
-    return CanonicalResult.create(
-        "MARKET_CONTROL",
-        sequence,
-        describe(batch.events()),
-        batch.controlAfter().toString(),
-        semanticStateDigest());
+    return new AppliedOutcome(
+        "MARKET_CONTROL", sequence, describe(batch.events()), batch.controlAfter().toString());
   }
 
-  private CanonicalResult fromMassCancel(MassCancelBatch batch) {
+  private AppliedOutcome fromMassCancel(MassCancelBatch batch) {
     long sequence = batch.events().getFirst().applicationSequence().value();
-    return CanonicalResult.create(
-        "MASS_CANCEL",
-        sequence,
-        describe(batch.events()),
-        batch.controlAfter().toString(),
-        semanticStateDigest());
+    return new AppliedOutcome(
+        "MASS_CANCEL", sequence, describe(batch.events()), batch.controlAfter().toString());
+  }
+
+  private String publicCoreStateDigest() {
+    return CanonicalResult.semanticDigest(
+        engine.marketControlSnapshot().toString(), engine.snapshot().toString());
+  }
+
+  private String combinedSemanticDigest(String publicCoreStateDigest) {
+    // This is a genesis-replay transcript commitment, not a snapshot format. It deliberately
+    // commits terminal identities that are absent from the public resting-book projection.
+    return CanonicalResult.semanticDigest(publicCoreStateDigest, transcriptDigest);
+  }
+
+  private String advanceTranscript(
+      String previous, M08Command command, AppliedOutcome outcome, String publicCoreStateDigest) {
+    BinaryEncoding.Writer writer = new BinaryEncoding.Writer();
+    writer.putString(TRANSCRIPT_DOMAIN);
+    writer.putString(previous);
+    writer.putByteArray(commandCodec.encode(command));
+    writer.putString(outcome.resultType());
+    writer.putLong(outcome.applicationSequence());
+    writer.putInt(outcome.events().size());
+    outcome.events().forEach(writer::putString);
+    writer.putString(outcome.context());
+    writer.putString(publicCoreStateDigest);
+    return Sha256.hex(writer.toByteArray());
+  }
+
+  private static String genesisTranscriptDigest() {
+    BinaryEncoding.Writer writer = new BinaryEncoding.Writer();
+    writer.putString(TRANSCRIPT_DOMAIN);
+    writer.putString("GENESIS");
+    return Sha256.hex(writer.toByteArray());
   }
 
   private static List<String> describe(List<?> events) {
     return events.stream().map(event -> event.getClass().getName() + ":" + event).toList();
+  }
+
+  private record AppliedOutcome(
+      String resultType, long applicationSequence, List<String> events, String context) {
+    private AppliedOutcome {
+      events = List.copyOf(events);
+    }
   }
 }

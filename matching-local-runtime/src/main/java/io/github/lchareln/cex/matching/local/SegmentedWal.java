@@ -8,6 +8,7 @@ import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
@@ -39,13 +40,17 @@ final class SegmentedWal implements AutoCloseable {
   private SegmentedWal(WalConfig config, FaultInjector faultInjector) throws IOException {
     this.config = Objects.requireNonNull(config, "config");
     this.faultInjector = Objects.requireNonNull(faultInjector, "faultInjector");
-    Files.createDirectories(config.directory());
+    if (!Files.isDirectory(config.directory(), LinkOption.NOFOLLOW_LINKS)) {
+      throw new IOException(
+          "M08W1 requires a pre-provisioned, non-symlink WAL directory: " + config.directory());
+    }
     lockChannel =
         FileChannel.open(
             config.directory().resolve(LOCK_NAME),
             StandardOpenOption.CREATE,
             StandardOpenOption.WRITE);
     try {
+      faultInjector.hit(FaultPoint.BEFORE_DIRECTORY_LOCK);
       directoryLock = acquireLock(lockChannel, config.directory());
     } catch (IOException | RuntimeException failure) {
       try {
@@ -90,9 +95,9 @@ final class SegmentedWal implements AutoCloseable {
     if (!acceptsEnvelope(envelopeBytes.length)) {
       throw new IllegalArgumentException("M08W1 record exceeds configured maximum");
     }
-    byte[] record = M08WalFormat.record(nextWalSequence, applicationSequence, envelopeBytes);
+    int recordLength = Math.addExact(M08WalFormat.RECORD_OVERHEAD, envelopeBytes.length);
     try {
-      if (activeSize + record.length > config.maxSegmentBytes()) {
+      if (activeSize + recordLength > config.maxSegmentBytes()) {
         rollover();
       }
     } catch (IOException failure) {
@@ -101,20 +106,27 @@ final class SegmentedWal implements AutoCloseable {
 
     WalPosition position =
         new WalPosition(
-            activeSegmentId, nextWalSequence, applicationSequence, activeSize, record.length);
+            activeSegmentId, nextWalSequence, applicationSequence, activeSize, recordLength);
     try {
       activeChannel.position(activeSize);
+      faultInjector.hit(FaultPoint.BEFORE_RECORD_LENGTH_WRITE);
+      // Build the immutable record only after the pre-write hook. This makes the ingress ownership
+      // regression deterministic: without LocalMatchingRuntime's private clone, a hook that mutates
+      // the caller array here would persist different bytes from those already decoded.
+      byte[] record = M08WalFormat.record(nextWalSequence, applicationSequence, envelopeBytes);
       writeFully(activeChannel, ByteBuffer.wrap(record, 0, Integer.BYTES));
       faultInjector.hit(FaultPoint.AFTER_RECORD_LENGTH_WRITE);
+      faultInjector.hit(FaultPoint.BEFORE_RECORD_BODY_WRITE);
       writeFully(
           activeChannel, ByteBuffer.wrap(record, Integer.BYTES, record.length - Integer.BYTES));
       faultInjector.hit(FaultPoint.AFTER_RECORD_BODY_WRITE);
+      faultInjector.hit(FaultPoint.BEFORE_RECORD_FORCE);
       activeChannel.force(true);
       faultInjector.hit(FaultPoint.AFTER_RECORD_FORCE);
     } catch (IOException failure) {
       throw new WalAppendException("M08W1 append did not complete normally", position, failure);
     }
-    activeSize += record.length;
+    activeSize += recordLength;
     nextWalSequence = Math.incrementExact(nextWalSequence);
     return position;
   }
@@ -183,6 +195,17 @@ final class SegmentedWal implements AutoCloseable {
     activeSegmentId = last.segmentId();
     activeChannel =
         FileChannel.open(last.path(), StandardOpenOption.READ, StandardOpenOption.WRITE);
+    // A previous recovery may have truncated an incomplete tail and then lost the process before
+    // force completed. The next open cannot infer that history from an aligned EOF, so every
+    // successful recovery conservatively forces the active segment before accepting submissions.
+    faultInjector.hit(FaultPoint.BEFORE_RECOVERY_ACTIVE_FORCE);
+    activeChannel.force(true);
+    faultInjector.hit(FaultPoint.AFTER_RECOVERY_ACTIVE_FORCE);
+    // A segment rename can become visible to this process before its directory entry is durable.
+    // Publish that recovered namespace state only after the active file contents are forced.
+    faultInjector.hit(FaultPoint.BEFORE_RECOVERY_DIRECTORY_FORCE);
+    forceDirectory();
+    faultInjector.hit(FaultPoint.AFTER_RECOVERY_DIRECTORY_FORCE);
     activeSize = activeChannel.size();
     nextWalSequence = expectedWalSequence;
     return List.copyOf(records);
@@ -197,6 +220,9 @@ final class SegmentedWal implements AutoCloseable {
     try (FileChannel channel =
         FileChannel.open(segment.path(), StandardOpenOption.READ, StandardOpenOption.WRITE)) {
       long size = channel.size();
+      if (size > config.maxSegmentBytes()) {
+        throw new WalCorruptionException("M08W1 segment exceeds the configured size bound");
+      }
       if (size < M08WalFormat.HEADER_BYTES) {
         throw new WalCorruptionException("M08W1 segment header is incomplete");
       }
@@ -250,8 +276,10 @@ final class SegmentedWal implements AutoCloseable {
     if (!isFinal) {
       throw new WalCorruptionException("only the final M08W1 segment may have an incomplete tail");
     }
+    faultInjector.hit(FaultPoint.BEFORE_TAIL_TRUNCATE);
     channel.truncate(goodOffset);
     faultInjector.hit(FaultPoint.AFTER_TAIL_TRUNCATE);
+    faultInjector.hit(FaultPoint.BEFORE_TAIL_TRUNCATE_FORCE);
     channel.force(true);
     faultInjector.hit(FaultPoint.AFTER_TAIL_TRUNCATE_FORCE);
     return goodOffset;
@@ -273,19 +301,21 @@ final class SegmentedWal implements AutoCloseable {
             StandardOpenOption.CREATE_NEW,
             StandardOpenOption.READ,
             StandardOpenOption.WRITE)) {
+      faultInjector.hit(FaultPoint.BEFORE_SEGMENT_HEADER_WRITE);
       writeFully(channel, ByteBuffer.wrap(header));
       faultInjector.hit(FaultPoint.AFTER_SEGMENT_HEADER_WRITE);
+      faultInjector.hit(FaultPoint.BEFORE_SEGMENT_HEADER_FORCE);
       channel.force(true);
       faultInjector.hit(FaultPoint.AFTER_SEGMENT_HEADER_FORCE);
     }
     try {
+      faultInjector.hit(FaultPoint.BEFORE_SEGMENT_ATOMIC_RENAME);
       Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE);
     } catch (AtomicMoveNotSupportedException failure) {
       throw new IOException("M08W1 requires an atomic segment rename", failure);
     }
     faultInjector.hit(FaultPoint.AFTER_SEGMENT_ATOMIC_RENAME);
-    forceDirectory();
-    faultInjector.hit(FaultPoint.AFTER_DIRECTORY_FORCE);
+    forceDirectoryWithHooks();
 
     if (activeChannel != null) {
       activeChannel.close();
@@ -325,8 +355,14 @@ final class SegmentedWal implements AutoCloseable {
       }
     }
     if (removed) {
-      forceDirectory();
+      forceDirectoryWithHooks();
     }
+  }
+
+  private void forceDirectoryWithHooks() throws IOException {
+    faultInjector.hit(FaultPoint.BEFORE_DIRECTORY_FORCE);
+    forceDirectory();
+    faultInjector.hit(FaultPoint.AFTER_DIRECTORY_FORCE);
   }
 
   private void forceDirectory() throws IOException {
