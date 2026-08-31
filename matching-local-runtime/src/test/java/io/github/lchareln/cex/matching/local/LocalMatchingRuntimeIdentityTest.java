@@ -1,7 +1,7 @@
 package io.github.lchareln.cex.matching.local;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -263,32 +263,89 @@ class LocalMatchingRuntimeIdentityTest {
   }
 
   @Test
-  void futureM07PlaceIsCanonicalButNotJournaledUntilAdapterIsInstalled() throws Exception {
-    byte[] futureStp =
-        codec.encode(
-            "producer-a",
-            1,
-            SHARD,
-            1,
-            uuid(1),
-            new M08Command.Place(
-                "BTC-USDT",
-                BigInteger.ONE,
-                "BUY",
-                BigInteger.valueOf(100),
-                BigInteger.ONE,
-                "GTC",
-                99,
-                "CANCEL_TAKER",
-                Optional.empty()));
-    try (LocalMatchingRuntime runtime = LocalMatchingRuntime.open(config("future-stp"))) {
-      SubmissionResult.StructuralRejected rejected =
-          assertInstanceOf(SubmissionResult.StructuralRejected.class, runtime.submit(futureStp));
-      assertEquals(StructuralRejectionCode.UNSUPPORTED_COMMAND, rejected.code());
-      assertEquals(1, runtime.nextWalSequence());
-      assertFalse(
+  void nonzeroGovernedStpAndInvalidRawInstructionAreJournaledAndRecovered() throws Exception {
+    Path directory = Files.createDirectories(temporaryDirectory.resolve("m07-stp"));
+    MarketRuleSetArtifact bootstrap = MarketRuleSetArtifact.bootstrap();
+    List<byte[]> envelopes =
+        List.of(
+            envelope(
+                1,
+                1,
+                uuid(1),
+                new M08Command.Place(
+                    "BTC-USDT",
+                    BigInteger.ONE,
+                    "SELL",
+                    BigInteger.valueOf(100),
+                    BigInteger.TWO,
+                    "GTC",
+                    99,
+                    "CANCEL_TAKER",
+                    Optional.empty())),
+            envelope(
+                1,
+                2,
+                uuid(2),
+                new M08Command.Place(
+                    "BTC-USDT",
+                    BigInteger.TWO,
+                    "BUY",
+                    BigInteger.valueOf(100),
+                    BigInteger.valueOf(3),
+                    "GTC",
+                    99,
+                    "CANCEL_MAKER",
+                    Optional.of(bootstrap.identity()))),
+            envelope(
+                1,
+                3,
+                uuid(3),
+                new M08Command.Place(
+                    "BTC-USDT",
+                    BigInteger.valueOf(3),
+                    "BUY",
+                    BigInteger.valueOf(99),
+                    BigInteger.ONE,
+                    "GTC",
+                    99,
+                    "NONE",
+                    Optional.of(bootstrap.identity()))));
+    List<CanonicalResult> originalResults = new ArrayList<>();
+    String digest;
+    try (LocalMatchingRuntime runtime =
+        LocalMatchingRuntime.open(WalConfig.defaults(directory, SHARD))) {
+      for (byte[] envelope : envelopes) {
+        SubmissionResult.NewDurablyApplied applied =
+            assertInstanceOf(SubmissionResult.NewDurablyApplied.class, runtime.submit(envelope));
+        originalResults.add(applied.result());
+      }
+      assertTrue(
+          originalResults.get(1).events().stream()
+              .anyMatch(
+                  event -> event.contains("SelfTradePrevented") && event.contains("CANCEL_MAKER")),
+          "governed nonzero STP did not reach the M07 prevention path");
+      assertTrue(
+          originalResults.get(2).events().stream()
+              .anyMatch(event -> event.contains("INVALID_STP_INSTRUCTION")),
+          "structurally canonical invalid STP did not reach the M07 rejection path");
+      digest = runtime.semanticStateDigest();
+      assertEquals(4, runtime.nextWalSequence());
+      assertTrue(
           new MatchingCoreCommandApplier()
-              .supports(codec.decodeCanonical(futureStp, SHARD).command()));
+              .supports(codec.decodeCanonical(envelopes.get(1), SHARD).command()));
+    }
+
+    try (LocalMatchingRuntime recovered =
+        LocalMatchingRuntime.open(WalConfig.defaults(directory, SHARD))) {
+      assertEquals(digest, recovered.semanticStateDigest());
+      assertEquals(4, recovered.nextWalSequence());
+      for (int index = 0; index < envelopes.size(); index++) {
+        SubmissionResult.DuplicateReplayed duplicate =
+            assertInstanceOf(
+                SubmissionResult.DuplicateReplayed.class, recovered.submit(envelopes.get(index)));
+        assertArrayEquals(
+            originalResults.get(index).auditBytes(), duplicate.originalResult().auditBytes());
+      }
     }
   }
 

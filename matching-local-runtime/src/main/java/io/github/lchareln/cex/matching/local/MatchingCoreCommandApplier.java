@@ -6,6 +6,7 @@ import io.github.lchareln.cex.matching.CancelOrderInput;
 import io.github.lchareln.cex.matching.ChangeMarketMode;
 import io.github.lchareln.cex.matching.ExecutionBatch;
 import io.github.lchareln.cex.matching.GovernedPlaceLimitOrderRequest;
+import io.github.lchareln.cex.matching.GovernedStpPlaceLimitOrderRequest;
 import io.github.lchareln.cex.matching.MarketControlBatch;
 import io.github.lchareln.cex.matching.MassCancel;
 import io.github.lchareln.cex.matching.MassCancelBatch;
@@ -14,33 +15,29 @@ import io.github.lchareln.cex.matching.PlaceLimitOrderInput;
 import io.github.lchareln.cex.matching.PlaceLimitOrderRequest;
 import io.github.lchareln.cex.matching.PrepareRuleSet;
 import io.github.lchareln.cex.matching.SingleInstrumentMatchingEngine;
+import io.github.lchareln.cex.matching.StpPlaceLimitOrderRequest;
 import java.util.List;
 import java.util.Objects;
 
-/** M00-M06 core adapter plus an explicit M07 STP cherry-pick seam. */
+/** Applies every M00-M07 journal command to one private matching core. */
 final class MatchingCoreCommandApplier implements CommandApplier {
   private static final String TRANSCRIPT_DOMAIN = "M08T1_GENESIS_REPLAY_TRANSCRIPT";
 
   private final SingleInstrumentMatchingEngine engine;
-  private final StpPlaceExtension stpPlaceExtension;
   private final M08CommandCodec commandCodec = new M08CommandCodec();
   private String transcriptDigest = genesisTranscriptDigest();
 
   MatchingCoreCommandApplier() {
-    this(new SingleInstrumentMatchingEngine(), null);
+    this(new SingleInstrumentMatchingEngine());
   }
 
-  MatchingCoreCommandApplier(
-      SingleInstrumentMatchingEngine engine, StpPlaceExtension stpPlaceExtension) {
+  MatchingCoreCommandApplier(SingleInstrumentMatchingEngine engine) {
     this.engine = Objects.requireNonNull(engine, "engine");
-    this.stpPlaceExtension = stpPlaceExtension;
   }
 
   @Override
   public boolean supports(M08Command command) {
-    return !(command instanceof M08Command.Place place)
-        || place.usesLegacyStpMapping()
-        || stpPlaceExtension != null;
+    return true;
   }
 
   @Override
@@ -104,24 +101,31 @@ final class MatchingCoreCommandApplier implements CommandApplier {
 
   private ExecutionBatch applyPlace(M08Command.Place place) {
     if (!place.usesLegacyStpMapping()) {
-      if (stpPlaceExtension == null) {
-        throw new IllegalStateException("M07 STP command reached the M06-only core adapter");
-      }
-      return stpPlaceExtension.apply(engine, place);
+      PlaceLimitOrderRequest request = placeRequest(place);
+      StpPlaceLimitOrderRequest stpRequest =
+          new StpPlaceLimitOrderRequest(request, place.participantGroupId(), place.stpPolicy());
+      return place.expectedActive().isPresent()
+          ? engine.placeGovernedStp(
+              new GovernedStpPlaceLimitOrderRequest(
+                  stpRequest, place.expectedActive().orElseThrow()))
+          : engine.placeStp(stpRequest);
     }
-    PlaceLimitOrderRequest request =
-        new PlaceLimitOrderRequest(
-            new PlaceLimitOrderInput(
-                place.instrumentId(),
-                place.orderId(),
-                place.side(),
-                place.priceTicks(),
-                place.quantityLots()),
-            place.executionPolicy());
+    PlaceLimitOrderRequest request = placeRequest(place);
     return place.expectedActive().isPresent()
         ? engine.placeGoverned(
             new GovernedPlaceLimitOrderRequest(request, place.expectedActive().orElseThrow()))
         : engine.placeRequest(request);
+  }
+
+  private static PlaceLimitOrderRequest placeRequest(M08Command.Place place) {
+    return new PlaceLimitOrderRequest(
+        new PlaceLimitOrderInput(
+            place.instrumentId(),
+            place.orderId(),
+            place.side(),
+            place.priceTicks(),
+            place.quantityLots()),
+        place.executionPolicy());
   }
 
   private AppliedOutcome fromExecution(ExecutionBatch batch) {

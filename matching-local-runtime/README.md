@@ -35,16 +35,14 @@ terminal order identities remain committed even when the resting book is empty. 
 not a snapshot, checkpoint, or restart shortcut; recovery recomputes it by replaying the WAL from
 genesis.
 
-## M07 integration point
+## M07 integration
 
-M08C1 already reserves `participantGroupId` and `stpPolicy` on every Place command. The current
-source baseline has M06 core types, so the production adapter only applies the legacy `0/NONE`
-mapping. Other STP values are rejected before WAL append as `UNSUPPORTED_COMMAND`, preventing a
-durable poison record.
-
-After the M07 core types are cherry-picked, update the package-private `StpPlaceExtension` /
-`MatchingCoreCommandApplier` seam to construct the real M07 request. The M08C1 bytes, payload hash,
-identity rules, and WAL format must not change.
+M08C1 retains `participantGroupId`, raw `stpPolicy`, and optional expected active RuleSet on every
+Place command. `MatchingCoreCommandApplier` maps the exact decoded fields directly to
+`StpPlaceLimitOrderRequest` or `GovernedStpPlaceLimitOrderRequest`; legacy `0/NONE` still uses the
+historical M04/M05 entrypoints. Structurally canonical but business-invalid STP instructions are
+journaled before matching-core emits their deterministic rejection, so restart rebuilds the same
+application sequence and result.
 
 ## Honest boundary
 
