@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lchareln.github.io/cex-matching/schemas/matching.m06.counterexamples.v1.schema.json",
+  "title": "M06 minimized counterexample corpus",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "counterexamples"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m06.counterexamples.v1"},
+    "counterexamples": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {"$ref": "#/$defs/counterexample"}
+    }
+  },
+  "$defs": {
+    "counterexample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mutantId", "classification", "fingerprint", "originalCommands", "minimizedCommands", "oneMinimal", "commands"],
+      "properties": {
+        "mutantId": {"type": "string", "pattern": "^M06-[A-Z0-9-]+$"},
+        "classification": {"const": "STUDENT_FAILURE"},
+        "fingerprint": {"type": "string", "minLength": 1},
+        "originalCommands": {"type": "integer", "minimum": 1},
+        "minimizedCommands": {"type": "integer", "minimum": 1},
+        "oneMinimal": {"const": true},
+        "commands": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/command"}}
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "contentHash"],
+      "properties": {
+        "version": {"type": "integer", "minimum": 0},
+        "contentHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "instrumentId", "version", "lowerInclusive", "upperInclusive", "contentHash"],
+      "properties": {
+        "schemaVersion": {"const": "matching.market-rule-set.v1"},
+        "instrumentId": {"const": "BTC-USDT"},
+        "version": {"type": "integer", "minimum": 0},
+        "lowerInclusive": {"type": "integer", "minimum": 1},
+        "upperInclusive": {"type": "integer", "minimum": 1},
+        "contentHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "placeInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrumentId", "orderId", "side", "priceTicks", "quantityLots", "executionPolicy"],
+      "properties": {
+        "instrumentId": {"type": "string", "minLength": 1},
+        "orderId": {"type": "integer"},
+        "side": {"enum": ["BUY", "SELL"]},
+        "priceTicks": {"type": "integer"},
+        "quantityLots": {"type": "integer"},
+        "executionPolicy": {"enum": ["GTC", "IOC", "FOK", "POST_ONLY"]}
+      }
+    },
+    "command": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "entrypoint", "input"],
+          "properties": {
+            "type": {"const": "PLACE"},
+            "entrypoint": {"const": "LEGACY"},
+            "input": {"$ref": "#/$defs/placeInput"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "entrypoint", "expectedRuleSet", "input"],
+          "properties": {
+            "type": {"const": "PLACE"},
+            "entrypoint": {"const": "GOVERNED"},
+            "expectedRuleSet": {"$ref": "#/$defs/identity"},
+            "input": {"$ref": "#/$defs/placeInput"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": {"const": "CANCEL"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["instrumentId", "orderId"],
+              "properties": {"instrumentId": {"type": "string", "minLength": 1}, "orderId": {"type": "integer"}}
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": {"const": "PREPARE_RULE_SET"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["expectedActive", "artifact"],
+              "properties": {"expectedActive": {"$ref": "#/$defs/identity"}, "artifact": {"$ref": "#/$defs/artifact"}}
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": {"const": "ACTIVATE_RULE_SET"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["expectedApplicationSequence", "expectedActive", "target"],
+              "properties": {
+                "expectedApplicationSequence": {"type": "integer", "minimum": 1},
+                "expectedActive": {"$ref": "#/$defs/identity"},
+                "target": {"$ref": "#/$defs/identity"}
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": {"const": "CHANGE_MARKET_MODE"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["expectedApplicationSequence", "expectedMode", "targetMode", "operatorId"],
+              "properties": {
+                "expectedApplicationSequence": {"type": "integer", "minimum": 1},
+                "expectedMode": {"enum": ["OPEN", "CANCEL_ONLY", "HALTED"]},
+                "targetMode": {"enum": ["OPEN", "CANCEL_ONLY", "HALTED"]},
+                "operatorId": {"type": "string", "minLength": 1, "maxLength": 128}
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": {"const": "MASS_CANCEL"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["expectedApplicationSequence", "expectedMode", "operatorId"],
+              "properties": {
+                "expectedApplicationSequence": {"type": "integer", "minimum": 1},
+                "expectedMode": {"enum": ["OPEN", "CANCEL_ONLY", "HALTED"]},
+                "operatorId": {"type": "string", "minLength": 1, "maxLength": 128}
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

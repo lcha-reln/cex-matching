@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lchareln.github.io/cex-matching/schemas/matching.m06.check.v2.schema.json",
+  "title": "Matching M06 completed operating-mode and Mass Cancel check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "status", "contractPlanVersion", "releaseTarget"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m06.check.v2"},
+    "unit": {"const": "M06"},
+    "status": {"enum": ["PASS", "STUDENT_FAILURE", "SYSTEM_ERROR"]},
+    "contractPlanVersion": {"const": "0.8"},
+    "inheritedM05": {"$ref": "#/$defs/inherited"},
+    "fixedCorpus": {"$ref": "#/$defs/fixed"},
+    "generator": {"$ref": "#/$defs/generator"},
+    "properties": {"$ref": "#/$defs/properties"},
+    "coverage": {"$ref": "#/$defs/coverage"},
+    "invariants": {"$ref": "#/$defs/invariants"},
+    "boundaries": {"$ref": "#/$defs/boundaries"},
+    "counterexamples": {"$ref": "#/$defs/counterexamples"},
+    "mutants": {"$ref": "#/$defs/mutants"},
+    "architecture": {"$ref": "#/$defs/architecture"},
+    "evidenceScope": {"$ref": "#/$defs/scope"},
+    "tutorialPermalinks": {
+      "const": [
+        "market-operating-mode-contract",
+        "mode-transition-fence-and-permission-matrix",
+        "deterministic-mass-cancel-order",
+        "mass-cancel-atomicity-and-terminal-attribution",
+        "market-mode-property-evidence"
+      ]
+    },
+    "failure": {"type": "string", "minLength": 1},
+    "releaseTarget": {"$ref": "#/$defs/release"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "PASS"}}},
+      "then": {
+        "required": ["inheritedM05", "fixedCorpus", "generator", "properties", "coverage", "invariants", "boundaries", "counterexamples", "mutants", "architecture", "evidenceScope", "tutorialPermalinks"],
+        "not": {"required": ["failure"]}
+      }
+    },
+    {
+      "if": {"properties": {"status": {"enum": ["STUDENT_FAILURE", "SYSTEM_ERROR"]}}},
+      "then": {"required": ["failure"]}
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "canonical": {
+      "type": "object",
+      "required": ["canonicalDigest", "canonicalBytes", "canonicalLines"],
+      "properties": {
+        "canonicalDigest": {"$ref": "#/$defs/sha256"},
+        "canonicalBytes": {"type": "integer", "minimum": 1},
+        "canonicalLines": {"type": "integer", "minimum": 1}
+      }
+    },
+    "inherited": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "checkSchemaVersion", "fixedScenarios", "fixedCommands", "fixedDigest", "generatedHistories", "generatedCommands", "generatedDigest", "coverageObligations", "mutantsKilled"],
+      "properties": {
+        "status": {"const": "PASS"},
+        "checkSchemaVersion": {"const": "matching.m05.check.v2"},
+        "fixedScenarios": {"const": 12},
+        "fixedCommands": {"const": 54},
+        "fixedDigest": {"$ref": "#/$defs/sha256"},
+        "generatedHistories": {"const": 160},
+        "generatedCommands": {"const": 10240},
+        "generatedDigest": {"$ref": "#/$defs/sha256"},
+        "coverageObligations": {"const": 20},
+        "mutantsKilled": {"const": 8}
+      }
+    },
+    "fixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarios", "commands", "commandCounts", "canonicalFormat", "canonicalDigest", "canonicalBytes", "canonicalLines", "differentialComparisons", "eventLedgerChecks"],
+      "properties": {
+        "scenarios": {"const": 15},
+        "commands": {"const": 64},
+        "commandCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["PLACE", "CANCEL", "PREPARE_RULE_SET", "ACTIVATE_RULE_SET", "CHANGE_MARKET_MODE", "MASS_CANCEL"],
+          "properties": {
+            "PLACE": {"const": 21},
+            "CANCEL": {"const": 6},
+            "PREPARE_RULE_SET": {"const": 2},
+            "ACTIVATE_RULE_SET": {"const": 2},
+            "CHANGE_MARKET_MODE": {"const": 24},
+            "MASS_CANCEL": {"const": 9}
+          }
+        },
+        "canonicalFormat": {"const": "M06F1"},
+        "canonicalDigest": {"$ref": "#/$defs/sha256"},
+        "canonicalBytes": {"type": "integer", "minimum": 1},
+        "canonicalLines": {"const": 65},
+        "differentialComparisons": {"const": 64},
+        "eventLedgerChecks": {"const": 64}
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "baseSeed", "histories", "commandsPerHistory", "commands", "lanes", "historiesPerLane", "canonicalFormat", "canonicalDigest", "canonicalBytes", "canonicalLines", "freshGenerations"],
+      "properties": {
+        "algorithm": {"const": "splitmix64-v1"},
+        "baseSeed": {"const": "6606"},
+        "histories": {"const": 160},
+        "commandsPerHistory": {"const": 64},
+        "commands": {"const": 10240},
+        "lanes": {"const": 5},
+        "historiesPerLane": {"const": 32},
+        "canonicalFormat": {"const": "M06H1"},
+        "canonicalDigest": {"$ref": "#/$defs/sha256"},
+        "canonicalBytes": {"type": "integer", "minimum": 1},
+        "canonicalLines": {"const": 10241},
+        "freshGenerations": {"const": 2}
+      }
+    },
+    "properties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["histories", "commands", "differentialComparisons", "eventLedgerChecks", "referenceLedgerChecks"],
+      "properties": {
+        "histories": {"const": 160},
+        "commands": {"const": 10240},
+        "differentialComparisons": {"const": 10240},
+        "eventLedgerChecks": {"const": 10240},
+        "referenceLedgerChecks": {"const": 10240}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiredObligations", "satisfiedObligations", "obligations"],
+      "properties": {
+        "requiredObligations": {"const": 26},
+        "satisfiedObligations": {"const": 26},
+        "obligations": {
+          "type": "array",
+          "minItems": 26,
+          "maxItems": 26,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "satisfied", "source", "history", "commandIndex", "count"],
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "satisfied": {"const": true},
+              "source": {"enum": ["FIXED", "GENERATED"]},
+              "history": {"type": "string", "minLength": 1},
+              "commandIndex": {"type": "integer", "minimum": 0},
+              "count": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    "invariants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "checks", "properties"],
+      "properties": {
+        "passed": {"const": true},
+        "checks": {"const": 10240},
+        "properties": {"type": "array", "minItems": 15, "uniqueItems": true, "items": {"type": "string"}}
+      }
+    },
+    "boundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["initialMode", "operatorIdIsAuditAttribution", "operatorIdIsAuthorizationProof", "placeAllowedOnlyOpen", "cancelAllowedOpenAndCancelOnly", "haltedCancelRejectsBeforeLookup", "ruleControlAllowedAllModes", "directHaltedToOpenRejected", "sameModeRejected", "modeTransitionDoesNotClearBook", "massCancelRequiredMode", "massCancelOrder", "massCancelAtomic", "emptyMassCancelSucceeds", "terminalIdentityPreserved", "ruleAttributionPreserved", "finiteCorpus", "formalProof", "productionReadinessClaim"],
+      "properties": {
+        "initialMode": {"const": "OPEN"},
+        "operatorIdIsAuditAttribution": {"const": true},
+        "operatorIdIsAuthorizationProof": {"const": false},
+        "placeAllowedOnlyOpen": {"const": true},
+        "cancelAllowedOpenAndCancelOnly": {"const": true},
+        "haltedCancelRejectsBeforeLookup": {"const": true},
+        "ruleControlAllowedAllModes": {"const": true},
+        "directHaltedToOpenRejected": {"const": true},
+        "sameModeRejected": {"const": true},
+        "modeTransitionDoesNotClearBook": {"const": true},
+        "massCancelRequiredMode": {"const": "HALTED"},
+        "massCancelOrder": {"const": "GLOBAL_ASCENDING_ACCEPTANCE_SEQUENCE"},
+        "massCancelAtomic": {"const": true},
+        "emptyMassCancelSucceeds": {"const": true},
+        "terminalIdentityPreserved": {"const": true},
+        "ruleAttributionPreserved": {"const": true},
+        "finiteCorpus": {"const": true},
+        "formalProof": {"const": false},
+        "productionReadinessClaim": {"const": false}
+      }
+    },
+    "counterexamples": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "found", "replayed", "oneMinimal", "totalCommands", "canonicalFormat", "canonicalDigest", "canonicalBytes", "canonicalLines"],
+      "properties": {
+        "required": {"const": 10},
+        "found": {"const": 10},
+        "replayed": {"const": 10},
+        "oneMinimal": {"const": 10},
+        "totalCommands": {"type": "integer", "minimum": 10},
+        "canonicalFormat": {"const": "M06X1"},
+        "canonicalDigest": {"$ref": "#/$defs/sha256"},
+        "canonicalBytes": {"type": "integer", "minimum": 1},
+        "canonicalLines": {"type": "integer", "minimum": 11}
+      }
+    },
+    "mutants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "killed", "classification", "systemErrorControl", "systemErrorCountsAsKill"],
+      "properties": {
+        "required": {"const": 10},
+        "killed": {"const": 10},
+        "classification": {"const": "STUDENT_FAILURE"},
+        "systemErrorControl": {"const": "SYSTEM_ERROR"},
+        "systemErrorCountsAsKill": {"const": false}
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "coreSources", "referenceSources", "forbiddenFindings", "violations"],
+      "properties": {
+        "passed": {"const": true},
+        "coreSources": {"type": "integer", "minimum": 1},
+        "referenceSources": {"type": "integer", "minimum": 1},
+        "forbiddenFindings": {"const": 0},
+        "violations": {"const": []}
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finiteCorpus", "formalProof", "productionReadinessClaim", "replicationOrFailoverCovered"],
+      "properties": {
+        "finiteCorpus": {"const": true},
+        "formalProof": {"const": false},
+        "productionReadinessClaim": {"const": false},
+        "replicationOrFailoverCovered": {"const": false}
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "verification"],
+      "properties": {
+        "unitTag": {"const": "course/m06-complete"},
+        "productRelease": {"type": "null"},
+        "verification": {"const": "M06_EVIDENCE_ONLY"}
+      }
+    }
+  }
+}

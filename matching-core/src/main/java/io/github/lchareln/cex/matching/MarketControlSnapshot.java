@@ -3,7 +3,7 @@ package io.github.lchareln.cex.matching;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Detached immutable M05 control-plane state for the single instrument. */
+/** Detached immutable rule-set and M06 operating-mode state for the single instrument. */
 public record MarketControlSnapshot(
     MarketRuleSetArtifact activeRuleSet,
     Optional<MarketRuleSetArtifact> preparedRuleSet,

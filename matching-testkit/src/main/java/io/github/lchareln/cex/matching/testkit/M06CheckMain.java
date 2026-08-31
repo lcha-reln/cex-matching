@@ -1,8 +1,11 @@
 package io.github.lchareln.cex.matching.testkit;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Properties;
 
-/** Command-line entrypoint for the declared M06 boundary. */
+/** Command-line entrypoint for the completed M06 semantic judge. */
 public final class M06CheckMain {
   private M06CheckMain() {}
 
@@ -11,11 +14,37 @@ public final class M06CheckMain {
       throw new IllegalArgumentException(
           "usage: M06CheckMain <repository-root> <report-directory>");
     }
-    M06StartCheckRunner.Result result =
-        new M06StartCheckRunner().run(Path.of(arguments[0]), Path.of(arguments[1]));
-    System.out.println("M06 check status: " + result.status() + " (" + result.reportPath() + ")");
-    if (!"PASS".equals(result.status())) {
+    Path root = Path.of(arguments[0]);
+    String expected = expectedStatus(root);
+    String status;
+    Path reportPath;
+    if (M06StartCheckRunner.STATUS.equals(expected)) {
+      M06StartCheckRunner.Result result =
+          new M06StartCheckRunner().run(root, Path.of(arguments[1]));
+      status = result.status();
+      reportPath = result.reportPath();
+    } else {
+      M06CheckRunner.Result result = new M06CheckRunner().run(root, Path.of(arguments[1]));
+      status = result.status();
+      reportPath = result.reportPath();
+    }
+    System.out.println("M06 check status: " + status + " (" + reportPath + ")");
+    if (!"PASS".equals(status)) {
       System.exit(1);
     }
+  }
+
+  private static String expectedStatus(Path root) {
+    Properties properties = new Properties();
+    try (var input = Files.newInputStream(root.resolve("course.properties"))) {
+      properties.load(input);
+    } catch (IOException failure) {
+      throw new IllegalStateException("cannot read course.properties", failure);
+    }
+    String value = properties.getProperty("m06Check.expectedStatus");
+    if (!M06StartCheckRunner.STATUS.equals(value) && !M06CheckRunner.PASS.equals(value)) {
+      throw new IllegalStateException("unsupported M06 expected status: " + value);
+    }
+    return value;
   }
 }

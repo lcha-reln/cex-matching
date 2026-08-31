@@ -83,7 +83,7 @@ tasks.named("assemble") {
 }
 
 tasks.named("check") {
-    dependsOn("spotlessCheck", ":matching-core:check", ":matching-reference:check", ":matching-testkit:check", "m05Check")
+    dependsOn("spotlessCheck", ":matching-core:check", ":matching-reference:check", ":matching-testkit:check", "m06Check")
 }
 
 tasks.register("m00Check") {
@@ -160,6 +160,12 @@ tasks.register("m05Evidence") {
 
 tasks.register("m06Check") {
     group = "verification"
-    description = "Validates the declared M06 market-mode and Mass Cancel RED boundary."
+    description = "Runs the completed M06 market-mode and deterministic Mass Cancel judge."
     dependsOn(":matching-testkit:m06Check")
+}
+
+tasks.register("m06Evidence") {
+    group = "verification"
+    description = "Generates and validates clean-tree annotated-tag M06 evidence."
+    dependsOn(":matching-testkit:m06Evidence")
 }

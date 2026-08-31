@@ -41,225 +41,160 @@ jobs:
           test "${#resources[@]}" -gt 0
           jq empty "${resources[@]}"
 
-      - name: Execute the inherited M05 completion proof
+      - name: Execute declared M06 boundary
         id: boundary
         shell: bash
         run: |
           test "$(sed -n 's/^unit=//p' course.properties)" = M06
-          expected_status=PASS
+          test "$(sed -n 's/^planVersion=//p' course.properties)" = 0.8
+          expected_status="$(sed -n 's/^m06Check.expectedStatus=//p' course.properties)"
           evidence_generated=false
           case "$expected_status" in
             GOAL_NOT_IMPLEMENTED)
-              ./gradlew clean build --no-daemon
-              jq -e '
-                .schemaVersion == "matching.m04.check.v2" and
-                .unit == "M04" and
-                .status == "PASS" and
-                .fixedCorpus.scenarios == 14 and
-                .fixedCorpus.commands == 48 and
-                .fixedCorpus.canonicalDigest == "sha256:68de35e41358ea72c9852fdf3fd652db116774964360f0b526f43612576bfa77" and
-                .generator.totalCommands == 12288 and
-                .generator.canonicalDigest == "sha256:6005c674d0c42927989f1c8c4d1ddce224d06ceff0b95bf58615d23c4496ba51" and
-                .counterexamples.replayed == 8 and
-                .mutants.killed == 8 and
-                .releaseTarget.productRelease == null
-              ' build/reports/m04/check.json
-
-              m05_log="${RUNNER_TEMP:-/tmp}/m05-gradle-output.log"
+              test "$(sed -n 's/^lifecycle=//p' course.properties)" = READY
+              test "$(sed -n 's/^designDepth=//p' course.properties)" = CONTRACT
+              ./gradlew clean m05Check --no-daemon
+              m06_log="${RUNNER_TEMP:-/tmp}/m06-gradle-output.log"
               set +e
               set -o pipefail
-              ./gradlew m05Check --no-daemon 2>&1 | tee "$m05_log"
+              ./gradlew m06Check --no-daemon 2>&1 | tee "$m06_log"
               exit_code="${PIPESTATUS[0]}"
               set +o pipefail
               set -e
               test "$exit_code" -ne 0
-              grep -Fq "M05 check status: GOAL_NOT_IMPLEMENTED" "$m05_log"
+              grep -Fq "M06 check status: GOAL_NOT_IMPLEMENTED" "$m06_log"
               jq -e '
-                .schemaVersion == "matching.m05.check.v1" and
-                .unit == "M05" and
+                .schemaVersion == "matching.m06.check.v1" and
+                .unit == "M06" and
                 .status == "GOAL_NOT_IMPLEMENTED" and
-                .contractPlanVersion == "0.7" and
-                .inheritedM04.status == "PASS" and
-                .inheritedM04.fixedScenarios == 14 and
-                .inheritedM04.fixedCommands == 48 and
-                .inheritedM04.generatedCommands == 12288 and
-                .fixedCorpus.scenarios == 12 and
-                .fixedCorpus.commands == 54 and
-                .fixedCorpus.commandCounts == {
-                  "PLACE": 21,
-                  "CANCEL": 3,
-                  "PREPARE_RULE_SET": 16,
-                  "ACTIVATE_RULE_SET": 14
-                } and
-                .generator.histories == 160 and
-                .generator.commandsPerHistory == 64 and
+                .fixedCorpus.scenarios == 15 and
+                .fixedCorpus.commands == 64 and
+                .generator.baseSeed == "6606" and
                 .generator.totalCommands == 10240 and
-                .generator.lanes == 5 and
-                .generator.coverageObligations == 20 and
-                .ruleContract.canonicalFormat == "M05RS1" and
-                .ruleContract.activationFence == "APPLICATION_SEQUENCE" and
-                .ruleContract.grandfatherExistingOrders == true and
-                .ruleContract.operatingModesDeferredTo == "M06" and
-                .ruleContract.massCancelDeferredTo == "M06" and
-                (.requiredMutants | length) == 8 and
-                .releaseTarget == {
-                  "unitTag": "course/m05-complete",
-                  "productRelease": null,
-                  "verification": "M05_EVIDENCE_ONLY"
-                }
-              ' build/reports/m05/check.json
+                .generator.coverageObligations == 26 and
+                (.tutorialPermalinks | length) == 5 and
+                (.requiredMutants | length) == 10 and
+                (.fixedCorpus | has("canonicalDigest") | not) and
+                (.generator | has("canonicalDigest") | not) and
+                (has("mutants") | not) and
+                .releaseTarget.productRelease == null
+              ' build/reports/m06/check.json
               ;;
             PASS)
+              test "$(sed -n 's/^lifecycle=//p' course.properties)" = COMPLETE
+              test "$(sed -n 's/^designDepth=//p' course.properties)" = IMPLEMENTED
               test -z "$(git tag --points-at HEAD --list 'matching-*')"
-              test "$(git cat-file -t course/m05-complete)" = tag
-              complete_commit="$(git rev-parse 'course/m05-complete^{}')"
+              test "$(git cat-file -t course/m06-complete)" = tag
+              complete_commit="$(git rev-parse 'course/m06-complete^{}')"
               git merge-base --is-ancestor "$complete_commit" HEAD
               ./gradlew clean build --no-daemon
-              ./gradlew m05Check --no-daemon
+              ./gradlew m06Check --no-daemon
               jq -e '
-                .schemaVersion == "matching.m05.check.v2" and
-                .unit == "M05" and
+                .schemaVersion == "matching.m06.check.v2" and
+                .unit == "M06" and
                 .status == "PASS" and
-                .contractPlanVersion == "0.7" and
-                .inheritedM04.status == "PASS" and
-                .fixedCorpus.scenarios == 12 and
-                .fixedCorpus.commands == 54 and
+                .contractPlanVersion == "0.8" and
+                .inheritedM05.status == "PASS" and
+                .inheritedM05.fixedScenarios == 12 and
+                .inheritedM05.fixedCommands == 54 and
+                .inheritedM05.generatedCommands == 10240 and
+                .inheritedM05.coverageObligations == 20 and
+                .inheritedM05.mutantsKilled == 8 and
+                .fixedCorpus.scenarios == 15 and
+                .fixedCorpus.commands == 64 and
                 .fixedCorpus.commandCounts == {
                   "PLACE": 21,
-                  "CANCEL": 3,
-                  "PREPARE_RULE_SET": 16,
-                  "ACTIVATE_RULE_SET": 14
+                  "CANCEL": 6,
+                  "PREPARE_RULE_SET": 2,
+                  "ACTIVATE_RULE_SET": 2,
+                  "CHANGE_MARKET_MODE": 24,
+                  "MASS_CANCEL": 9
                 } and
-                .fixedCorpus.canonicalFormat == "M05F1" and
-                .fixedCorpus.canonicalDigest == "sha256:45be63337da83103a45040f5f73e9b996018d76f6d91f77e27cd5b2d9dbb8f7b" and
-                .fixedCorpus.canonicalBytes == 109974 and
-                .fixedCorpus.canonicalLines == 67 and
+                .fixedCorpus.canonicalFormat == "M06F1" and
+                .fixedCorpus.canonicalDigest == "sha256:2f9126e7100581020d2a56dd7da4736ab026a7f9533b051bde4490cda210855b" and
+                .fixedCorpus.canonicalBytes == 8113 and
+                .fixedCorpus.canonicalLines == 65 and
+                .fixedCorpus.differentialComparisons == 64 and
+                .fixedCorpus.eventLedgerChecks == 64 and
+                .generator.algorithm == "splitmix64-v1" and
+                .generator.baseSeed == "6606" and
                 .generator.histories == 160 and
+                .generator.commandsPerHistory == 64 and
                 .generator.commands == 10240 and
-                .generator.canonicalFormat == "M05H1" and
-                .generator.canonicalDigest == "sha256:e742e53e1846730a0f242447b3065e23e352059807d8593dcc3e489498d453f5" and
-                .generator.canonicalBytes == 2553580 and
-                .generator.canonicalLines == 10401 and
+                .generator.lanes == 5 and
+                .generator.historiesPerLane == 32 and
+                .generator.canonicalFormat == "M06H1" and
+                .generator.canonicalDigest == "sha256:b74dd3a6bad6048dcaaceaaeb8fe0c81d1e8d2272d352fe15ea921738f73e6c4" and
+                .generator.canonicalBytes == 1670049 and
+                .generator.canonicalLines == 10241 and
                 .properties.differentialComparisons == 10240 and
-                .properties.ledgerChecks == 10240 and
-                .properties.bookChecks == 10240 and
-                .properties.marketControlChecks == 10240 and
-                .coverage.requiredObligations == 20 and
-                .coverage.satisfiedObligations == 20 and
-                .boundaries.canonicalFormat == "M05RS1" and
-                .boundaries.hashVectors == 4 and
-                .boundaries.grandfatherExistingOrders == true and
-                .counterexamples.required == 8 and
-                .counterexamples.replayed == 8 and
-                .counterexamples.oneMinimal == 8 and
-                .counterexamples.totalCommands == 57 and
-                .counterexamples.canonicalFormat == "M05X1" and
-                .counterexamples.canonicalDigest == "sha256:ea4aa501053d8bf11d8c31a4ba2f2b590b7b69d2c68d7c06cfaa7bf2c7c85a25" and
-                .mutants.required == 8 and
-                .mutants.killed == 8 and
+                .properties.eventLedgerChecks == 10240 and
+                .properties.referenceLedgerChecks == 10240 and
+                .coverage.requiredObligations == 26 and
+                .coverage.satisfiedObligations == 26 and
+                .counterexamples.required == 10 and
+                .counterexamples.found == 10 and
+                .counterexamples.replayed == 10 and
+                .counterexamples.oneMinimal == 10 and
+                .counterexamples.totalCommands == 22 and
+                .counterexamples.canonicalFormat == "M06X1" and
+                .counterexamples.canonicalDigest == "sha256:f55d1d7feabe527706a9974dbaf1a894c1420ea6b09bc9e1f7b9563032fca93b" and
+                .counterexamples.canonicalBytes == 3210 and
+                .counterexamples.canonicalLines == 23 and
+                .mutants.required == 10 and
+                .mutants.killed == 10 and
+                .mutants.classification == "STUDENT_FAILURE" and
                 .mutants.systemErrorControl == "SYSTEM_ERROR" and
+                .mutants.systemErrorCountsAsKill == false and
                 .architecture.passed == true and
                 .architecture.forbiddenFindings == 0 and
+                .evidenceScope == {
+                  "finiteCorpus": true,
+                  "formalProof": false,
+                  "productionReadinessClaim": false,
+                  "replicationOrFailoverCovered": false
+                } and
+                (.tutorialPermalinks | length) == 5 and
                 .releaseTarget.productRelease == null
-              ' build/reports/m05/check.json
+              ' build/reports/m06/check.json
               if test "$complete_commit" = "$(git rev-parse HEAD)"; then
-                ./gradlew m05Evidence -Pm05.unitTag=course/m05-complete --no-daemon
+                ./gradlew m06Evidence -Pm06.unitTag=course/m06-complete --no-daemon
                 jq -e '
                   .schemaVersion == "cex.lab-evidence.v1" and
                   .case == "high-availability-cex" and
                   .project == "matching" and
-                  .unit == "M05" and
-                  .unitTag == "course/m05-complete" and
+                  .unit == "M06" and
+                  .unitTag == "course/m06-complete" and
                   .productRelease == null and
-                  .planVersion == "0.7" and
+                  .planVersion == "0.8" and
                   .source.commit == env.GITHUB_SHA and
                   .source.dirty == false
-                ' build/lab-evidence/M05/manifest.json
+                ' build/lab-evidence/M06/manifest.json
                 evidence_generated=true
               else
-                echo "M05 evidence remains frozen at $complete_commit; validating descendant maintenance commit only."
+                echo "M06 evidence remains frozen at $complete_commit; validating descendant maintenance commit only."
               fi
               ;;
             *)
-              echo "unsupported M05 expected status: $expected_status" >&2
+              echo "unsupported M06 expected status: $expected_status" >&2
               exit 1
               ;;
           esac
           echo "status=$expected_status" >> "$GITHUB_OUTPUT"
           echo "evidence_generated=$evidence_generated" >> "$GITHUB_OUTPUT"
 
-      - name: Validate the declared M06 RED boundary
-        shell: bash
-        run: |
-          test "$(sed -n 's/^planVersion=//p' course.properties)" = 0.8
-          test "$(sed -n 's/^m06Check.expectedStatus=//p' course.properties)" = GOAL_NOT_IMPLEMENTED
-          m06_log="${RUNNER_TEMP:-/tmp}/m06-gradle-output.log"
-          set +e
-          set -o pipefail
-          ./gradlew m06Check --no-daemon 2>&1 | tee "$m06_log"
-          exit_code="${PIPESTATUS[0]}"
-          set +o pipefail
-          set -e
-          test "$exit_code" -ne 0
-          grep -Fq "M06 check status: GOAL_NOT_IMPLEMENTED" "$m06_log"
-          jq -e '
-            .schemaVersion == "matching.m06.check.v1" and
-            .unit == "M06" and
-            .status == "GOAL_NOT_IMPLEMENTED" and
-            .contractPlanVersion == "0.8" and
-            .courseDeclaration.lifecycle == "READY" and
-            .courseDeclaration.designDepth == "CONTRACT" and
-            .fixedCorpus.scenarios == 15 and
-            .fixedCorpus.commands == 64 and
-            .fixedCorpus.commandCounts == {
-              "PLACE": 21,
-              "CANCEL": 6,
-              "PREPARE_RULE_SET": 2,
-              "ACTIVATE_RULE_SET": 2,
-              "CHANGE_MARKET_MODE": 24,
-              "MASS_CANCEL": 9
-            } and
-            .fixedCorpus.proofObligations == 26 and
-            .generator.baseSeed == "6606" and
-            .generator.histories == 160 and
-            .generator.commandsPerHistory == 64 and
-            .generator.totalCommands == 10240 and
-            .generator.lanes == 5 and
-            .generator.coverageObligations == 26 and
-            .modeContract.initialMode == "OPEN" and
-            .modeContract.directHaltedToOpenAllowed == false and
-            .modeContract.transitionClearsBook == false and
-            .modeContract.massCancelRequiredMode == "HALTED" and
-            .modeContract.massCancelOrder == "GLOBAL_ASCENDING_ACCEPTANCE_SEQUENCE" and
-            .modeContract.massCancelAtomic == true and
-            (.tutorialPermalinks | length) == 5 and
-            (.requiredMutants | length) == 10 and
-            (.fixedCorpus | has("canonicalDigest") | not) and
-            (.generator | has("canonicalDigest") | not) and
-            (has("mutants") | not) and
-            .releaseTarget.productRelease == null
-          ' build/reports/m06/check.json
-
-      - name: Upload M05 reports
+      - name: Upload M06 reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: matching-m05-reports
-          path: build/reports/m05/
+          name: matching-m06-reports
+          path: build/reports/m06/
           if-no-files-found: error
 
-      - name: Upload M05 clean-tree evidence
+      - name: Upload M06 clean-tree evidence
         if: steps.boundary.outputs.evidence_generated == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: matching-m05-evidence
-          path: build/lab-evidence/M05/
-          if-no-files-found: error
-
-      - name: Upload M06 declaration report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: matching-m06-start-report
-          path: build/reports/m06/
+          name: matching-m06-evidence
+          path: build/lab-evidence/M06/
           if-no-files-found: error

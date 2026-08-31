@@ -2,7 +2,7 @@ package io.github.lchareln.cex.matching;
 
 import java.util.Objects;
 
-/** Singleton deterministic result emitted by one M05 Prepare or Activate command. */
+/** Singleton deterministic result emitted by one rule-set or operating-mode control command. */
 public sealed interface MarketControlEvent
     permits MarketControlEvent.RuleSetPrepared,
         MarketControlEvent.PrepareRejected,
