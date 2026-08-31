@@ -157,3 +157,9 @@ tasks.register("m05Evidence") {
     description = "Generates and validates the clean-tree M05 evidence manifest."
     dependsOn(":matching-testkit:m05Evidence")
 }
+
+tasks.register("m06Check") {
+    group = "verification"
+    description = "Validates the declared M06 market-mode and Mass Cancel RED boundary."
+    dependsOn(":matching-testkit:m06Check")
+}

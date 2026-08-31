@@ -10,20 +10,20 @@ implemented linear-scan model over 256 deterministic generated histories, then s
 and strictly replays every required semantic counterexample. M04 completes one closed
 execution-policy axis: GTC, IOC, FOK, and Post-only on the same protected limit-order semantics.
 M05 completes one more closed axis: a content-addressed, versioned absolute order-entry price band
-delivered through Prepare/Activate and an in-memory application-sequence fence. It preserves rule
-identity on admission, execution, cancellation, and cross-version trades while grandfathering
-resting orders. Operating modes and Mass Cancel are M06; persistence, networking, performance
-work, and Aeron Cluster remain later units.
+delivered through Prepare/Activate and an in-memory application-sequence fence. M06 is now the
+single active implementation window. Its frozen RED boundary adds `OPEN/CANCEL_ONLY/HALTED`, a safe
+serialized transition graph, and deterministic HALTED-only Mass Cancel in global acceptance order.
+STP, persistence, networking, performance work, and Aeron Cluster remain later units.
 
 ## Current course boundary
 
 - Profile: `SPOT-CEX-1.0`
-- Plan version: `0.7`
-- Unit: `M05`
-- Declared start ref: `course/m05-start`
-- Declared complete ref: `course/m05-complete`
-- Latest product stopping point: `matching-0.1.0` at M03; M04 and M05 have no product release
-- Lifecycle at this boundary: `COMPLETE / PASS`
+- Plan version: `0.8`
+- Unit: `M06`
+- Declared start ref: `course/m06-start`
+- Declared complete ref: `course/m06-complete`
+- Latest product stopping point: `matching-0.1.0` at M03; M04–M06 have no product release
+- Lifecycle at this boundary: `READY / GOAL_NOT_IMPLEMENTED`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -31,31 +31,27 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The completed unit is verified with:
+The structured start boundary is verified with:
 
 ```bash
 ./gradlew clean build --no-daemon
-./gradlew m05Check --no-daemon
+./gradlew m06Check --no-daemon
 ```
 
-Both commands pass. The root build is gated by `m05Check`, which writes strict
-`matching.m05.check.v2` beneath `build/reports/m05/`. It executes a 12-scenario / 54-command fixed
-corpus and 160 SplitMix64 histories of 64 commands across five lanes, comparing production, an
-independent linear-scan reference model, and an event-derived ledger at every boundary. All 20
-semantic coverage obligations have actual witnesses; all eight required faults are killed as
-`STUDENT_FAILURE` by persisted, schema-valid, one-minimal counterexamples, while the throwing
-control remains `SYSTEM_ERROR`. The exact contract is in
-[`docs/specs/m05.md`](docs/specs/m05.md).
+The clean build remains green because the root build is still gated by completed M05. `m06Check`
+validates the exact course declaration, a 15-scenario / 64-command fixed input corpus, seed `6606`,
+160 SplitMix64 histories of 64 commands across five lanes, 26 coverage IDs, ten required mutant
+IDs, and five tutorial permalinks. It writes strict `matching.m06.check.v1` beneath
+`build/reports/m06/`, reports `GOAL_NOT_IMPLEMENTED`, and exits non-zero intentionally. It does not
+invent completion histories, output hashes, mutant kills, or evidence. The exact contract is in
+[`docs/specs/m06.md`](docs/specs/m06.md).
 
-M05 uses a precompiled inclusive tick interval. It does not read a reference-price feed or calculate
-percentages in the matcher. Every deterministic core result consumes an in-memory application
-sequence; a successful Activate atomically switches the complete immutable artifact at its exact
-sequence, and governed Place rejects a stale expected identity. Existing resting orders are
-grandfathered: activation never reprices, reorders, or silently cancels them.
+M06 separates state transition from book termination. A mode change never clears orders;
+`HALTED -> OPEN` is forbidden; and Mass Cancel is accepted only in `HALTED`, where it terminates all
+resting orders atomically in global ascending acceptance-sequence order. `OperatorId` is audit
+attribution for an upstream-authorized control request, not authorization performed by the matcher.
 
-The start contract deliberately excludes `OPEN/CANCEL_ONLY/HALTED` and Mass Cancel. Those form M06,
-so this unit cannot repeat the retired course's mistake of implementing four independent control
-state machines at once.
+## Inherited M05 completion
 
 The fixed M05F1 result history is 109,974 bytes / 67 lines with digest
 `sha256:45be63337da83103a45040f5f73e9b996018d76f6d91f77e27cd5b2d9dbb8f7b`. The
@@ -150,10 +146,10 @@ matching-reference independent model; main/runtime is JDK-only with no project o
 matching-testkit    generators, differential judge, replay, mutants, and evidence tooling
 ```
 
-M05 keeps exactly these three modules. It creates no runtime, protocol, cluster, storage, database,
-Counter, or Rest module. Reports are written beneath `build/reports/m05/`; evidence is published
-only from the clean annotated completion commit after production, reference, property, mutant,
-replay, architecture, and hash gates pass. Historical M00–M04 evidence remains attached to its
+M06 keeps exactly these three modules. It creates no runtime, protocol, cluster, storage, database,
+Counter, or Rest module. Start reports are written beneath `build/reports/m06/`; completion evidence
+will be published only from the clean annotated completion commit after production, reference,
+property, mutant, replay, architecture, and hash gates pass. Historical M00–M05 evidence remains attached to its
 immutable completion tags.
 
 Course dashboard: <https://lcha-reln.github.io/signal-grid-blog/practice/high-availability-cex/>

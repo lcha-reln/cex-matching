@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m06.generator.v1.schema.json",
+  "title": "Matching M06 deterministic market-mode and Mass Cancel generator",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "algorithm", "baseSeed", "histories", "commandsPerHistory", "lanes", "randomDomain", "coverageRequirements", "requiredMutants"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m06.generator.v1"},
+    "algorithm": {"const": "splitmix64-v1"},
+    "baseSeed": {"const": "6606"},
+    "histories": {"const": 160},
+    "commandsPerHistory": {"const": 64},
+    "lanes": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "prefixItems": [
+        {"$ref": "#/$defs/transitionLane"},
+        {"$ref": "#/$defs/permissionLane"},
+        {"$ref": "#/$defs/globalOrderLane"},
+        {"$ref": "#/$defs/atomicityLane"},
+        {"$ref": "#/$defs/attributionLane"}
+      ],
+      "items": false
+    },
+    "randomDomain": {"$ref": "#/$defs/randomDomain"},
+    "coverageRequirements": {
+      "type": "array",
+      "minItems": 26,
+      "maxItems": 26,
+      "uniqueItems": true,
+      "prefixItems": [
+        {"const": "BOOTSTRAP_OPEN"},
+        {"const": "VALID_MODE_TRANSITION"},
+        {"const": "DIRECT_REOPEN_REJECTED"},
+        {"const": "SAME_MODE_REJECTED"},
+        {"const": "STALE_APPLICATION_FENCE"},
+        {"const": "STALE_EXPECTED_MODE"},
+        {"const": "MODE_FAILURE_ATOMIC"},
+        {"const": "PLACE_OPEN_ALLOWED"},
+        {"const": "PLACE_CANCEL_ONLY_REJECTED"},
+        {"const": "PLACE_HALTED_REJECTED"},
+        {"const": "CANCEL_OPEN_ALLOWED"},
+        {"const": "CANCEL_CANCEL_ONLY_ALLOWED"},
+        {"const": "CANCEL_HALTED_REJECTED"},
+        {"const": "RULE_CONTROL_ALL_MODES"},
+        {"const": "TRANSITION_BOOK_UNCHANGED"},
+        {"const": "MASS_CANCEL_REQUIRES_HALTED"},
+        {"const": "MASS_CANCEL_EMPTY_SUCCESS"},
+        {"const": "MASS_CANCEL_GLOBAL_ACCEPTANCE_ORDER"},
+        {"const": "MASS_CANCEL_BID_SIDE"},
+        {"const": "MASS_CANCEL_ASK_SIDE"},
+        {"const": "MASS_CANCEL_CROSS_PRICE"},
+        {"const": "MASS_CANCEL_TERMINAL_IDENTITY"},
+        {"const": "MASS_CANCEL_RULE_ATTRIBUTION"},
+        {"const": "MASS_CANCEL_ACTIVE_RULE_UNCHANGED"},
+        {"const": "APPLICATION_SEQUENCE_CONTINUITY"},
+        {"const": "LEGACY_M00_M05_COMPATIBILITY"}
+      ],
+      "items": false
+    },
+    "requiredMutants": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "prefixItems": [
+        {"const": "M06-CANCEL-ONLY-PLACE-ACCEPTED"},
+        {"const": "M06-HALTED-CUSTOMER-CANCEL-ACCEPTED"},
+        {"const": "M06-HALTED-DIRECTLY-REOPENED"},
+        {"const": "M06-STALE-MODE-FENCE-ACCEPTED"},
+        {"const": "M06-MODE-CHANGE-IMPLICITLY-CLEARS-BOOK"},
+        {"const": "M06-FAILED-MODE-CHANGE-RESETS-OPEN"},
+        {"const": "M06-MASS-CANCEL-WITHOUT-HALT"},
+        {"const": "M06-MASS-CANCEL-NON-ACCEPTANCE-ORDER"},
+        {"const": "M06-FAILED-MASS-CANCEL-PARTIALLY-CLEARS"},
+        {"const": "M06-MASS-CANCEL-DROPS-TERMINAL-ATTRIBUTION"}
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "laneBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "historyModulo", "prefixScenario"],
+      "properties": {
+        "id": {"type": "string"},
+        "historyModulo": {"type": "integer", "minimum": 0, "maximum": 4},
+        "prefixScenario": {"type": "string"}
+      }
+    },
+    "transitionLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "MODE_TRANSITION_AND_FENCE"}, "historyModulo": {"const": 0}, "prefixScenario": {"const": "SAFE_REOPEN_GRAPH"}}}]},
+    "permissionLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "CUSTOMER_PERMISSION_MATRIX"}, "historyModulo": {"const": 1}, "prefixScenario": {"const": "CANCEL_ONLY_PERMISSION"}}}]},
+    "globalOrderLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "MASS_CANCEL_GLOBAL_ORDER"}, "historyModulo": {"const": 2}, "prefixScenario": {"const": "CROSS_SIDE_GLOBAL_ACCEPTANCE_ORDER"}}}]},
+    "atomicityLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "MASS_CANCEL_FAILURE_ATOMICITY"}, "historyModulo": {"const": 3}, "prefixScenario": {"const": "MASS_CANCEL_REQUIRES_HALT"}}}]},
+    "attributionLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "RULE_ATTRIBUTION_AND_LEGACY"}, "historyModulo": {"const": 4}, "prefixScenario": {"const": "RULE_SET_ATTRIBUTION_PRESERVED"}}}]},
+    "randomDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["placeWeight", "cancelWeight", "changeModeWeight", "massCancelWeight", "prepareWeight", "activateWeight", "invalidFieldOneIn", "staleApplicationOneIn", "staleModeOneIn", "massCancelOutsideHaltedOneIn", "minimumPriceTicks", "maximumPriceTicks", "maximumQuantityLots", "executionPolicies", "targetModes"],
+      "properties": {
+        "placeWeight": {"const": 40},
+        "cancelWeight": {"const": 15},
+        "changeModeWeight": {"const": 20},
+        "massCancelWeight": {"const": 15},
+        "prepareWeight": {"const": 6},
+        "activateWeight": {"const": 4},
+        "invalidFieldOneIn": {"const": 32},
+        "staleApplicationOneIn": {"const": 16},
+        "staleModeOneIn": {"const": 16},
+        "massCancelOutsideHaltedOneIn": {"const": 8},
+        "minimumPriceTicks": {"const": 80},
+        "maximumPriceTicks": {"const": 120},
+        "maximumQuantityLots": {"const": 5},
+        "executionPolicies": {"type": "array", "minItems": 4, "maxItems": 4, "prefixItems": [{"const": "GTC"}, {"const": "IOC"}, {"const": "FOK"}, {"const": "POST_ONLY"}], "items": false},
+        "targetModes": {"type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{"const": "OPEN"}, {"const": "CANCEL_ONLY"}, {"const": "HALTED"}], "items": false}
+      }
+    }
+  }
+}

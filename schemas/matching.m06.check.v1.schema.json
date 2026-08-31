@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m06.check.v1.schema.json",
+  "title": "Matching M06 structured RED check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "status", "contractPlanVersion", "objective", "courseDeclaration", "inheritedBaseline", "fixedCorpus", "generator", "modeContract", "tutorialPermalinks", "requiredMutants", "missingCapabilities", "releaseTarget"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m06.check.v1"},
+    "unit": {"const": "M06"},
+    "status": {"const": "GOAL_NOT_IMPLEMENTED"},
+    "contractPlanVersion": {"const": "0.8"},
+    "objective": {"const": "Add one replicated-ready operating-mode axis and deterministic HALTED-only Mass Cancel."},
+    "courseDeclaration": {"$ref": "#/$defs/courseDeclaration"},
+    "inheritedBaseline": {"$ref": "#/$defs/inheritedBaseline"},
+    "fixedCorpus": {"$ref": "#/$defs/fixedCorpus"},
+    "generator": {"$ref": "#/$defs/generator"},
+    "modeContract": {"$ref": "#/$defs/modeContract"},
+    "tutorialPermalinks": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "prefixItems": [
+        {"const": "market-operating-mode-contract"},
+        {"const": "mode-transition-fence-and-permission-matrix"},
+        {"const": "deterministic-mass-cancel-order"},
+        {"const": "mass-cancel-atomicity-and-terminal-attribution"},
+        {"const": "market-mode-property-evidence"}
+      ],
+      "items": false
+    },
+    "requiredMutants": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^M06-[A-Z0-9-]+$"}
+    },
+    "missingCapabilities": {"type": "array", "minItems": 11, "maxItems": 11, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Z0-9_]+$"}},
+    "releaseTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "verification"],
+      "properties": {
+        "unitTag": {"const": "course/m06-complete"},
+        "productRelease": {"type": "null"},
+        "verification": {"const": "M06_EVIDENCE_ONLY"}
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "courseDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case", "profile", "planVersion", "project", "unit", "lifecycle", "designDepth", "startRef", "completeRef", "m06Check.expectedStatus", "evidencePath"],
+      "properties": {
+        "case": {"const": "high-availability-cex"},
+        "profile": {"const": "SPOT-CEX-1.0"},
+        "planVersion": {"const": "0.8"},
+        "project": {"const": "matching"},
+        "unit": {"const": "M06"},
+        "lifecycle": {"const": "READY"},
+        "designDepth": {"const": "CONTRACT"},
+        "startRef": {"const": "course/m06-start"},
+        "completeRef": {"const": "course/m06-complete"},
+        "m06Check.expectedStatus": {"const": "GOAL_NOT_IMPLEMENTED"},
+        "evidencePath": {"const": "build/lab-evidence/M06/manifest.json"}
+      }
+    },
+    "inheritedBaseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "completeRef", "contractPlanVersion", "expectedStatus", "verification"],
+      "properties": {
+        "unit": {"const": "M05"},
+        "completeRef": {"const": "course/m05-complete"},
+        "contractPlanVersion": {"const": "0.7"},
+        "expectedStatus": {"const": "PASS"},
+        "verification": {"const": "ROOT_BUILD_GATES_M05"}
+      }
+    },
+    "fixedCorpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "schemaPath", "sha256", "scenarios", "commands", "commandCounts", "proofObligations", "schemaProbes"],
+      "properties": {
+        "path": {"const": "matching-testkit/src/test/resources/m06/fixtures/market-mode-mass-cancel-v1.json"},
+        "schemaPath": {"const": "schemas/matching.m06.scenario.v1.schema.json"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "scenarios": {"const": 15},
+        "commands": {"const": 64},
+        "commandCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["PLACE", "CANCEL", "PREPARE_RULE_SET", "ACTIVATE_RULE_SET", "CHANGE_MARKET_MODE", "MASS_CANCEL"],
+          "properties": {
+            "PLACE": {"const": 21},
+            "CANCEL": {"const": 6},
+            "PREPARE_RULE_SET": {"const": 2},
+            "ACTIVATE_RULE_SET": {"const": 2},
+            "CHANGE_MARKET_MODE": {"const": 24},
+            "MASS_CANCEL": {"const": 9}
+          }
+        },
+        "proofObligations": {"const": 26},
+        "schemaProbes": {"const": 5}
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "schemaPath", "sha256", "algorithm", "baseSeed", "histories", "commandsPerHistory", "totalCommands", "lanes", "historiesPerLane", "laneIds", "coverageObligations", "schemaProbes"],
+      "properties": {
+        "path": {"const": "matching-testkit/src/test/resources/m06/fixtures/property-suite-v1.json"},
+        "schemaPath": {"const": "schemas/matching.m06.generator.v1.schema.json"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "algorithm": {"const": "splitmix64-v1"},
+        "baseSeed": {"const": "6606"},
+        "histories": {"const": 160},
+        "commandsPerHistory": {"const": 64},
+        "totalCommands": {"const": 10240},
+        "lanes": {"const": 5},
+        "historiesPerLane": {"const": 32},
+        "laneIds": {"type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Z0-9_]+$"}},
+        "coverageObligations": {"const": 26},
+        "schemaProbes": {"const": 5}
+      }
+    },
+    "modeContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["initialMode", "modes", "operatorBoundary", "authorizationVerifiedByCore", "changeModeEntrypoint", "massCancelEntrypoint", "placeModeRejection", "cancelModeRejection", "placeAllowedModes", "cancelAllowedModes", "ruleControlAllowedModes", "allowedTransitions", "directHaltedToOpenAllowed", "sameModeTransitionAllowed", "transitionFence", "successfulTransitionModeRevision", "transitionClearsBook", "changeModeRejectionCodes", "placePrecedence", "cancelPrecedence", "massCancelRequiredMode", "massCancelRejectionCodes", "massCancelOrder", "massCancelAtomic", "massCancelEventGrammar", "emptyMassCancelSucceeds", "successfulMassCancelModeAfter", "successfulMassCancelChangesModeRevision", "terminalIdentityPreserved", "ruleAttributionPreserved"],
+      "properties": {
+        "initialMode": {"const": "OPEN"},
+        "modes": {"type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{"const": "OPEN"}, {"const": "CANCEL_ONLY"}, {"const": "HALTED"}], "items": false},
+        "operatorBoundary": {"const": "PRE_AUTHORIZED_AUDIT_ATTRIBUTION"},
+        "authorizationVerifiedByCore": {"const": false},
+        "changeModeEntrypoint": {"const": "changeMarketMode(ChangeMarketMode(expectedApplicationSequence,expectedMode,targetMode,operatorId))"},
+        "massCancelEntrypoint": {"const": "massCancel(MassCancel(expectedApplicationSequence,expectedMode,operatorId))"},
+        "placeModeRejection": {"const": "MARKET_NOT_OPEN"},
+        "cancelModeRejection": {"const": "MARKET_NOT_CANCELABLE"},
+        "placeAllowedModes": {"type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{"const": "OPEN"}], "items": false},
+        "cancelAllowedModes": {"type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{"const": "OPEN"}, {"const": "CANCEL_ONLY"}], "items": false},
+        "ruleControlAllowedModes": {"type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{"const": "OPEN"}, {"const": "CANCEL_ONLY"}, {"const": "HALTED"}], "items": false},
+        "allowedTransitions": {"type": "array", "minItems": 5, "maxItems": 5, "prefixItems": [{"const": "OPEN->CANCEL_ONLY"}, {"const": "OPEN->HALTED"}, {"const": "CANCEL_ONLY->OPEN"}, {"const": "CANCEL_ONLY->HALTED"}, {"const": "HALTED->CANCEL_ONLY"}], "items": false},
+        "directHaltedToOpenAllowed": {"const": false},
+        "sameModeTransitionAllowed": {"const": false},
+        "transitionFence": {"const": "APPLICATION_SEQUENCE"},
+        "successfulTransitionModeRevision": {"const": "INCREMENT_EXACTLY_ONCE"},
+        "transitionClearsBook": {"const": false},
+        "changeModeRejectionCodes": {"type": "array", "minItems": 4, "maxItems": 4, "prefixItems": [{"const": "APPLICATION_SEQUENCE_MISMATCH"}, {"const": "EXPECTED_MODE_MISMATCH"}, {"const": "NO_MODE_CHANGE"}, {"const": "INVALID_TRANSITION"}], "items": false},
+        "placePrecedence": {"type": "array", "minItems": 9, "maxItems": 9, "items": {"type": "string", "pattern": "^[A-Z0-9_]+$"}},
+        "cancelPrecedence": {"type": "array", "minItems": 4, "maxItems": 4, "prefixItems": [{"const": "FIELD_VALIDATION"}, {"const": "MARKET_MODE_PERMISSION"}, {"const": "ORDER_LOOKUP_AND_LIFECYCLE"}, {"const": "CANCEL"}], "items": false},
+        "massCancelRequiredMode": {"const": "HALTED"},
+        "massCancelRejectionCodes": {"type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{"const": "APPLICATION_SEQUENCE_MISMATCH"}, {"const": "EXPECTED_MODE_MISMATCH"}, {"const": "MARKET_NOT_HALTED"}], "items": false},
+        "massCancelOrder": {"const": "GLOBAL_ASCENDING_ACCEPTANCE_SEQUENCE"},
+        "massCancelAtomic": {"const": true},
+        "massCancelEventGrammar": {"type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{"const": "STARTED"}, {"const": "ORDER_CANCELED*"}, {"const": "COMPLETED"}], "items": false},
+        "emptyMassCancelSucceeds": {"const": true},
+        "successfulMassCancelModeAfter": {"const": "HALTED"},
+        "successfulMassCancelChangesModeRevision": {"const": false},
+        "terminalIdentityPreserved": {"const": true},
+        "ruleAttributionPreserved": {"const": true}
+      }
+    }
+  }
+}

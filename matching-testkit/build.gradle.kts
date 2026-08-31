@@ -52,6 +52,7 @@ val m04UnitTag = providers.gradleProperty("m04.unitTag").orElse("course/m04-comp
 val m05ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m05")
 val m05EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M05")
 val m05UnitTag = providers.gradleProperty("m05.unitTag").orElse("course/m05-complete")
+val m06ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m06")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -217,4 +218,17 @@ tasks.register<JavaExec>("m05Evidence") {
         m05UnitTag.get(),
     )
     doNotTrackState("Evidence must re-check the M05 tag and working-tree cleanliness on every invocation")
+}
+
+tasks.register<JavaExec>("m06Check") {
+    group = "verification"
+    description = "Validates the frozen M06 declaration and writes the intentional RED report."
+    dependsOn("test", "classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M06CheckMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m06ReportDirectory.get().asFile.absolutePath,
+    )
+    doNotTrackState("M06 must never reuse a stale declaration report")
 }

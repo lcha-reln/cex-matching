@@ -1,4 +1,4 @@
-name: Matching M05 contract
+name: Matching M06 contract
 
 on:
   push:
@@ -41,12 +41,12 @@ jobs:
           test "${#resources[@]}" -gt 0
           jq empty "${resources[@]}"
 
-      - name: Execute the inherited M04 semantics and M05 completion proof
+      - name: Execute the inherited M05 completion proof
         id: boundary
         shell: bash
         run: |
-          test "$(sed -n 's/^unit=//p' course.properties)" = M05
-          expected_status="$(sed -n 's/^m05Check.expectedStatus=//p' course.properties)"
+          test "$(sed -n 's/^unit=//p' course.properties)" = M06
+          expected_status=PASS
           evidence_generated=false
           case "$expected_status" in
             GOAL_NOT_IMPLEMENTED)
@@ -181,12 +181,64 @@ jobs:
               fi
               ;;
             *)
-              echo "unsupported m05Check.expectedStatus: $expected_status" >&2
+              echo "unsupported M05 expected status: $expected_status" >&2
               exit 1
               ;;
           esac
           echo "status=$expected_status" >> "$GITHUB_OUTPUT"
           echo "evidence_generated=$evidence_generated" >> "$GITHUB_OUTPUT"
+
+      - name: Validate the declared M06 RED boundary
+        shell: bash
+        run: |
+          test "$(sed -n 's/^planVersion=//p' course.properties)" = 0.8
+          test "$(sed -n 's/^m06Check.expectedStatus=//p' course.properties)" = GOAL_NOT_IMPLEMENTED
+          m06_log="${RUNNER_TEMP:-/tmp}/m06-gradle-output.log"
+          set +e
+          set -o pipefail
+          ./gradlew m06Check --no-daemon 2>&1 | tee "$m06_log"
+          exit_code="${PIPESTATUS[0]}"
+          set +o pipefail
+          set -e
+          test "$exit_code" -ne 0
+          grep -Fq "M06 check status: GOAL_NOT_IMPLEMENTED" "$m06_log"
+          jq -e '
+            .schemaVersion == "matching.m06.check.v1" and
+            .unit == "M06" and
+            .status == "GOAL_NOT_IMPLEMENTED" and
+            .contractPlanVersion == "0.8" and
+            .courseDeclaration.lifecycle == "READY" and
+            .courseDeclaration.designDepth == "CONTRACT" and
+            .fixedCorpus.scenarios == 15 and
+            .fixedCorpus.commands == 64 and
+            .fixedCorpus.commandCounts == {
+              "PLACE": 21,
+              "CANCEL": 6,
+              "PREPARE_RULE_SET": 2,
+              "ACTIVATE_RULE_SET": 2,
+              "CHANGE_MARKET_MODE": 24,
+              "MASS_CANCEL": 9
+            } and
+            .fixedCorpus.proofObligations == 26 and
+            .generator.baseSeed == "6606" and
+            .generator.histories == 160 and
+            .generator.commandsPerHistory == 64 and
+            .generator.totalCommands == 10240 and
+            .generator.lanes == 5 and
+            .generator.coverageObligations == 26 and
+            .modeContract.initialMode == "OPEN" and
+            .modeContract.directHaltedToOpenAllowed == false and
+            .modeContract.transitionClearsBook == false and
+            .modeContract.massCancelRequiredMode == "HALTED" and
+            .modeContract.massCancelOrder == "GLOBAL_ASCENDING_ACCEPTANCE_SEQUENCE" and
+            .modeContract.massCancelAtomic == true and
+            (.tutorialPermalinks | length) == 5 and
+            (.requiredMutants | length) == 10 and
+            (.fixedCorpus | has("canonicalDigest") | not) and
+            (.generator | has("canonicalDigest") | not) and
+            (has("mutants") | not) and
+            .releaseTarget.productRelease == null
+          ' build/reports/m06/check.json
 
       - name: Upload M05 reports
         if: always()
@@ -202,4 +254,12 @@ jobs:
         with:
           name: matching-m05-evidence
           path: build/lab-evidence/M05/
+          if-no-files-found: error
+
+      - name: Upload M06 declaration report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: matching-m06-start-report
+          path: build/reports/m06/
           if-no-files-found: error
