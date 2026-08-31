@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m08.counterexamples.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "counterexamples"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m08.counterexamples.v1"},
+    "unit": {"const": "M08"},
+    "counterexamples": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mutantId",
+          "classification",
+          "propertyFingerprint",
+          "rawOperations",
+          "minimalOperations",
+          "shrinkTrials",
+          "freshRuntime",
+          "realWalFiles",
+          "strictReplay",
+          "oneMinimal",
+          "systemErrorCountedAsKill",
+          "candidateDriver",
+          "actualMutationActions",
+          "fullRestartGrammar",
+          "operations"
+        ],
+        "properties": {
+          "mutantId": {"type": "string", "pattern": "^M08-"},
+          "classification": {"const": "STUDENT_FAILURE"},
+          "propertyFingerprint": {"type": "string", "minLength": 1},
+          "rawOperations": {"type": "integer", "minimum": 1},
+          "minimalOperations": {"type": "integer", "minimum": 1},
+          "shrinkTrials": {"type": "integer", "minimum": 1},
+          "freshRuntime": {"const": true},
+          "realWalFiles": {"const": true},
+          "strictReplay": {"const": true},
+          "oneMinimal": {"const": true},
+          "systemErrorCountedAsKill": {"const": false},
+          "candidateDriver": {"const": "EXECUTABLE_MUTATED_RUNTIME"},
+          "actualMutationActions": {"type": "integer", "minimum": 1},
+          "fullRestartGrammar": {"const": true},
+          "operations": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    }
+  }
+}

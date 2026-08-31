@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m08.check.v2.schema.json",
+  "title": "Matching M08 completed local durability check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "status", "contractPlanVersion", "releaseTarget"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m08.check.v2"},
+    "unit": {"const": "M08"},
+    "status": {"enum": ["PASS", "STUDENT_FAILURE", "SYSTEM_ERROR"]},
+    "contractPlanVersion": {"const": "0.10"},
+    "detail": {"type": "string", "minLength": 1},
+    "inheritedM07": {"$ref": "#/$defs/inherited"},
+    "inputs": {"$ref": "#/$defs/inputs"},
+    "fixed": {"$ref": "#/$defs/fixed"},
+    "generator": {"$ref": "#/$defs/generator"},
+    "durability": {"$ref": "#/$defs/durability"},
+    "coverage": {"$ref": "#/$defs/coverage"},
+    "mutants": {"$ref": "#/$defs/mutants"},
+    "architecture": {"$ref": "#/$defs/architecture"},
+    "faultEvidence": {"$ref": "#/$defs/fault"},
+    "staleClassification": {"$ref": "#/$defs/stale"},
+    "releaseTarget": {"$ref": "#/$defs/release"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "PASS"}}},
+      "then": {
+        "required": ["inheritedM07", "inputs", "fixed", "generator", "durability", "coverage", "mutants", "architecture", "faultEvidence", "staleClassification"],
+        "not": {"required": ["detail"]}
+      }
+    },
+    {
+      "if": {"properties": {"status": {"enum": ["STUDENT_FAILURE", "SYSTEM_ERROR"]}}},
+      "then": {
+        "required": ["detail"],
+        "not": {
+          "anyOf": [
+            {"required": ["inheritedM07"]},
+            {"required": ["inputs"]},
+            {"required": ["fixed"]},
+            {"required": ["generator"]},
+            {"required": ["durability"]},
+            {"required": ["coverage"]},
+            {"required": ["mutants"]},
+            {"required": ["architecture"]},
+            {"required": ["faultEvidence"]},
+            {"required": ["staleClassification"]}
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "inherited": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "status", "fixedScenarios", "fixedCommands", "generatedHistories", "generatedCommands", "coverageObligations", "mutantsKilled"],
+      "properties": {
+        "unit": {"const": "M07"},
+        "status": {"const": "PASS"},
+        "fixedScenarios": {"const": 16},
+        "fixedCommands": {"const": 72},
+        "generatedHistories": {"const": 160},
+        "generatedCommands": {"const": 10240},
+        "coverageObligations": {"const": 24},
+        "mutantsKilled": {"const": 8}
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fixedSha256", "generatorSha256"],
+      "properties": {
+        "fixedSha256": {"const": "5160121600c151c91db5431a4e1a8ef8fcd4a73ba67683d96a09daba389100a3"},
+        "generatorSha256": {"const": "477a2b16be5d2d6f6f378b203660bf1106db89409ad06e77bdb7837edbfc74ea"}
+      }
+    },
+    "fixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarios", "digest", "injectedFaults"],
+      "properties": {
+        "scenarios": {"const": 20},
+        "digest": {"$ref": "#/$defs/sha256"},
+        "injectedFaults": {"type": "integer", "minimum": 1}
+      }
+    },
+    "operationCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["SUBMIT", "DUPLICATE", "CONFLICT", "RESTART", "ROLLOVER", "FAULT"],
+      "properties": {
+        "SUBMIT": {"type": "integer", "minimum": 1},
+        "DUPLICATE": {"type": "integer", "minimum": 1},
+        "CONFLICT": {"type": "integer", "minimum": 1},
+        "RESTART": {"type": "integer", "minimum": 1},
+        "ROLLOVER": {"type": "integer", "minimum": 1},
+        "FAULT": {"type": "integer", "minimum": 1}
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "baseSeed", "histories", "operationsPerHistory", "operations", "profileDrivenOperations", "invalidEnvelopes", "businessRejections", "selectedOperations", "digest"],
+      "properties": {
+        "algorithm": {"const": "splitmix64-v1"},
+        "baseSeed": {"const": "5808"},
+        "histories": {"const": 96},
+        "operationsPerHistory": {"const": 48},
+        "operations": {"const": 4608},
+        "profileDrivenOperations": {"const": 1152},
+        "invalidEnvelopes": {"const": 192},
+        "businessRejections": {"const": 576},
+        "selectedOperations": {"$ref": "#/$defs/operationCounts"},
+        "digest": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "durability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["envelope", "wal", "submissionOrder", "genesisRecovery", "durableBidirectionalIdentity", "allApplicationCommandsJournaled", "m07StpPlaceJournaled", "m07GovernedStpPlaceJournaled", "preprovisionedRealNonSymlinkWalDirectory", "ancestorDirectoryDurabilityExternal", "runtimeCreatesWalDirectory"],
+      "properties": {
+        "envelope": {"const": "M08C1"},
+        "wal": {"const": "M08W1"},
+        "submissionOrder": {"const": "VALIDATE_PREFLIGHT_APPEND_FORCE_APPLY_ACK"},
+        "genesisRecovery": {"const": true},
+        "durableBidirectionalIdentity": {"const": true},
+        "allApplicationCommandsJournaled": {"const": true},
+        "m07StpPlaceJournaled": {"const": true},
+        "m07GovernedStpPlaceJournaled": {"const": true},
+        "preprovisionedRealNonSymlinkWalDirectory": {"const": true},
+        "ancestorDirectoryDurabilityExternal": {"const": true},
+        "runtimeCreatesWalDirectory": {"const": false}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "observed"],
+      "properties": {
+        "required": {"const": 24},
+        "observed": {"const": 24}
+      }
+    },
+    "mutants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "killed", "throwingControl", "systemErrorCountedAsKill", "candidateDriver", "actualMutationActions", "fullRestartGrammar"],
+      "properties": {
+        "required": {"const": 10},
+        "killed": {"const": 10},
+        "throwingControl": {"const": "SYSTEM_ERROR"},
+        "systemErrorCountedAsKill": {"const": false},
+        "candidateDriver": {"const": "EXECUTABLE_MUTATED_RUNTIME"},
+        "actualMutationActions": {"type": "integer", "minimum": 10},
+        "fullRestartGrammar": {"const": true}
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coreSources", "localRuntimeSources", "violations"],
+      "properties": {
+        "coreSources": {"type": "integer", "minimum": 1},
+        "localRuntimeSources": {"type": "integer", "minimum": 1},
+        "violations": {"const": 0}
+      }
+    },
+    "fault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "childProcessCrashSmokes", "beforeOperationFailures", "injectedEnospcWitness", "injectedReadOnlyWitness", "actualFilesystemForTypedInjections", "preprovisionedWalDirectory", "ancestorDirectoryDurabilityExternal", "realPowerLoss", "realDiskFull", "physicalMediaDurability"],
+      "properties": {
+        "model": {"const": "CODE_LEVEL_DETERMINISTIC_INJECTION"},
+        "childProcessCrashSmokes": {"const": 3},
+        "beforeOperationFailures": {"const": 7},
+        "injectedEnospcWitness": {"const": true},
+        "injectedReadOnlyWitness": {"const": true},
+        "actualFilesystemForTypedInjections": {"const": false},
+        "preprovisionedWalDirectory": {"const": true},
+        "ancestorDirectoryDurabilityExternal": {"const": true},
+        "realPowerLoss": {"const": false},
+        "realDiskFull": {"const": false},
+        "physicalMediaDurability": {"const": false}
+      }
+    },
+    "stale": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reservedCode", "directWitness", "coverage", "exactPriorSlot", "differentIdentityPriorSlot"],
+      "properties": {
+        "reservedCode": {"const": "PRODUCER_SEQUENCE_STALE"},
+        "directWitness": {"const": false},
+        "coverage": {"const": "STALE_SLOT_RESOLVES_BY_BINDING_PRECEDENCE"},
+        "exactPriorSlot": {"const": "DUPLICATE_REPLAYED"},
+        "differentIdentityPriorSlot": {"const": "SLOT_IDENTITY_CONFLICT"}
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "verification"],
+      "properties": {
+        "unitTag": {"const": "course/m08-complete"},
+        "productRelease": {"type": "null"},
+        "verification": {"const": "M08_EVIDENCE_ONLY"}
+      }
+    }
+  }
+}

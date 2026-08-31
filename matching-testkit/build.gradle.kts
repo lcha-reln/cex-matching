@@ -5,6 +5,7 @@ plugins {
 
 dependencies {
     api(project(":matching-core"))
+    implementation(project(":matching-local-runtime"))
     implementation(project(":matching-reference"))
     implementation(libs.jackson.databind)
     implementation(libs.json.schema.validator)
@@ -32,6 +33,7 @@ tasks.withType<Test>().configureEach {
         "**/M04StartCheckRunnerTest.class",
         "**/M06StartCheckRunnerTest.class",
         "**/M07StartCheckRunnerTest.class",
+        "**/M08StartCheckRunnerTest.class",
     )
 }
 
@@ -61,6 +63,8 @@ val m07ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m07")
 val m07EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M07")
 val m07UnitTag = providers.gradleProperty("m07.unitTag").orElse("course/m07-complete")
 val m08ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m08")
+val m08EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M08")
+val m08UnitTag = providers.gradleProperty("m08.unitTag").orElse("course/m08-complete")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -286,8 +290,8 @@ tasks.register<JavaExec>("m07Evidence") {
 
 tasks.register<JavaExec>("m08Check") {
     group = "verification"
-    description = "Runs the declared M08 structured RED contract."
-    dependsOn("test", ":matching-core:test", ":matching-reference:check", "classes")
+    description = "Runs the declared or completed M08 local durability judge."
+    dependsOn("test", ":matching-core:test", ":matching-local-runtime:test", ":matching-reference:check", "classes")
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("io.github.lchareln.cex.matching.testkit.M08CheckMain")
     args(
@@ -295,4 +299,19 @@ tasks.register<JavaExec>("m08Check") {
         m08ReportDirectory.get().asFile.absolutePath,
     )
     doNotTrackState("M08 must never reuse a stale durability report")
+}
+
+tasks.register<JavaExec>("m08Evidence") {
+    group = "verification"
+    description = "Generates and validates clean-tree annotated-tag M08 evidence."
+    dependsOn("m08Check")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M08EvidenceMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m08ReportDirectory.get().asFile.absolutePath,
+        m08EvidenceDirectory.get().asFile.absolutePath,
+        m08UnitTag.get(),
+    )
+    doNotTrackState("Evidence must re-check the M08 tag and working-tree cleanliness on every invocation")
 }
