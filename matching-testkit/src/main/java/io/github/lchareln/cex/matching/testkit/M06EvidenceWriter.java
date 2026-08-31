@@ -95,6 +95,7 @@ public final class M06EvidenceWriter {
         }
       }
       ObjectNode manifest = manifest(sourceCommit, check, staging);
+      verifyArtifactBindings(manifest, staging);
       JsonSupport.validate(
           manifest, readString(root.resolve("schemas/cex.lab-evidence.v1.schema.json")), true);
       AtomicFiles.write(staging.resolve("manifest.json"), JsonSupport.prettyBytes(manifest));
@@ -145,9 +146,11 @@ public final class M06EvidenceWriter {
         check.path("boundaries"),
         staging,
         List.of(
+            "inputs/market-mode-mass-cancel-v1.json",
             "reports/fixed-scenario-pack.json",
             "reports/fixed-event-batches.json",
-            "reports/boundaries.json"));
+            "reports/boundaries.json",
+            "reports/check.json"));
     addClaim(
         claims,
         "deterministic-mass-cancel",
@@ -185,6 +188,7 @@ public final class M06EvidenceWriter {
         staging,
         List.of(
             "inputs/counterexamples-v1.json",
+            "reports/counterexamples.json",
             "reports/counterexamples.canonical.utf8",
             "reports/replay.json",
             "reports/mutants.json"));
@@ -227,6 +231,35 @@ public final class M06EvidenceWriter {
       artifact.put("path", path);
       artifact.put("sha256", Hashing.sha256Hex(readBytes(file)));
     }
+  }
+
+  private static void verifyArtifactBindings(ObjectNode manifest, Path staging) throws IOException {
+    List<String> bound = new ArrayList<>();
+    manifest
+        .path("claims")
+        .forEach(
+            claim ->
+                claim
+                    .path("artifacts")
+                    .forEach(artifact -> bound.add(artifact.path("path").stringValue())));
+    List<String> files;
+    try (var paths = Files.walk(staging)) {
+      files =
+          paths
+              .filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
+              .map(staging::relativize)
+              .map(Path::toString)
+              .map(value -> value.replace(java.io.File.separatorChar, '/'))
+              .sorted()
+              .toList();
+    }
+    List<String> sortedBindings = bound.stream().sorted().toList();
+    require(
+        sortedBindings.equals(files),
+        "every M06 evidence artifact must be bound exactly once: files="
+            + files
+            + ", bindings="
+            + sortedBindings);
   }
 
   private static void verifyCourseContract(Path root) {
