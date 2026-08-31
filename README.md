@@ -14,18 +14,20 @@ delivered through Prepare/Activate and an in-memory application-sequence fence. 
 next closed axis: `OPEN/CANCEL_ONLY/HALTED`, a safe serialized transition graph, and deterministic
 HALTED-only Mass Cancel in global acceptance order.
 M07 completes the next deliberately narrow axis: an upstream-resolved opaque participant group and
-taker-owned self-trade-prevention instruction. Persistence, networking, performance work, and
-Aeron Cluster remain later units.
+taker-owned self-trade-prevention instruction. M08 now freezes the next structured RED boundary:
+a caller-serialized, single-shard local WAL, durable command identity, restart recovery, and an ACK
+that may occur only after append, force, and matching apply. Networking, replication, failover,
+performance work, and Aeron Cluster remain later units.
 
 ## Current course boundary
 
 - Profile: `SPOT-CEX-1.0`
-- Plan version: `0.9`
-- Unit: `M07`
-- Declared start ref: `course/m07-start`
-- Declared complete ref: `course/m07-complete`
-- Latest product stopping point: `matching-0.1.0` at M03; M04–M07 have no product release
-- Lifecycle at this boundary: `COMPLETE / PASS`
+- Plan version: `0.10`
+- Unit: `M08`
+- Declared start ref: `course/m08-start`
+- Declared complete ref: `course/m08-complete`
+- Latest product stopping point: `matching-0.1.0` at M03; M04–M08 have no product release
+- Lifecycle at this boundary: `READY / GOAL_NOT_IMPLEMENTED`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -33,12 +35,22 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The completed boundary is verified with:
+The inherited completion and intentional M08 RED boundary are verified separately:
 
 ```bash
 ./gradlew clean build --no-daemon
-./gradlew m07Check --no-daemon
+./gradlew m08Check --no-daemon # expected to exit non-zero at course/m08-start
 ```
+
+The root build remains gated by the completed `m07Check`. At the M08 start ref, `m08Check` validates
+only the frozen 20-scenario input, seed `5808`, 96 histories by 48 operations across four lanes, 24
+coverage identities, ten mutant identities, five tutorial coordinates, strict schemas, and exact
+fixture hashes. It then writes `matching.m08.check.v1 / GOAL_NOT_IMPLEMENTED` and exits non-zero.
+The start ref publishes no runtime implementation, generated result digest, fault outcome, mutant
+kill, counterexample, or completion evidence. The exact contract is in
+[`docs/specs/m08.md`](docs/specs/m08.md).
+
+## Inherited M07 completion
 
 The root build is gated by `m07Check`. The completion judge executes the exact 16-scenario /
 72-command fixed corpus and regenerates seed `5707` into 160 SplitMix64 histories of 64 commands
@@ -195,11 +207,11 @@ matching-reference independent model; main/runtime is JDK-only with no project o
 matching-testkit    generators, differential judge, replay, mutants, and evidence tooling
 ```
 
-M07 keeps exactly these three modules. It creates no runtime, protocol, cluster, storage, database,
-Counter, or Rest module. The start ref writes only a structured RED report beneath
-`build/reports/m07/`; later tag-bound evidence may be published only from a clean annotated
-completion commit after production, reference, event-ledger, mutant, replay, architecture, and hash
-gates pass. Historical M00–M06 evidence remains attached to its immutable completion tags.
+The M08 start ref still keeps exactly these three modules. It creates no runtime, protocol, cluster,
+storage, database, Counter, or Rest module; it writes only a structured RED report beneath
+`build/reports/m08/`. The later completion may add one `matching-local-runtime` module only after the
+start tag is frozen, while `matching-core` remains infrastructure-free. Historical M00–M07 evidence
+stays attached to immutable completion tags.
 
 Course dashboard: <https://lcha-reln.github.io/signal-grid-blog/practice/high-availability-cex/>
 
