@@ -290,7 +290,7 @@ tasks.register<JavaExec>("m07Evidence") {
 
 tasks.register<JavaExec>("m08Check") {
     group = "verification"
-    description = "Runs the declared or completed M08 local durability judge."
+    description = "Runs the completed M08 local durability judge."
     dependsOn("test", ":matching-core:test", ":matching-local-runtime:test", ":matching-reference:check", "classes")
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("io.github.lchareln.cex.matching.testkit.M08CheckMain")

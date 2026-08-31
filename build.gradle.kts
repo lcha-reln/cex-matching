@@ -83,7 +83,7 @@ tasks.named("assemble") {
 }
 
 tasks.named("check") {
-    dependsOn("spotlessCheck", ":matching-core:check", ":matching-local-runtime:check", ":matching-reference:check", ":matching-testkit:check", "m07Check")
+    dependsOn("spotlessCheck", ":matching-core:check", ":matching-local-runtime:check", ":matching-reference:check", ":matching-testkit:check", "m08Check")
 }
 
 tasks.register("m00Check") {
@@ -184,7 +184,7 @@ tasks.register("m07Evidence") {
 
 tasks.register("m08Check") {
     group = "verification"
-    description = "Runs the declared or completed M08 local durability judge."
+    description = "Runs the completed M08 local durability judge."
     dependsOn(":matching-testkit:m08Check")
 }
 

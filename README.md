@@ -14,10 +14,10 @@ delivered through Prepare/Activate and an in-memory application-sequence fence. 
 next closed axis: `OPEN/CANCEL_ONLY/HALTED`, a safe serialized transition graph, and deterministic
 HALTED-only Mass Cancel in global acceptance order.
 M07 completes the next deliberately narrow axis: an upstream-resolved opaque participant group and
-taker-owned self-trade-prevention instruction. M08 now freezes the next structured RED boundary:
-a caller-serialized, single-shard local WAL, durable command identity, restart recovery, and an ACK
-that may occur only after append, force, and matching apply. Networking, replication, failover,
-performance work, and Aeron Cluster remain later units.
+taker-owned self-trade-prevention instruction. M08 completes the first local durability axis: a
+caller-serialized, single-shard M08C1/M08W1 runtime with durable bidirectional identity, genesis
+recovery, and an ACK that may occur only after append, force, and matching apply. Networking,
+Snapshot, replication, failover, performance work, and Aeron Cluster remain later units.
 
 ## Current course boundary
 
@@ -27,7 +27,7 @@ performance work, and Aeron Cluster remain later units.
 - Declared start ref: `course/m08-start`
 - Declared complete ref: `course/m08-complete`
 - Latest product stopping point: `matching-0.1.0` at M03; M04–M08 have no product release
-- Lifecycle at this boundary: `READY / GOAL_NOT_IMPLEMENTED`
+- Lifecycle at this boundary: `COMPLETE / PASS`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -35,20 +35,51 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The inherited completion and intentional M08 RED boundary are verified separately:
+The completed M08 boundary is verified with:
 
 ```bash
 ./gradlew clean build --no-daemon
-./gradlew m08Check --no-daemon # expected to exit non-zero at course/m08-start
+./gradlew m08Check --no-daemon
 ```
 
-The root build remains gated by the completed `m07Check`. At the M08 start ref, `m08Check` validates
-only the frozen 20-scenario input, seed `5808`, 96 histories by 48 operations across four lanes, 24
-coverage identities, ten mutant identities, five tutorial coordinates, strict schemas, and exact
-fixture hashes. It then writes `matching.m08.check.v1 / GOAL_NOT_IMPLEMENTED` and exits non-zero.
-The start ref publishes no runtime implementation, generated result digest, fault outcome, mutant
-kill, counterexample, or completion evidence. The exact contract is in
-[`docs/specs/m08.md`](docs/specs/m08.md).
+`m08Check` first reruns the inherited M07 semantic judge. It then executes 20 fixed scenarios and
+two byte-exact generations of seed `5808` across 96 histories by 48 boundaries. The frozen weighted
+profile contributes 1,152 operations (732 submit, 111 duplicate, 104 conflict, 92 restart, 57
+rollover, and 56 fault), while the full corpus includes 192 structurally invalid envelopes and 576
+durably journaled business rejections. An independent identity model and third durability ledger
+check all 4,608 boundaries; all 24 obligations have concrete witnesses.
+
+The completion gate also executes seven `BEFORE_OPERATION` failure histories, three child JVM
+`Runtime.halt(86)` file/reopen smokes, and ten executable runtime/file mutants. All ten mutants are
+killed as `STUDENT_FAILURE`, with 13 real mutation actions and 56 one-minimal high-level history
+tokens that preserve their required submit/close/restart/retry grammar. The throwing control remains
+`SYSTEM_ERROR` and never counts as a kill. The strict `matching.m08.check.v2` report is written under
+`build/reports/m08/`; the exact contract is in [`docs/specs/m08.md`](docs/specs/m08.md).
+
+The fixed canonical digest is
+`sha256:444e999094bc58aabed7869df60a07a019de9969f8bd39318edc3c0590527472`.
+The generated history digest is
+`sha256:56a2d7f63df96737c286bab5c96a16aa50e0dd33df58f9cefc9d7abee5aaff41`,
+and the M08X2 counterexample digest is
+`sha256:9608baeba56ba525e6eeba5c33d9f6368b72c8f68e22b5e7f0c6fdf768d9566a`.
+
+After committing the completed source and creating annotated `course/m08-complete` at that exact
+clean HEAD, evidence is generated with:
+
+```bash
+./gradlew m08Evidence -Pm08.unitTag=course/m08-complete --no-daemon
+```
+
+The writer reruns the complete judge, verifies the annotated tag, clean tree, strict report schemas,
+unique artifact bindings and hashes, rejects a `matching-*` product tag at the same HEAD, and
+publishes `build/lab-evidence/M08/manifest.json` with `productRelease: null`.
+
+This is finite local-process evidence. The deployment or test harness must pre-provision an existing
+real non-symlink WAL directory and durably publish its ancestor directory entry before opening the
+runtime. Named ENOSPC/read-only observations are deterministic `FileSystemException` injections
+with `actualFilesystem=false`; the child JVM checks are process-crash smokes, not real disk-full,
+read-only-mount, physical-media, or power-loss qualification. M08 has no Snapshot, retention,
+replication, Aeron, failover, multi-shard routing, group commit, or production-readiness claim.
 
 ## Inherited M07 completion
 
@@ -204,14 +235,14 @@ architecture limitation still describes current HEAD.
 ```text
 matching-core       deterministic business semantics; no I/O or runtime dependencies
 matching-reference independent model; main/runtime is JDK-only with no project or production dependency
+matching-local-runtime caller-serialized M08C1/M08W1 local journal and genesis recovery; JDK + core only
 matching-testkit    generators, differential judge, replay, mutants, and evidence tooling
 ```
 
-The M08 start ref still keeps exactly these three modules. It creates no runtime, protocol, cluster,
-storage, database, Counter, or Rest module; it writes only a structured RED report beneath
-`build/reports/m08/`. The later completion may add one `matching-local-runtime` module only after the
-start tag is frozen, while `matching-core` remains infrastructure-free. Historical M00–M07 evidence
-stays attached to immutable completion tags.
+M08 adds exactly one production module, `matching-local-runtime`, after the start tag. The core stays
+infrastructure-free, and the runtime has no matching-reference, testkit, network, database, Aeron,
+cluster, Counter, or Rest dependency. Historical M00–M07 evidence stays attached to immutable
+completion tags.
 
 Course dashboard: <https://lcha-reln.github.io/signal-grid-blog/practice/high-availability-cex/>
 
