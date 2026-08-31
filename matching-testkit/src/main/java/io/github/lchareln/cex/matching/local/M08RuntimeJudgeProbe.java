@@ -1,5 +1,6 @@
 package io.github.lchareln.cex.matching.local;
 
+import io.github.lchareln.cex.matching.testkit.M08SemanticFailure;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -12,11 +13,21 @@ public final class M08RuntimeJudgeProbe {
   private M08RuntimeJudgeProbe() {}
 
   public static Result exercisePoisonRecovery(Path directory, long shardId, byte[] envelope) {
+    PoisonException livePoison = new PoisonException();
     SubmissionResult first;
     try (LocalMatchingRuntime runtime =
         LocalMatchingRuntime.openForTesting(
-            WalConfig.defaults(directory, shardId), new PoisonApplier(), FaultInjector.NONE)) {
-      first = runtime.submit(envelope);
+            WalConfig.defaults(directory, shardId),
+            new PoisonApplier(livePoison),
+            FaultInjector.NONE)) {
+      try {
+        first = runtime.submit(envelope);
+      } catch (PoisonException escaped) {
+        if (escaped != livePoison) {
+          throw escaped;
+        }
+        throw new M08SemanticFailure("poison apply escaped live submit");
+      }
       require(first instanceof SubmissionResult.DurabilityUnknown, "poison apply returned an ACK");
       require(runtime.state() == RuntimeState.FAILED_CLOSED, "poison apply did not fail closed");
     } catch (IOException failure) {
@@ -24,13 +35,21 @@ public final class M08RuntimeJudgeProbe {
     }
 
     boolean poisonBlockedRecovery = false;
+    PoisonException recoveryPoison = new PoisonException();
     try (LocalMatchingRuntime ignored =
         LocalMatchingRuntime.openForTesting(
-            WalConfig.defaults(directory, shardId), new PoisonApplier(), FaultInjector.NONE)) {
+            WalConfig.defaults(directory, shardId),
+            new PoisonApplier(recoveryPoison),
+            FaultInjector.NONE)) {
       require(ignored.state() == RuntimeState.OPEN, "unexpected poison recovery state");
-      throw new IllegalStateException("poison command did not block recovery");
+      throw new M08SemanticFailure("poison command did not block recovery");
     } catch (RecoveryException expected) {
       poisonBlockedRecovery = true;
+    } catch (PoisonException escaped) {
+      if (escaped != recoveryPoison) {
+        throw escaped;
+      }
+      throw new M08SemanticFailure("poison apply escaped recovery");
     } catch (IOException failure) {
       throw new IllegalStateException("poison recovery I/O failed", failure);
     }
@@ -55,11 +74,17 @@ public final class M08RuntimeJudgeProbe {
 
   private static void require(boolean condition, String message) {
     if (!condition) {
-      throw new IllegalStateException(message);
+      throw new M08SemanticFailure(message);
     }
   }
 
   private static final class PoisonApplier implements CommandApplier {
+    private final PoisonException poison;
+
+    private PoisonApplier(PoisonException poison) {
+      this.poison = poison;
+    }
+
     @Override
     public boolean supports(M08Command command) {
       return true;
@@ -72,12 +97,20 @@ public final class M08RuntimeJudgeProbe {
 
     @Override
     public CanonicalResult apply(M08Command command) {
-      throw new IllegalStateException("deterministic poison command");
+      throw poison;
     }
 
     @Override
     public String semanticStateDigest() {
       return CanonicalResult.semanticDigest("poison", "not-applied");
+    }
+  }
+
+  private static final class PoisonException extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    private PoisonException() {
+      super("deterministic poison command");
     }
   }
 

@@ -87,7 +87,7 @@ final class M08OperationFailureSuite {
               "operation failure returned ACK");
       require("APPEND_OR_FORCE".equals(unknown.stage()), "operation failure stage changed");
       require(runtime.state() == RuntimeState.FAILED_CLOSED, "operation failure stayed open");
-      require(fault.hitBeforeOperation(), "before-operation hook was not reached");
+      requireInjectedFailure(fault, null, "before-operation submit hook was not reached");
     } catch (IOException failure) {
       throw new IllegalStateException("submit operation failure scenario failed", failure);
     }
@@ -111,11 +111,14 @@ final class M08OperationFailureSuite {
     provision(directory);
     WalConfig config = WalConfig.defaults(directory, SHARD);
     RecordingFailure fault = new RecordingFailure(point, injectionKind);
-    try {
-      LocalMatchingRuntime.open(config, fault);
-      throw new IllegalStateException("before-operation open failure returned a runtime: " + point);
+    try (LocalMatchingRuntime ignored = LocalMatchingRuntime.open(config, fault)) {
+      throw new M08SemanticFailure(
+          "before-operation open failure returned a runtime in state "
+              + ignored.state()
+              + ": "
+              + point);
     } catch (IOException expected) {
-      require(fault.hitBeforeOperation(), "before-operation open hook was not reached");
+      requireInjectedFailure(fault, expected, "before-operation open hook was not reached");
     }
     try (LocalMatchingRuntime recovered = LocalMatchingRuntime.open(config)) {
       require(recovered.nextWalSequence() == 1, "failed open created an application record");
@@ -143,29 +146,30 @@ final class M08OperationFailureSuite {
     RecordingFailure failure =
         new RecordingFailure(
             FaultPoint.BEFORE_TAIL_TRUNCATE_FORCE, InjectionKind.GENERIC_IO_EXCEPTION);
-    try {
-      LocalMatchingRuntime.open(config, failure);
-      throw new IllegalStateException("tail truncate-force failure opened runtime");
+    try (LocalMatchingRuntime ignored = LocalMatchingRuntime.open(config, failure)) {
+      throw new M08SemanticFailure(
+          "tail truncate-force failure opened runtime in state " + ignored.state());
     } catch (IOException expected) {
-      require(failure.hitBeforeOperation(), "tail force before-operation hook was not reached");
+      requireInjectedFailure(failure, expected, "tail force before-operation hook was not reached");
     }
     RecordingFailure activeForce =
         new RecordingFailure(
             FaultPoint.BEFORE_RECOVERY_ACTIVE_FORCE, InjectionKind.GENERIC_IO_EXCEPTION);
-    try {
-      LocalMatchingRuntime.open(config, activeForce);
-      throw new IllegalStateException("recovery active-force failure opened runtime");
+    try (LocalMatchingRuntime ignored = LocalMatchingRuntime.open(config, activeForce)) {
+      throw new M08SemanticFailure(
+          "recovery active-force failure opened runtime in state " + ignored.state());
     } catch (IOException expected) {
-      require(activeForce.hitBeforeOperation(), "recovery active force hook was not reached");
+      requireInjectedFailure(activeForce, expected, "recovery active force hook was not reached");
     }
     RecordingFailure directoryForce =
         new RecordingFailure(
             FaultPoint.BEFORE_RECOVERY_DIRECTORY_FORCE, InjectionKind.GENERIC_IO_EXCEPTION);
-    try {
-      LocalMatchingRuntime.open(config, directoryForce);
-      throw new IllegalStateException("recovery directory-force failure opened runtime");
+    try (LocalMatchingRuntime ignored = LocalMatchingRuntime.open(config, directoryForce)) {
+      throw new M08SemanticFailure(
+          "recovery directory-force failure opened runtime in state " + ignored.state());
     } catch (IOException expected) {
-      require(directoryForce.hitBeforeOperation(), "recovery directory force hook was not reached");
+      requireInjectedFailure(
+          directoryForce, expected, "recovery directory force hook was not reached");
     }
     try (LocalMatchingRuntime recovered = LocalMatchingRuntime.open(config)) {
       require(recovered.nextWalSequence() == 1, "failed tail force replayed an incomplete record");
@@ -221,6 +225,13 @@ final class M08OperationFailureSuite {
     return type.cast(value);
   }
 
+  private static void requireInjectedFailure(
+      RecordingFailure failure, IOException observed, String message) {
+    if (!failure.matchesInjectedFailure(observed)) {
+      throw new IllegalStateException(message, observed);
+    }
+  }
+
   private static void deleteTree(Path path) {
     if (!Files.exists(path)) {
       return;
@@ -252,6 +263,7 @@ final class M08OperationFailureSuite {
     private final FaultPoint target;
     private final InjectionKind injectionKind;
     private boolean hit;
+    private IOException injectedFailure;
 
     private RecordingFailure(FaultPoint target, InjectionKind injectionKind) {
       this.target = target;
@@ -262,19 +274,25 @@ final class M08OperationFailureSuite {
     public void hit(FaultPoint point) throws IOException {
       if (!hit && point == target) {
         hit = true;
-        switch (injectionKind) {
-          case INJECTED_ENOSPC ->
-              throw new FileSystemException("m08-wal", null, "injected ENOSPC before " + point);
-          case INJECTED_READ_ONLY ->
-              throw new FileSystemException(
-                  "m08-wal", null, "injected read-only filesystem before " + point);
-          case GENERIC_IO_EXCEPTION -> throw new IOException("injected " + point);
-        }
+        injectedFailure =
+            switch (injectionKind) {
+              case INJECTED_ENOSPC ->
+                  new FileSystemException("m08-wal", null, "injected ENOSPC before " + point);
+              case INJECTED_READ_ONLY ->
+                  new FileSystemException(
+                      "m08-wal", null, "injected read-only filesystem before " + point);
+              case GENERIC_IO_EXCEPTION -> new IOException("injected " + point);
+            };
+        throw injectedFailure;
       }
     }
 
     private boolean hitBeforeOperation() {
       return hit;
+    }
+
+    private boolean matchesInjectedFailure(IOException observed) {
+      return hit && injectedFailure != null && (observed == null || observed == injectedFailure);
     }
   }
 

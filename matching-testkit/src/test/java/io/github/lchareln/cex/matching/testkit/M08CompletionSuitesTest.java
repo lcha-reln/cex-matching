@@ -1,9 +1,16 @@
 package io.github.lchareln.cex.matching.testkit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.lchareln.cex.matching.local.M08RuntimeJudgeProbe;
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -85,7 +92,33 @@ class M08CompletionSuitesTest {
         M08CheckRunner.classifyFailure(new M08SemanticFailure("candidate mismatch")));
     assertEquals(
         M08CheckRunner.SYSTEM_ERROR,
-        M08CheckRunner.classifyFailure(new IllegalStateException("file-control failure")));
+        M08CheckRunner.classifyFailure(
+            new IllegalStateException("file-control failure", new IOException("injected"))));
+  }
+
+  @Test
+  void candidateSemanticSeamsUseTheStudentFailureMarker() throws Exception {
+    for (Class<?> seam :
+        List.of(
+            M08OperationFailureSuite.class,
+            M08FixedSuite.class,
+            M08GeneratedSuite.class,
+            M08RuntimeJudgeProbe.class)) {
+      Method require = seam.getDeclaredMethod("require", boolean.class, String.class);
+      require.setAccessible(true);
+      InvocationTargetException invocation =
+          assertThrows(
+              InvocationTargetException.class,
+              () -> require.invoke(null, false, "candidate semantic mismatch"),
+              seam.getSimpleName());
+      RuntimeException failure =
+          assertInstanceOf(RuntimeException.class, invocation.getCause(), seam.getSimpleName());
+      assertInstanceOf(M08SemanticFailure.class, failure, seam.getSimpleName());
+      assertEquals(
+          M08CheckRunner.STUDENT_FAILURE,
+          M08CheckRunner.classifyFailure(failure),
+          seam.getSimpleName());
+    }
   }
 
   @Test

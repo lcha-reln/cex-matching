@@ -658,7 +658,7 @@ final class M08GeneratedSuite {
           case SubmissionResult.NewDurablyApplied value -> value.result();
           case SubmissionResult.DuplicateReplayed value -> value.originalResult();
           default ->
-              throw new IllegalStateException(
+              throw new M08SemanticFailure(
                   "profile business-rejection witness was not a durable result: " + actual);
         };
     require(

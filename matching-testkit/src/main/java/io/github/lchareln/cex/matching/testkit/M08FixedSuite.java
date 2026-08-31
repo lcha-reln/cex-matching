@@ -528,9 +528,9 @@ final class M08FixedSuite {
     WalConfig config = WalConfig.defaults(directory, SHARD);
     try (LocalMatchingRuntime first = LocalMatchingRuntime.open(config)) {
       require(first.nextWalSequence() == 1, "first writer did not own a fresh WAL");
-      try {
-        LocalMatchingRuntime.open(config);
-        throw new IllegalStateException("second M08 writer acquired the directory");
+      try (LocalMatchingRuntime ignored = LocalMatchingRuntime.open(config)) {
+        throw new M08SemanticFailure(
+            "second M08 writer acquired the directory in state " + ignored.state());
       } catch (DirectoryLockException expected) {
         // Expected single-writer rejection.
       }
@@ -680,9 +680,9 @@ final class M08FixedSuite {
   }
 
   private static void assertCorruptOpen(WalConfig config) {
-    try {
-      LocalMatchingRuntime.open(config);
-      throw new IllegalStateException("corrupt M08 WAL opened successfully");
+    try (LocalMatchingRuntime ignored = LocalMatchingRuntime.open(config)) {
+      throw new M08SemanticFailure(
+          "corrupt M08 WAL opened successfully in state " + ignored.state());
     } catch (WalCorruptionException expected) {
       // Expected fail-closed recovery.
     } catch (IOException failure) {
