@@ -18,7 +18,7 @@ import tools.jackson.databind.node.ObjectNode;
 public final class M05StartCheckRunner {
   public static final String STATUS = "GOAL_NOT_IMPLEMENTED";
   public static final String FIXED_CORPUS_SHA256 =
-      "e6345feff8b2157c882f17f1937654b7dbccf64d42bf562faacb23ae10a70b4c";
+      "cd56fbbb0bc56dc809f741ed15ac53c7e8e41162745db7841cb853fc2768c53e";
   public static final String GENERATOR_SHA256 =
       "52dba5c70152eac7ae41464ec7e669526845ca7460deda160de3d9d614c69d57";
 
