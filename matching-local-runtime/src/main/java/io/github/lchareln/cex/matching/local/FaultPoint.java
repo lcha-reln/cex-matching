@@ -1,0 +1,18 @@
+package io.github.lchareln.cex.matching.local;
+
+/** Deterministic I/O and runtime seams used to exercise one crash window at a time. */
+public enum FaultPoint {
+  AFTER_DIRECTORY_LOCK,
+  AFTER_SEGMENT_HEADER_WRITE,
+  AFTER_SEGMENT_HEADER_FORCE,
+  AFTER_SEGMENT_ATOMIC_RENAME,
+  AFTER_DIRECTORY_FORCE,
+  AFTER_RECORD_LENGTH_WRITE,
+  AFTER_RECORD_BODY_WRITE,
+  AFTER_RECORD_FORCE,
+  AFTER_TAIL_TRUNCATE,
+  AFTER_TAIL_TRUNCATE_FORCE,
+  BEFORE_RECOVERY_APPLY,
+  BEFORE_LIVE_APPLY,
+  AFTER_LIVE_APPLY_BEFORE_ACK
+}

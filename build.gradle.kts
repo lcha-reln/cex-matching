@@ -79,11 +79,11 @@ subprojects {
 }
 
 tasks.named("assemble") {
-    dependsOn(":matching-core:assemble", ":matching-reference:assemble", ":matching-testkit:assemble")
+    dependsOn(":matching-core:assemble", ":matching-local-runtime:assemble", ":matching-reference:assemble", ":matching-testkit:assemble")
 }
 
 tasks.named("check") {
-    dependsOn("spotlessCheck", ":matching-core:check", ":matching-reference:check", ":matching-testkit:check", "m07Check")
+    dependsOn("spotlessCheck", ":matching-core:check", ":matching-local-runtime:check", ":matching-reference:check", ":matching-testkit:check", "m07Check")
 }
 
 tasks.register("m00Check") {
