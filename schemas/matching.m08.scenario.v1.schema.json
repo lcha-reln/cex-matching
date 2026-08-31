@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m08.scenario.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "faultModel", "scenarios"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m08.scenario.v1"},
+    "faultModel": {"const": "CODE_LEVEL_DETERMINISTIC_INJECTION"},
+    "scenarios": {
+      "type": "array",
+      "minItems": 20,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenarioId", "operations", "proofObligations"],
+        "properties": {
+          "scenarioId": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"},
+          "operations": {"type": "array", "minItems": 3, "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"}},
+          "proofObligations": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/coverageId"}}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "coverageId": {"enum": ["CANONICAL_ENVELOPE", "WRONG_SHARD_PRE_WAL", "PAYLOAD_HASH_PRE_WAL", "BUSINESS_REJECTION_JOURNALED", "LIVE_EXACT_DUPLICATE", "RESTART_EXACT_DUPLICATE", "COMMAND_ID_PAYLOAD_CONFLICT", "COMMAND_ID_SLOT_CONFLICT", "SLOT_IDENTITY_CONFLICT", "PRODUCER_SEQUENCE_GAP", "STALE_SLOT_RESOLVES_BY_BINDING_PRECEDENCE", "PRODUCER_EPOCH_FENCED", "HIGHER_EPOCH_MUST_START_AT_ONE", "HIGHER_EPOCH_ACTIVATION", "APPEND_BEFORE_FORCE", "RECORD_FORCE_BEFORE_ACK", "DIRECTORY_FORCE_BEFORE_FIRST_RECORD_ACK", "APPLY_BEFORE_ACK", "FAIL_CLOSED_UNKNOWN", "ROLLOVER_CHAIN", "ORPHAN_TEMP_IGNORED", "FINAL_TORN_TAIL_TRUNCATED", "COMPLETE_CORRUPTION_FAIL_CLOSED", "DIRECTORY_SINGLE_WRITER_LOCK"]}
+  }
+}

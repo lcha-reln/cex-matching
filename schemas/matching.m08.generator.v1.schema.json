@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m08.generator.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "algorithm", "baseSeed", "histories", "operationsPerHistory", "lanes", "operationDomain", "coverageRequirements", "requiredMutants"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m08.generator.v1"},
+    "algorithm": {"const": "splitmix64-v1"},
+    "baseSeed": {"const": "5808"},
+    "histories": {"const": 96},
+    "operationsPerHistory": {"const": 48},
+    "lanes": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "historyModulo", "prefixScenario"],
+        "properties": {
+          "id": {"enum": ["CANONICAL_AND_BUSINESS", "IDENTITY_SLOT_AND_EPOCH", "ACK_AND_FAIL_CLOSED", "ROLLOVER_AND_RECOVERY"]},
+          "historyModulo": {"type": "integer", "minimum": 0, "maximum": 3},
+          "prefixScenario": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "operationDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["submitWeight", "duplicateWeight", "conflictWeight", "restartWeight", "rolloverWeight", "faultWeight", "invalidEnvelopeOneIn", "businessRejectionOneIn"],
+      "properties": {
+        "submitWeight": {"const": 56},
+        "duplicateWeight": {"const": 12},
+        "conflictWeight": {"const": 10},
+        "restartWeight": {"const": 10},
+        "rolloverWeight": {"const": 6},
+        "faultWeight": {"const": 6},
+        "invalidEnvelopeOneIn": {"const": 24},
+        "businessRejectionOneIn": {"const": 8}
+      }
+    },
+    "coverageRequirements": {"type": "array", "minItems": 24, "maxItems": 24, "uniqueItems": true, "items": {"$ref": "#/$defs/coverageId"}},
+    "requiredMutants": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": {"enum": ["M08-ACK-BEFORE-RECORD-FORCE", "M08-ACK-BEFORE-DIRECTORY-FORCE", "M08-DUPLICATE-REAPPLIES", "M08-COMMAND-ID-PAYLOAD-CONFLICT-ACCEPTED", "M08-SLOT-IDENTITY-CONFLICT-ACCEPTED", "M08-GAP-ADVANCES-PRODUCER", "M08-FENCED-EPOCH-ACCEPTED", "M08-BUSINESS-REJECTION-NOT-JOURNALED", "M08-TORN-TAIL-REPLAYED", "M08-CORRUPTION-SKIPPED"]}
+    }
+  },
+  "$defs": {
+    "coverageId": {"enum": ["CANONICAL_ENVELOPE", "WRONG_SHARD_PRE_WAL", "PAYLOAD_HASH_PRE_WAL", "BUSINESS_REJECTION_JOURNALED", "LIVE_EXACT_DUPLICATE", "RESTART_EXACT_DUPLICATE", "COMMAND_ID_PAYLOAD_CONFLICT", "COMMAND_ID_SLOT_CONFLICT", "SLOT_IDENTITY_CONFLICT", "PRODUCER_SEQUENCE_GAP", "STALE_SLOT_RESOLVES_BY_BINDING_PRECEDENCE", "PRODUCER_EPOCH_FENCED", "HIGHER_EPOCH_MUST_START_AT_ONE", "HIGHER_EPOCH_ACTIVATION", "APPEND_BEFORE_FORCE", "RECORD_FORCE_BEFORE_ACK", "DIRECTORY_FORCE_BEFORE_FIRST_RECORD_ACK", "APPLY_BEFORE_ACK", "FAIL_CLOSED_UNKNOWN", "ROLLOVER_CHAIN", "ORPHAN_TEMP_IGNORED", "FINAL_TORN_TAIL_TRUNCATED", "COMPLETE_CORRUPTION_FAIL_CLOSED", "DIRECTORY_SINGLE_WRITER_LOCK"]}
+  }
+}

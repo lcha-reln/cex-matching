@@ -60,6 +60,7 @@ val m06UnitTag = providers.gradleProperty("m06.unitTag").orElse("course/m06-comp
 val m07ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m07")
 val m07EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M07")
 val m07UnitTag = providers.gradleProperty("m07.unitTag").orElse("course/m07-complete")
+val m08ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m08")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -281,4 +282,17 @@ tasks.register<JavaExec>("m07Evidence") {
         m07UnitTag.get(),
     )
     doNotTrackState("Evidence must re-check the M07 tag and working-tree cleanliness on every invocation")
+}
+
+tasks.register<JavaExec>("m08Check") {
+    group = "verification"
+    description = "Runs the declared M08 structured RED contract."
+    dependsOn("test", ":matching-core:test", ":matching-reference:check", "classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M08CheckMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m08ReportDirectory.get().asFile.absolutePath,
+    )
+    doNotTrackState("M08 must never reuse a stale durability report")
 }

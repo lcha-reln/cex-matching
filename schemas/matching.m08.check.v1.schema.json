@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m08.check.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "status", "contractPlanVersion", "objective", "courseDeclaration", "inheritedBaseline", "fixedCorpus", "generator", "durabilityContract", "tutorialPermalinks", "requiredMutants", "missingCapabilities", "releaseTarget"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m08.check.v1"},
+    "unit": {"const": "M08"},
+    "status": {"const": "GOAL_NOT_IMPLEMENTED"},
+    "contractPlanVersion": {"const": "0.10"},
+    "objective": {"type": "string", "minLength": 1},
+    "courseDeclaration": {"type": "object", "minProperties": 11},
+    "inheritedBaseline": {"type": "object", "minProperties": 3},
+    "fixedCorpus": {"$ref": "#/$defs/frozen"},
+    "generator": {"$ref": "#/$defs/frozen"},
+    "durabilityContract": {"type": "object", "minProperties": 9},
+    "tutorialPermalinks": {"type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "requiredMutants": {"type": "array", "minItems": 10, "maxItems": 10, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "missingCapabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "releaseTarget": {"type": "object", "required": ["unitTag", "productRelease", "verification"], "properties": {"unitTag": {"const": "course/m08-complete"}, "productRelease": {"type": "null"}, "verification": {"const": "M08_EVIDENCE_ONLY"}}}
+  },
+  "$defs": {
+    "frozen": {"type": "object", "required": ["sha256", "primaryCount", "operations", "schemaProbes"], "properties": {"sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "primaryCount": {"type": "integer", "minimum": 1}, "operations": {"type": "integer", "minimum": 1}, "schemaProbes": {"type": "integer", "minimum": 1}, "baseSeed": {"type": "string"}, "lanes": {"type": "integer"}, "historiesPerLane": {"type": "integer"}, "generatedOperations": {"type": "integer"}, "coverageObligations": {"type": "integer"}}}
+  }
+}
