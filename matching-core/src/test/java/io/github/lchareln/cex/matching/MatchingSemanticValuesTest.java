@@ -16,9 +16,9 @@ final class MatchingSemanticValuesTest {
   @Test
   void executionBatchEnforcesPlaceAndCancelEventGrammar() {
     OrderBookSnapshot empty = new OrderBookSnapshot(List.of(), List.of());
-    MatchingEvent.Accepted accepted = accepted(1, 1, Side.BUY, 100, 2);
-    MatchingEvent.Trade trade = trade(2, 2, 1, 1, 99, 1);
-    MatchingEvent.Rested rested = rested(1, 1, Side.BUY, 100, 1);
+    MatchingEvent.Accepted accepted = accepted(2, 1, Side.BUY, 100, 2);
+    MatchingEvent.Trade trade = trade(1, 2, 2, 1, 99, 1);
+    MatchingEvent.Rested rested = rested(2, 1, Side.BUY, 100, 1);
     MatchingEvent.PlaceRejected duplicate =
         new MatchingEvent.PlaceRejected(new OrderId(1), PlaceRejectionCode.DUPLICATE_ORDER_ID);
     MatchingEvent.CancelRejected notFound =

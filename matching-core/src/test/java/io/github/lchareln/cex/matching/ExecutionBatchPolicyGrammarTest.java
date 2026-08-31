@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 
 final class ExecutionBatchPolicyGrammarTest {
 
-  private static final AcceptanceSequence SEQUENCE = new AcceptanceSequence(1);
+  private static final AcceptanceSequence SEQUENCE = new AcceptanceSequence(3);
   private static final OrderId ORDER_ID = new OrderId(1);
   private static final PriceTicks PRICE = new PriceTicks(100);
   private static final QuantityLots QUANTITY = new QuantityLots(3);

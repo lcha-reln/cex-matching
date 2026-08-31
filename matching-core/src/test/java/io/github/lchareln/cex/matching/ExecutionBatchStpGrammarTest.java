@@ -79,14 +79,131 @@ final class ExecutionBatchStpGrammarTest {
         () -> batch(List.of(fok, prevented(SelfTradePreventionPolicy.CANCEL_TAKER, 0, 3))));
   }
 
+  @Test
+  void makerScanRejectsDuplicateNonCrossingAndOutOfPriceTimeOrderEvents() {
+    AcceptanceSequence takerSequence = new AcceptanceSequence(4);
+    MatchingEvent.Accepted accepted =
+        accepted(
+            takerSequence,
+            Side.BUY,
+            100,
+            3,
+            ExecutionPolicy.GTC,
+            SelfTradePreventionPolicy.CANCEL_MAKER);
+    MatchingEvent.SelfTradePrevented first =
+        prevented(
+            new AcceptanceSequence(1),
+            new OrderId(10),
+            takerSequence,
+            99,
+            1,
+            SelfTradePreventionPolicy.CANCEL_MAKER,
+            1,
+            0);
+    MatchingEvent.SelfTradePrevented second =
+        prevented(
+            new AcceptanceSequence(2),
+            new OrderId(11),
+            takerSequence,
+            100,
+            1,
+            SelfTradePreventionPolicy.CANCEL_MAKER,
+            1,
+            0);
+    MatchingEvent.Rested rested =
+        rested(takerSequence, Side.BUY, 100, 3, SelfTradePreventionPolicy.CANCEL_MAKER);
+
+    assertDoesNotThrow(() -> batch(List.of(accepted, first, second, rested)));
+    assertThrows(
+        IllegalArgumentException.class, () -> batch(List.of(accepted, first, first, rested)));
+
+    MatchingEvent.SelfTradePrevented nonCrossing =
+        prevented(
+            new AcceptanceSequence(3),
+            new OrderId(12),
+            takerSequence,
+            101,
+            1,
+            SelfTradePreventionPolicy.CANCEL_MAKER,
+            1,
+            0);
+    assertThrows(
+        IllegalArgumentException.class, () -> batch(List.of(accepted, nonCrossing, rested)));
+    assertThrows(
+        IllegalArgumentException.class, () -> batch(List.of(accepted, second, first, rested)));
+
+    MatchingEvent.SelfTradePrevented laterSequenceAtSamePrice =
+        prevented(
+            new AcceptanceSequence(2),
+            new OrderId(13),
+            takerSequence,
+            99,
+            1,
+            SelfTradePreventionPolicy.CANCEL_MAKER,
+            1,
+            0);
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> batch(List.of(accepted, laterSequenceAtSamePrice, first, rested)));
+  }
+
+  @Test
+  void oneMakerCannotAppearAsBothTradeAndStpWithinOneTakerScan() {
+    AcceptanceSequence takerSequence = new AcceptanceSequence(3);
+    MatchingEvent.Accepted accepted =
+        accepted(
+            takerSequence,
+            Side.BUY,
+            100,
+            4,
+            ExecutionPolicy.GTC,
+            SelfTradePreventionPolicy.CANCEL_MAKER);
+    MatchingEvent.Trade trade =
+        new MatchingEvent.Trade(
+            MAKER_SEQUENCE,
+            MAKER_ID,
+            takerSequence,
+            TAKER_ID,
+            new PriceTicks(99),
+            new QuantityLots(1),
+            RULES,
+            RULES,
+            RULES);
+    MatchingEvent.SelfTradePrevented prevented =
+        prevented(
+            MAKER_SEQUENCE,
+            MAKER_ID,
+            takerSequence,
+            100,
+            2,
+            SelfTradePreventionPolicy.CANCEL_MAKER,
+            2,
+            0);
+    MatchingEvent.Rested rested =
+        rested(takerSequence, Side.BUY, 100, 3, SelfTradePreventionPolicy.CANCEL_MAKER);
+
+    assertThrows(
+        IllegalArgumentException.class, () -> batch(List.of(accepted, trade, prevented, rested)));
+  }
+
   private static MatchingEvent.Accepted accepted(
       ExecutionPolicy executionPolicy, SelfTradePreventionPolicy stpPolicy) {
+    return accepted(TAKER_SEQUENCE, Side.BUY, 100, 3, executionPolicy, stpPolicy);
+  }
+
+  private static MatchingEvent.Accepted accepted(
+      AcceptanceSequence takerSequence,
+      Side side,
+      long price,
+      long quantity,
+      ExecutionPolicy executionPolicy,
+      SelfTradePreventionPolicy stpPolicy) {
     return new MatchingEvent.Accepted(
-        TAKER_SEQUENCE,
+        takerSequence,
         TAKER_ID,
-        Side.BUY,
-        PRICE,
-        new QuantityLots(3),
+        side,
+        new PriceTicks(price),
+        new QuantityLots(quantity),
         executionPolicy,
         RULES,
         7,
@@ -95,13 +212,33 @@ final class ExecutionBatchStpGrammarTest {
 
   private static MatchingEvent.SelfTradePrevented prevented(
       SelfTradePreventionPolicy policy, long makerCanceled, long takerCanceled) {
-    return new MatchingEvent.SelfTradePrevented(
+    return prevented(
         MAKER_SEQUENCE,
         MAKER_ID,
         TAKER_SEQUENCE,
+        PRICE.value(),
+        2,
+        policy,
+        makerCanceled,
+        takerCanceled);
+  }
+
+  private static MatchingEvent.SelfTradePrevented prevented(
+      AcceptanceSequence makerSequence,
+      OrderId makerOrderId,
+      AcceptanceSequence takerSequence,
+      long makerPrice,
+      long wouldTrade,
+      SelfTradePreventionPolicy policy,
+      long makerCanceled,
+      long takerCanceled) {
+    return new MatchingEvent.SelfTradePrevented(
+        makerSequence,
+        makerOrderId,
+        takerSequence,
         TAKER_ID,
-        PRICE,
-        new QuantityLots(2),
+        new PriceTicks(makerPrice),
+        new QuantityLots(wouldTrade),
         7,
         policy,
         makerCanceled,
@@ -109,6 +246,23 @@ final class ExecutionBatchStpGrammarTest {
         RULES,
         RULES,
         RULES);
+  }
+
+  private static MatchingEvent.Rested rested(
+      AcceptanceSequence takerSequence,
+      Side side,
+      long price,
+      long remaining,
+      SelfTradePreventionPolicy policy) {
+    return new MatchingEvent.Rested(
+        takerSequence,
+        TAKER_ID,
+        side,
+        new PriceTicks(price),
+        new QuantityLots(remaining),
+        RULES,
+        7,
+        policy);
   }
 
   private static MatchingEvent.RemainderCanceled iocRemainder(long quantity) {

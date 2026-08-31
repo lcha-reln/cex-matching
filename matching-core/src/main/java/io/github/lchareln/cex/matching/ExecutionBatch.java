@@ -1,8 +1,10 @@
 package io.github.lchareln.cex.matching;
 
 import java.math.BigInteger;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Immutable ordered events and the complete book snapshot after one command.
@@ -60,6 +62,9 @@ public record ExecutionBatch(
     boolean stpTakerCanceledSeen = false;
     int trades = 0;
     int stpEvents = 0;
+    Set<OrderId> makerOrderIds = new HashSet<>();
+    Set<Long> makerSequences = new HashSet<>();
+    MakerScanPosition previousMaker = null;
     for (int index = 1; index < events.size(); index++) {
       MatchingEvent event = events.get(index);
       if (event instanceof MatchingEvent.Trade trade) {
@@ -71,6 +76,15 @@ public record ExecutionBatch(
             || !trade.executionRuleSet().equals(context.activeRuleSet())) {
           throw new IllegalArgumentException("trade rule-set attribution changed");
         }
+        previousMaker =
+            validateMakerScan(
+                accepted,
+                trade.makerSequence(),
+                trade.makerOrderId(),
+                trade.priceTicks(),
+                previousMaker,
+                makerOrderIds,
+                makerSequences);
         remaining = remaining.subtract(BigInteger.valueOf(trade.quantityLots().value()));
         if (remaining.signum() < 0) {
           throw new IllegalArgumentException("trade quantity exceeds the accepted quantity");
@@ -87,6 +101,15 @@ public record ExecutionBatch(
             || !prevented.executionRuleSet().equals(context.activeRuleSet())) {
           throw new IllegalArgumentException("STP instruction or rule-set attribution changed");
         }
+        previousMaker =
+            validateMakerScan(
+                accepted,
+                prevented.makerSequence(),
+                prevented.makerOrderId(),
+                prevented.makerPriceTicks(),
+                previousMaker,
+                makerOrderIds,
+                makerSequences);
         if (BigInteger.valueOf(prevented.wouldTradeQuantityLots().value()).compareTo(remaining)
             > 0) {
           throw new IllegalArgumentException("STP would-trade quantity exceeds taker remainder");
@@ -167,6 +190,50 @@ public record ExecutionBatch(
       }
     }
   }
+
+  private static MakerScanPosition validateMakerScan(
+      MatchingEvent.Accepted accepted,
+      AcceptanceSequence makerSequence,
+      OrderId makerOrderId,
+      PriceTicks makerPriceTicks,
+      MakerScanPosition previousMaker,
+      Set<OrderId> makerOrderIds,
+      Set<Long> makerSequences) {
+    if (makerSequence.value() >= accepted.sequence().value()) {
+      throw new IllegalArgumentException("maker must precede the accepted taker");
+    }
+    if (makerOrderId.equals(accepted.orderId())) {
+      throw new IllegalArgumentException("maker and taker identities must differ");
+    }
+    if (!makerOrderIds.add(makerOrderId) || !makerSequences.add(makerSequence.value())) {
+      throw new IllegalArgumentException("one maker may appear only once in an execution batch");
+    }
+
+    long makerPrice = makerPriceTicks.value();
+    long takerLimit = accepted.priceTicks().value();
+    boolean crossing =
+        accepted.side() == Side.BUY ? takerLimit >= makerPrice : takerLimit <= makerPrice;
+    if (!crossing) {
+      throw new IllegalArgumentException("maker price does not cross the accepted taker limit");
+    }
+
+    if (previousMaker != null) {
+      boolean priceRegressed =
+          accepted.side() == Side.BUY
+              ? makerPrice < previousMaker.priceTicks()
+              : makerPrice > previousMaker.priceTicks();
+      if (priceRegressed) {
+        throw new IllegalArgumentException("maker events are not in price priority order");
+      }
+      if (makerPrice == previousMaker.priceTicks()
+          && makerSequence.value() <= previousMaker.acceptanceSequence()) {
+        throw new IllegalArgumentException("maker events are not FIFO within one price level");
+      }
+    }
+    return new MakerScanPosition(makerPrice, makerSequence.value());
+  }
+
+  private record MakerScanPosition(long priceTicks, long acceptanceSequence) {}
 
   private static void validateModeGrammar(MatchingEvent event, MarketMode mode) {
     if (event instanceof MatchingEvent.PlaceRejected rejected) {

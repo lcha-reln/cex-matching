@@ -16,14 +16,17 @@ final class SingleInstrumentSelfTradePreventionTest {
   void rawValidationPrecedesDuplicateAndLegacyEntrypointsMapToZeroNone() {
     SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine();
     ExecutionBatch legacy = engine.place(input(1, "BUY", 99, 1));
-    MatchingEvent.Accepted accepted =
-        assertInstanceOf(MatchingEvent.Accepted.class, legacy.events().getFirst());
-    OrderBookSnapshot.RestingOrderView resting =
-        legacy.bookAfter().bids().getFirst().orders().getFirst();
-    assertEquals(0, accepted.participantGroupId());
-    assertEquals(SelfTradePreventionPolicy.NONE, accepted.selfTradePreventionPolicy());
-    assertEquals(0, resting.participantGroupId());
-    assertEquals(SelfTradePreventionPolicy.NONE, resting.selfTradePreventionPolicy());
+    assertLegacyZeroNone(legacy);
+
+    SingleInstrumentMatchingEngine requestEngine = new SingleInstrumentMatchingEngine();
+    assertLegacyZeroNone(
+        requestEngine.placeRequest(new PlaceLimitOrderRequest(input(2, "BUY", 99, 1), "GTC")));
+
+    SingleInstrumentMatchingEngine governedEngine = new SingleInstrumentMatchingEngine();
+    assertLegacyZeroNone(
+        governedEngine.placeGoverned(
+            new GovernedPlaceLimitOrderRequest(
+                new PlaceLimitOrderRequest(input(3, "BUY", 99, 1), "GTC"), BOOTSTRAP)));
 
     assertRejected(
         engine.placeStp(stp(1, "SELL", 99, 1, "UNKNOWN", -1, "bad")),
@@ -50,6 +53,66 @@ final class SingleInstrumentSelfTradePreventionTest {
         assertInstanceOf(MatchingEvent.Trade.class, batch.events().getLast());
     assertEquals(10, trade.makerOrderId().value());
     assertEquals(2, trade.quantityLots().value());
+    assertTrue(batch.bookAfter().asks().isEmpty());
+  }
+
+  @Test
+  void sellCancelTakerLeavesTheBidMakerAndCancelsTheCompleteTakerRemainder() {
+    SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine();
+    engine.placeStp(stp(10, "BUY", 100, 2, "GTC", 7, "CANCEL_MAKER"));
+
+    ExecutionBatch batch = engine.placeStp(stp(20, "SELL", 100, 3, "GTC", 7, "CANCEL_TAKER"));
+
+    assertEquals(2, batch.events().size());
+    MatchingEvent.SelfTradePrevented prevented =
+        assertInstanceOf(MatchingEvent.SelfTradePrevented.class, batch.events().getLast());
+    assertEquals(100, prevented.makerPriceTicks().value());
+    assertEquals(0, prevented.makerCanceledQuantityLots());
+    assertEquals(3, prevented.takerCanceledQuantityLots());
+    assertEquals(List.of(10L), orderIds(batch.bookAfter().bids()));
+    assertTrue(batch.bookAfter().asks().isEmpty());
+  }
+
+  @Test
+  void sellCancelMakerContinuesInDescendingBidPriceTimeOrder() {
+    SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine();
+    engine.placeStp(stp(10, "BUY", 101, 1, "GTC", 8, "CANCEL_TAKER"));
+    engine.placeStp(stp(11, "BUY", 100, 2, "GTC", 7, "CANCEL_TAKER"));
+    engine.placeStp(stp(12, "BUY", 99, 2, "GTC", 9, "CANCEL_BOTH"));
+
+    ExecutionBatch batch = engine.placeStp(stp(20, "SELL", 99, 3, "GTC", 7, "CANCEL_MAKER"));
+
+    assertEquals(4, batch.events().size());
+    assertEquals(
+        10,
+        assertInstanceOf(MatchingEvent.Trade.class, batch.events().get(1)).makerOrderId().value());
+    MatchingEvent.SelfTradePrevented prevented =
+        assertInstanceOf(MatchingEvent.SelfTradePrevented.class, batch.events().get(2));
+    assertEquals(11, prevented.makerOrderId().value());
+    assertEquals(100, prevented.makerPriceTicks().value());
+    assertEquals(2, prevented.makerCanceledQuantityLots());
+    assertEquals(
+        12,
+        assertInstanceOf(MatchingEvent.Trade.class, batch.events().get(3)).makerOrderId().value());
+    assertTrue(batch.bookAfter().bids().isEmpty());
+    assertTrue(batch.bookAfter().asks().isEmpty());
+  }
+
+  @Test
+  void sellCancelBothPreservesEarlierTradeThenCancelsBothRemainders() {
+    SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine();
+    engine.placeStp(stp(10, "BUY", 101, 1, "GTC", 8, "CANCEL_TAKER"));
+    engine.placeStp(stp(11, "BUY", 100, 2, "GTC", 7, "CANCEL_MAKER"));
+
+    ExecutionBatch batch = engine.placeStp(stp(20, "SELL", 100, 4, "GTC", 7, "CANCEL_BOTH"));
+
+    assertEquals(3, batch.events().size());
+    assertInstanceOf(MatchingEvent.Trade.class, batch.events().get(1));
+    MatchingEvent.SelfTradePrevented prevented =
+        assertInstanceOf(MatchingEvent.SelfTradePrevented.class, batch.events().getLast());
+    assertEquals(2, prevented.makerCanceledQuantityLots());
+    assertEquals(3, prevented.takerCanceledQuantityLots());
+    assertTrue(batch.bookAfter().bids().isEmpty());
     assertTrue(batch.bookAfter().asks().isEmpty());
   }
 
@@ -119,6 +182,26 @@ final class SingleInstrumentSelfTradePreventionTest {
   }
 
   @Test
+  void iocCancelMakerUsesStpForTheMakerAndIocRemainderForTheTaker() {
+    SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine();
+    engine.placeStp(stp(10, "SELL", 100, 2, "GTC", 7, "CANCEL_TAKER"));
+
+    ExecutionBatch batch = engine.placeStp(stp(20, "BUY", 100, 3, "IOC", 7, "CANCEL_MAKER"));
+
+    assertEquals(3, batch.events().size());
+    MatchingEvent.SelfTradePrevented prevented =
+        assertInstanceOf(MatchingEvent.SelfTradePrevented.class, batch.events().get(1));
+    assertEquals(2, prevented.makerCanceledQuantityLots());
+    assertEquals(0, prevented.takerCanceledQuantityLots());
+    MatchingEvent.RemainderCanceled remainder =
+        assertInstanceOf(MatchingEvent.RemainderCanceled.class, batch.events().getLast());
+    assertEquals(RemainderCancelReason.IOC_REMAINDER, remainder.reason());
+    assertEquals(3, remainder.canceledQuantityLots().value());
+    assertTrue(batch.bookAfter().asks().isEmpty());
+    assertTrue(batch.bookAfter().bids().isEmpty());
+  }
+
+  @Test
   void fokCancelTakerRejectsBeforeAcceptanceAndDoesNotMutateEarlierLiquidity() {
     SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine();
     engine.placeStp(stp(10, "SELL", 99, 1, "GTC", 8, "CANCEL_TAKER"));
@@ -165,6 +248,39 @@ final class SingleInstrumentSelfTradePreventionTest {
     assertInstanceOf(MatchingEvent.SelfTradePrevented.class, accepted.events().get(1));
     assertInstanceOf(MatchingEvent.Trade.class, accepted.events().get(2));
     assertTrue(accepted.bookAfter().asks().isEmpty());
+  }
+
+  @Test
+  void fokCancelBothRejectsAtomicallyAtAnEarlySelfMakerButCanFillBeforeIt() {
+    SingleInstrumentMatchingEngine rejectedEngine = new SingleInstrumentMatchingEngine();
+    rejectedEngine.placeStp(stp(10, "SELL", 99, 1, "GTC", 8, "CANCEL_TAKER"));
+    rejectedEngine.placeStp(stp(11, "SELL", 100, 2, "GTC", 7, "CANCEL_MAKER"));
+    rejectedEngine.placeStp(stp(12, "SELL", 101, 2, "GTC", 9, "CANCEL_BOTH"));
+    OrderBookSnapshot before = rejectedEngine.snapshot();
+
+    ExecutionBatch rejected =
+        rejectedEngine.placeStp(stp(20, "BUY", 101, 3, "FOK", 7, "CANCEL_BOTH"));
+
+    assertEquals(
+        PlaceRejectionCode.FOK_NOT_FILLABLE,
+        assertInstanceOf(MatchingEvent.PlaceRejected.class, rejected.events().getFirst()).code());
+    assertEquals(before, rejectedEngine.snapshot());
+    MatchingEvent.Accepted acceptedAfterRejection =
+        assertInstanceOf(
+            MatchingEvent.Accepted.class,
+            rejectedEngine
+                .placeStp(stp(20, "BUY", 98, 1, "GTC", 7, "CANCEL_BOTH"))
+                .events()
+                .getFirst());
+    assertEquals(4, acceptedAfterRejection.sequence().value());
+
+    SingleInstrumentMatchingEngine fillable = new SingleInstrumentMatchingEngine();
+    fillable.placeStp(stp(10, "SELL", 99, 2, "GTC", 8, "CANCEL_TAKER"));
+    fillable.placeStp(stp(11, "SELL", 100, 4, "GTC", 7, "CANCEL_MAKER"));
+    ExecutionBatch filled = fillable.placeStp(stp(20, "BUY", 100, 2, "FOK", 7, "CANCEL_BOTH"));
+    assertEquals(2, filled.events().size());
+    assertInstanceOf(MatchingEvent.Trade.class, filled.events().getLast());
+    assertEquals(List.of(11L), orderIds(filled.bookAfter().asks()));
   }
 
   @Test
@@ -258,6 +374,17 @@ final class SingleInstrumentSelfTradePreventionTest {
         .flatMap(level -> level.orders().stream())
         .map(order -> order.orderId().value())
         .toList();
+  }
+
+  private static void assertLegacyZeroNone(ExecutionBatch batch) {
+    MatchingEvent.Accepted accepted =
+        assertInstanceOf(MatchingEvent.Accepted.class, batch.events().getFirst());
+    OrderBookSnapshot.RestingOrderView resting =
+        batch.bookAfter().bids().getFirst().orders().getFirst();
+    assertEquals(0, accepted.participantGroupId());
+    assertEquals(SelfTradePreventionPolicy.NONE, accepted.selfTradePreventionPolicy());
+    assertEquals(0, resting.participantGroupId());
+    assertEquals(SelfTradePreventionPolicy.NONE, resting.selfTradePreventionPolicy());
   }
 
   private static void assertRejected(ExecutionBatch batch, ValidationCode code) {
