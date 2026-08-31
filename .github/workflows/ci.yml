@@ -1,4 +1,4 @@
-name: Matching M04 contract
+name: Matching M05 contract
 
 on:
   push:
@@ -34,311 +34,142 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Parse all frozen JSON resources
+      - name: Parse every frozen JSON resource
         shell: bash
         run: |
-          resources=(
-            schemas/cex.lab-evidence.v1.schema.json
-            schemas/matching.m00.fixture.v1.schema.json
-            schemas/matching.m00.check.v2.schema.json
-            matching-testkit/src/test/resources/m00/fixtures/history-v1.json
-            schemas/matching.m01.scenario.v1.schema.json
-            schemas/matching.m01.check.v1.schema.json
-            schemas/matching.m01.check.v2.schema.json
-            matching-testkit/src/test/resources/m01/fixtures/price-time-v1.json
-            schemas/matching.m02.scenario.v1.schema.json
-            schemas/matching.m02.check.v1.schema.json
-            schemas/matching.m02.check.v2.schema.json
-            matching-testkit/src/test/resources/m02/fixtures/order-lifecycle-v1.json
-            schemas/matching.m03.generator.v1.schema.json
-            schemas/matching.m03.check.v1.schema.json
-            schemas/matching.m03.check.v2.schema.json
-            schemas/matching.m03.counterexamples.v1.schema.json
-            matching-testkit/src/test/resources/m03/fixtures/property-suite-v1.json
-            schemas/matching.m04.scenario.v1.schema.json
-            schemas/matching.m04.generator.v1.schema.json
-            schemas/matching.m04.check.v1.schema.json
-            schemas/matching.m04.check.v2.schema.json
-            schemas/matching.m04.counterexamples.v1.schema.json
-            matching-testkit/src/test/resources/m04/fixtures/execution-policy-v1.json
-            matching-testkit/src/test/resources/m04/fixtures/property-suite-v1.json
-          )
+          mapfile -t resources < <(find schemas matching-testkit/src/test/resources -type f -name '*.json' -print | sort)
+          test "${#resources[@]}" -gt 0
           jq empty "${resources[@]}"
 
-      - name: Execute the inherited M03 regression and declared M04 boundary
+      - name: Execute the inherited M04 proof and declared M05 boundary
         id: boundary
         shell: bash
         run: |
-          unit="$(sed -n 's/^unit=//p' course.properties)"
-          test "$unit" = M04
-          expected_status="$(sed -n 's/^m04Check.expectedStatus=//p' course.properties)"
+          test "$(sed -n 's/^unit=//p' course.properties)" = M05
+          expected_status="$(sed -n 's/^m05Check.expectedStatus=//p' course.properties)"
           evidence_generated=false
           case "$expected_status" in
             GOAL_NOT_IMPLEMENTED)
               ./gradlew clean build --no-daemon
               jq -e '
-                .schemaVersion == "matching.m03.check.v2" and
-                .unit == "M03" and
+                .schemaVersion == "matching.m04.check.v2" and
+                .unit == "M04" and
                 .status == "PASS" and
-                .properties.histories == 256 and
-                .properties.commands == 16384 and
-                .determinism.commandDigest == "sha256:1920d6b8a480998825c72636d446854d9e795e91b0ab29520f203b12186979ce" and
-                .counterexamples.required == 6 and
-                .counterexamples.replayed == 6 and
-                .mutants.required == 6 and
-                .mutants.killed == 6 and
-                .releaseTarget.productRelease == "matching-0.1.0"
-              ' build/reports/m03/check.json
+                .fixedCorpus.scenarios == 14 and
+                .fixedCorpus.commands == 48 and
+                .fixedCorpus.canonicalDigest == "sha256:68de35e41358ea72c9852fdf3fd652db116774964360f0b526f43612576bfa77" and
+                .generator.totalCommands == 12288 and
+                .generator.canonicalDigest == "sha256:6005c674d0c42927989f1c8c4d1ddce224d06ceff0b95bf58615d23c4496ba51" and
+                .counterexamples.replayed == 8 and
+                .mutants.killed == 8 and
+                .releaseTarget.productRelease == null
+              ' build/reports/m04/check.json
 
-              mkdir -p build/reports/m04
-              m04_log=build/reports/m04/gradle-output.log
+              mkdir -p build/reports/m05
+              m05_log=build/reports/m05/gradle-output.log
               set +e
               set -o pipefail
-              ./gradlew m04Check --no-daemon 2>&1 | tee "$m04_log"
+              ./gradlew m05Check --no-daemon 2>&1 | tee "$m05_log"
               exit_code="${PIPESTATUS[0]}"
               set +o pipefail
               set -e
               test "$exit_code" -ne 0
-              grep -Fq "M04 check status: GOAL_NOT_IMPLEMENTED" "$m04_log"
+              grep -Fq "M05 check status: GOAL_NOT_IMPLEMENTED" "$m05_log"
               jq -e '
-                .schemaVersion == "matching.m04.check.v1" and
-                .unit == "M04" and
+                .schemaVersion == "matching.m05.check.v1" and
+                .unit == "M05" and
                 .status == "GOAL_NOT_IMPLEMENTED" and
-                .contractPlanVersion == "0.6" and
-                .inheritedM03 == {
-                  "status": "PASS",
-                  "checkSchemaVersion": "matching.m03.check.v2",
-                  "histories": 256,
-                  "commands": 16384,
-                  "commandDigest": "sha256:1920d6b8a480998825c72636d446854d9e795e91b0ab29520f203b12186979ce",
-                  "counterexamples": 6,
-                  "mutantsKilled": 6,
-                  "productRelease": "matching-0.1.0"
+                .contractPlanVersion == "0.7" and
+                .inheritedM04.status == "PASS" and
+                .inheritedM04.fixedScenarios == 14 and
+                .inheritedM04.fixedCommands == 48 and
+                .inheritedM04.generatedCommands == 12288 and
+                .fixedCorpus.scenarios == 12 and
+                .fixedCorpus.commands == 54 and
+                .fixedCorpus.commandCounts == {
+                  "PLACE": 21,
+                  "CANCEL": 3,
+                  "PREPARE_RULE_SET": 16,
+                  "ACTIVATE_RULE_SET": 14
                 } and
-                .fixedCorpus.scenarios == 14 and
-                .fixedCorpus.commands == 48 and
-                .fixedCorpus.placeCommands == 44 and
-                .fixedCorpus.cancelCommands == 4 and
-                .fixedCorpus.policyCounts == {
-                  "GTC": 25,
-                  "IOC": 5,
-                  "FOK": 6,
-                  "POST_ONLY": 6,
-                  "UNKNOWN": 2
-                } and
-                .fixedCorpus.schemaProbes == 6 and
-                .generator.histories == 192 and
+                .generator.histories == 160 and
                 .generator.commandsPerHistory == 64 and
-                .generator.totalCommands == 12288 and
-                .generator.lanes == 6 and
-                .generator.historiesPerLane == 32 and
-                .generator.schemaProbes == 6 and
-                .executionContract.requestType == "PlaceLimitOrderRequest" and
-                .executionContract.policyType == "ExecutionPolicy" and
-                .executionContract.legacyMethod == "place(PlaceLimitOrderInput)" and
-                .executionContract.requestMethod == "placeRequest(PlaceLimitOrderRequest)" and
-                .executionContract.requestComponents == [
-                  "orderInput:PlaceLimitOrderInput", "executionPolicy:String"
-                ] and
-                .executionContract.legacyPolicy == "GTC" and
-                .executionContract.policies == ["GTC", "IOC", "FOK", "POST_ONLY"] and
-                .executionContract.legacyInputFields == [
-                  "instrumentId", "orderId", "side", "priceTicks", "quantityLots"
-                ] and
-                .executionContract.precedence == [
-                  "M00_FIELD_VALIDATION",
-                  "EXECUTION_POLICY_VALIDATION",
-                  "DUPLICATE_ORDER_ID",
-                  "POLICY_STATE_PRECHECK",
-                  "ACCEPTANCE_SEQUENCE_CAPACITY",
-                  "ACCEPT_AND_EXECUTE"
-                ] and
-                .executionContract.unknownPolicyEvent == "Rejected" and
-                .executionContract.unknownPolicyCode == "INVALID_EXECUTION_POLICY" and
-                .executionContract.unknownPolicyField == "executionPolicy" and
-                .executionContract.placeRejectionEvent == "PlaceRejected" and
-                .executionContract.placeRejectionCodes == [
-                  "DUPLICATE_ORDER_ID", "FOK_NOT_FILLABLE", "POST_ONLY_WOULD_TAKE"
-                ] and
-                .executionContract.acceptedPolicyField == "executionPolicy:ExecutionPolicy" and
-                .executionContract.remainderEvent == "RemainderCanceled" and
-                .executionContract.remainderReason == "IOC_REMAINDER" and
-                .executionContract.protectedLimitField == "priceTicks" and
-                .executionContract.fokAtomic == true and
-                .executionContract.postOnlyRejectsTouch == true and
-                .executionContract.policyRejectionsReserveIdentity == false and
-                .executionContract.policyRejectionsConsumeSequence == false and
-                .requiredMutants == [
-                  "M04-IOC-REMAINDER-RESTS",
-                  "M04-IOC-BEHAVES-LIKE-FOK",
-                  "M04-FOK-PARTIAL-STATE-LEAK",
-                  "M04-FOK-BEST-LEVEL-ONLY",
-                  "M04-FOK-IGNORES-LIMIT-PRICE",
-                  "M04-POST-ONLY-TOUCH-ACCEPTED",
-                  "M04-POLICY-REJECT-CONSUMES-IDENTITY",
-                  "M04-UNKNOWN-POLICY-DEFAULTS-GTC"
-                ] and
+                .generator.totalCommands == 10240 and
+                .generator.lanes == 5 and
+                .generator.coverageObligations == 20 and
+                .ruleContract.canonicalFormat == "M05RS1" and
+                .ruleContract.activationFence == "APPLICATION_SEQUENCE" and
+                .ruleContract.grandfatherExistingOrders == true and
+                .ruleContract.operatingModesDeferredTo == "M06" and
+                .ruleContract.massCancelDeferredTo == "M06" and
+                (.requiredMutants | length) == 8 and
                 .releaseTarget == {
-                  "unitTag": "course/m04-complete",
+                  "unitTag": "course/m05-complete",
                   "productRelease": null,
-                  "verification": "M04_EVIDENCE_ONLY"
+                  "verification": "M05_EVIDENCE_ONLY"
                 }
-              ' build/reports/m04/check.json
+              ' build/reports/m05/check.json
               ;;
             PASS)
               test -z "$(git tag --points-at HEAD --list 'matching-*')"
+              test "$(git cat-file -t course/m05-complete)" = tag
+              test "$(git rev-parse 'course/m05-complete^{}')" = "$(git rev-parse HEAD)"
               ./gradlew clean build --no-daemon
+              ./gradlew m05Check --no-daemon
               jq -e '
-                .schemaVersion == "matching.m04.check.v2" and
-                .unit == "M04" and
+                .schemaVersion == "matching.m05.check.v2" and
+                .unit == "M05" and
                 .status == "PASS" and
-                .contractPlanVersion == "0.6" and
-                .inheritedM03.status == "PASS" and
-                .inheritedM03.histories == 256 and
-                .inheritedM03.commands == 16384 and
-                .inheritedM03.bytes == 1682592 and
-                .inheritedM03.lines == 16641 and
-                .inheritedM03.commandDigest == "sha256:1920d6b8a480998825c72636d446854d9e795e91b0ab29520f203b12186979ce" and
-                .inheritedM03.differentialComparisons == 16384 and
-                .inheritedM03.ledgerChecks == 16384 and
-                .inheritedM03.bookChecks == 16384 and
-                .inheritedM03.mutantsKilled == 6 and
-                .inheritedM03.counterexamples == 6 and
-                .inheritedM03.oneMinimal == 6 and
-                .inheritedM03.historicalArchitectureGateExecuted == false and
-                .fixedCorpus.scenarios == 14 and
-                .fixedCorpus.commands == 48 and
-                .fixedCorpus.placeCommands == 44 and
-                .fixedCorpus.cancelCommands == 4 and
-                .fixedCorpus.policyCounts == {
-                  "GTC": 25,
-                  "IOC": 5,
-                  "FOK": 6,
-                  "POST_ONLY": 6,
-                  "UNKNOWN": 2
-                } and
-                .fixedCorpus.canonicalFormat == "M04F1" and
-                .fixedCorpus.canonicalDigest == "sha256:68de35e41358ea72c9852fdf3fd652db116774964360f0b526f43612576bfa77" and
-                .fixedCorpus.canonicalBytes == 47104 and
-                .fixedCorpus.canonicalLines == 63 and
-                .generator.histories == 192 and
-                .generator.commandsPerHistory == 64 and
-                .generator.totalCommands == 12288 and
-                .generator.lanes == 6 and
-                .generator.historiesPerLane == 32 and
-                .generator.canonicalFormat == "M04H1" and
-                .generator.canonicalDigest == "sha256:6005c674d0c42927989f1c8c4d1ddce224d06ceff0b95bf58615d23c4496ba51" and
-                .generator.canonicalBytes == 1496773 and
-                .generator.canonicalLines == 12481 and
-                .generator.freshGenerations == 2 and
-                .properties.histories == 192 and
-                .properties.commands == 12288 and
-                .properties.differentialComparisons == 12288 and
-                .properties.ledgerChecks == 12288 and
-                .properties.bookChecks == 12288 and
-                .coverage.requiredObligations == 23 and
-                .coverage.satisfiedObligations == 23 and
-                .coverage.fokOutsideLimit == 214 and
-                .coverage.baseValidUnknown == 423 and
-                .coverage.baseValidUnusedUnknown == 295 and
-                .boundaries.exactRawPolicyVariants == 4 and
-                .boundaries.exactRawPolicyPaths == 2 and
-                .boundaries.longMaxFokDeductionPaths == 2 and
+                .contractPlanVersion == "0.7" and
+                .inheritedM04.status == "PASS" and
+                .fixedCorpus.scenarios == 12 and
+                .fixedCorpus.commands == 54 and
+                .generator.histories == 160 and
+                .generator.commands == 10240 and
+                .coverage.requiredObligations == 20 and
+                .coverage.satisfiedObligations == 20 and
                 .counterexamples.required == 8 and
-                .counterexamples.shrunk == 8 and
-                .counterexamples.persisted == 8 and
-                .counterexamples.schemaParsed == 8 and
                 .counterexamples.replayed == 8 and
                 .counterexamples.oneMinimal == 8 and
-                .counterexamples.minimizedCommands == 15 and
-                .counterexamples.canonical.format == "M04X1" and
-                .counterexamples.canonical.digest == "sha256:60076a395fe365ba9eaa6bf91ae148dc42120ddb95ad01cac988ab90dd8550cb" and
-                .counterexamples.canonical.bytes == 166483 and
-                .counterexamples.canonical.lines == 544 and
                 .mutants.required == 8 and
                 .mutants.killed == 8 and
                 .mutants.systemErrorControl == "SYSTEM_ERROR" and
-                (.mutants.requiredMutants | length) == 8 and
-                all(.mutants.requiredMutants[];
-                  .classification == "STUDENT_FAILURE" and
-                  .killed == true and
-                  .originalCommands == 64 and
-                  .oneMinimal == true and
-                  .replayed == true
-                ) and
-                .architecture.coreSourceFiles == 24 and
-                .architecture.referenceSourceFiles == 7 and
-                .architecture.violations == 0 and
-                .releaseTarget == {
-                  "unitTag": "course/m04-complete",
-                  "productRelease": null,
-                  "verification": "M04_EVIDENCE_ONLY"
-                }
-              ' build/reports/m04/check.json
-              if [[ "$GITHUB_REF" == "refs/heads/main" ||
-                    "$GITHUB_REF" == "refs/tags/course/m04-complete" ]]; then
-                test "$(git cat-file -t course/m04-complete)" = tag
-                test "$(git rev-list -n 1 course/m04-complete)" = "$(git rev-parse HEAD)"
-                ./gradlew m04Evidence --no-daemon
-                jq -e '
-                  .schemaVersion == "cex.lab-evidence.v1" and
-                  .case == "high-availability-cex" and
-                  .project == "matching" and
-                  .unit == "M04" and
-                  .unitTag == "course/m04-complete" and
-                  .productRelease == null and
-                  .planVersion == "0.6" and
-                  .source.commit == env.GITHUB_SHA and
-                  .source.dirty == false
-                ' build/lab-evidence/M04/manifest.json
-                evidence_generated=true
-              fi
+                .releaseTarget.productRelease == null
+              ' build/reports/m05/check.json
+              ./gradlew m05Evidence -Pm05.unitTag=course/m05-complete --no-daemon
+              jq -e '
+                .schemaVersion == "cex.lab-evidence.v1" and
+                .case == "high-availability-cex" and
+                .project == "matching" and
+                .unit == "M05" and
+                .unitTag == "course/m05-complete" and
+                .productRelease == null and
+                .planVersion == "0.7" and
+                .source.commit == env.GITHUB_SHA and
+                .source.dirty == false
+              ' build/lab-evidence/M05/manifest.json
+              evidence_generated=true
               ;;
             *)
-              echo "Unknown m04Check.expectedStatus: $expected_status"
+              echo "unsupported m05Check.expectedStatus: $expected_status" >&2
               exit 1
               ;;
           esac
-          echo "unit=$unit" >> "$GITHUB_OUTPUT"
-          echo "expected_status=$expected_status" >> "$GITHUB_OUTPUT"
+          echo "status=$expected_status" >> "$GITHUB_OUTPUT"
           echo "evidence_generated=$evidence_generated" >> "$GITHUB_OUTPUT"
 
-      - name: Independently verify M04 evidence hashes
-        if: ${{ steps.boundary.outputs.evidence_generated == 'true' }}
-        shell: bash
-        run: |
-          evidence=build/lab-evidence/M04
-          manifest="$evidence/manifest.json"
-          while IFS=$'\t' read -r path expected; do
-            case "$path" in
-              ""|/*|../*|*/../*|*/..|*\\*) exit 1 ;;
-            esac
-            test -f "$evidence/$path"
-            actual="$(shasum -a 256 "$evidence/$path" | cut -d' ' -f1)"
-            test "$actual" = "$expected"
-          done < <(jq -r '.claims[].artifacts[] | [.path, .sha256] | @tsv' "$manifest")
-          test -z "$(git status --porcelain --untracked-files=normal)"
-
-      - name: Verify annotated M04 start tag identity
-        if: ${{ github.ref == 'refs/tags/course/m04-start' }}
-        shell: bash
-        run: |
-          test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
-          test "$GITHUB_REF_NAME" = "$(sed -n 's/^startRef=//p' course.properties)"
-          test "$(git rev-list -n 1 "$GITHUB_REF_NAME")" = "$(git rev-parse HEAD)"
-
-      - name: Verify annotated M04 completion identity
-        if: ${{ github.ref == 'refs/tags/course/m04-complete' }}
-        shell: bash
-        run: |
-          test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
-          test "$GITHUB_REF_NAME" = "$(sed -n 's/^completeRef=//p' course.properties)"
-          test "$(git rev-list -n 1 "$GITHUB_REF_NAME")" = "$(git rev-parse HEAD)"
-
-      - name: Upload M04 evidence
-        if: ${{ steps.boundary.outputs.evidence_generated == 'true' }}
-        uses: actions/upload-artifact@v6
+      - name: Upload M05 reports
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
-          name: matching-m04-evidence-${{ github.sha }}
-          path: build/lab-evidence/M04
+          name: matching-m05-reports
+          path: build/reports/m05/
+          if-no-files-found: error
+
+      - name: Upload M05 clean-tree evidence
+        if: steps.boundary.outputs.evidence_generated == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: matching-m05-evidence
+          path: build/lab-evidence/M05/
           if-no-files-found: error

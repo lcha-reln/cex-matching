@@ -145,3 +145,15 @@ tasks.register("m04Evidence") {
     description = "Generates and validates the clean-tree M04 evidence manifest."
     dependsOn(":matching-testkit:m04Evidence")
 }
+
+tasks.register("m05Check") {
+    group = "verification"
+    description = "Runs the declared M05 versioned price-band boundary."
+    dependsOn(":matching-testkit:m05Check")
+}
+
+tasks.register("m05Evidence") {
+    group = "verification"
+    description = "Generates and validates the clean-tree M05 evidence manifest."
+    dependsOn(":matching-testkit:m05Evidence")
+}

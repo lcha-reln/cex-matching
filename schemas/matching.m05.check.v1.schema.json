@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m05.check.v1.schema.json",
+  "title": "Matching M05 structured RED check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "status", "contractPlanVersion", "objective", "inheritedM04", "fixedCorpus", "generator", "ruleContract", "requiredMutants", "missingCapabilities", "releaseTarget"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m05.check.v1"},
+    "unit": {"const": "M05"},
+    "status": {"const": "GOAL_NOT_IMPLEMENTED"},
+    "contractPlanVersion": {"const": "0.7"},
+    "objective": {"const": "Add one content-addressed, versioned order-entry price-band axis with deterministic Prepare/Activate fencing."},
+    "inheritedM04": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "checkSchemaVersion", "fixedScenarios", "fixedCommands", "generatedHistories", "generatedCommands", "fixedDigest", "generatedDigest", "counterexamples", "mutantsKilled", "productRelease"],
+      "properties": {
+        "status": {"const": "PASS"},
+        "checkSchemaVersion": {"const": "matching.m04.check.v2"},
+        "fixedScenarios": {"const": 14},
+        "fixedCommands": {"const": 48},
+        "generatedHistories": {"const": 192},
+        "generatedCommands": {"const": 12288},
+        "fixedDigest": {"const": "sha256:68de35e41358ea72c9852fdf3fd652db116774964360f0b526f43612576bfa77"},
+        "generatedDigest": {"const": "sha256:6005c674d0c42927989f1c8c4d1ddce224d06ceff0b95bf58615d23c4496ba51"},
+        "counterexamples": {"const": 8},
+        "mutantsKilled": {"const": 8},
+        "productRelease": {"type": "null"}
+      }
+    },
+    "fixedCorpus": {"$ref": "#/$defs/fixedCorpus"},
+    "generator": {"$ref": "#/$defs/generator"},
+    "ruleContract": {"$ref": "#/$defs/ruleContract"},
+    "requiredMutants": {"type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true, "items": {"type": "string", "pattern": "^M05-[A-Z0-9-]+$"}},
+    "missingCapabilities": {"type": "array", "minItems": 8, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Z0-9_]+$"}},
+    "releaseTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "verification"],
+      "properties": {"unitTag": {"const": "course/m05-complete"}, "productRelease": {"type": "null"}, "verification": {"const": "M05_EVIDENCE_ONLY"}}
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "fixedCorpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "schemaPath", "sha256", "scenarios", "commands", "commandCounts", "schemaProbes"],
+      "properties": {
+        "path": {"const": "matching-testkit/src/test/resources/m05/fixtures/versioned-price-band-v1.json"},
+        "schemaPath": {"const": "schemas/matching.m05.scenario.v1.schema.json"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "scenarios": {"const": 12},
+        "commands": {"const": 54},
+        "commandCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["PLACE", "CANCEL", "PREPARE_RULE_SET", "ACTIVATE_RULE_SET"],
+          "properties": {"PLACE": {"type": "integer", "minimum": 1}, "CANCEL": {"type": "integer", "minimum": 1}, "PREPARE_RULE_SET": {"type": "integer", "minimum": 1}, "ACTIVATE_RULE_SET": {"type": "integer", "minimum": 1}}
+        },
+        "schemaProbes": {"const": 5}
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "schemaPath", "sha256", "algorithm", "baseSeed", "histories", "commandsPerHistory", "totalCommands", "lanes", "historiesPerLane", "laneIds", "coverageObligations", "schemaProbes"],
+      "properties": {
+        "path": {"const": "matching-testkit/src/test/resources/m05/fixtures/property-suite-v1.json"},
+        "schemaPath": {"const": "schemas/matching.m05.generator.v1.schema.json"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "algorithm": {"const": "splitmix64-v1"},
+        "baseSeed": {"const": "5505"},
+        "histories": {"const": 160},
+        "commandsPerHistory": {"const": 64},
+        "totalCommands": {"const": 10240},
+        "lanes": {"const": 5},
+        "historiesPerLane": {"const": 32},
+        "laneIds": {"type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Z0-9_]+$"}},
+        "coverageObligations": {"const": 20},
+        "schemaProbes": {"const": 5}
+      }
+    },
+    "ruleContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactSchema", "canonicalFormat", "hashAlgorithm", "bootstrapVersion", "bootstrapLowerInclusive", "bootstrapUpperInclusive", "entryBandInclusive", "placePrecedence", "activationFence", "grandfatherExistingOrders", "operatingModesDeferredTo", "massCancelDeferredTo"],
+      "properties": {
+        "artifactSchema": {"const": "matching.market-rule-set.v1"},
+        "canonicalFormat": {"const": "M05RS1"},
+        "hashAlgorithm": {"const": "SHA-256"},
+        "bootstrapVersion": {"const": 0},
+        "bootstrapLowerInclusive": {"const": 1},
+        "bootstrapUpperInclusive": {"const": 9223372036854775807},
+        "entryBandInclusive": {"const": true},
+        "placePrecedence": {"type": "array", "minItems": 8, "maxItems": 8, "items": {"type": "string", "pattern": "^[A-Z0-9_]+$"}},
+        "activationFence": {"const": "APPLICATION_SEQUENCE"},
+        "grandfatherExistingOrders": {"const": true},
+        "operatingModesDeferredTo": {"const": "M06"},
+        "massCancelDeferredTo": {"const": "M06"}
+      }
+    }
+  }
+}

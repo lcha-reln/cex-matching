@@ -8,20 +8,22 @@ completed addressable cancellation and irreversible order terminal states. M03 c
 proof obligation: it compares that production engine command by command with an independently
 implemented linear-scan model over 256 deterministic generated histories, then shrinks, persists,
 and strictly replays every required semantic counterexample. M04 completes one closed
-execution-policy axis: GTC, IOC, FOK, and Post-only on the same protected limit-order semantics. It
-adds independent reference behavior, an event-derived lifecycle ledger, deterministic fixed and
-generated histories, eight semantic mutants, strict counterexample replay, and clean-tree evidence.
-Persistence, networking, performance work, and Aeron Cluster remain later units.
+execution-policy axis: GTC, IOC, FOK, and Post-only on the same protected limit-order semantics.
+M05 is now the single active implementation window. Its frozen RED boundary adds only one new
+dimension: a content-addressed, versioned absolute order-entry price band delivered through
+Prepare/Activate and an in-memory application-sequence fence. Operating modes and Mass Cancel have
+been split into M06; persistence, networking, performance work, and Aeron Cluster remain later
+units.
 
 ## Current course boundary
 
 - Profile: `SPOT-CEX-1.0`
-- Plan version: `0.6`
-- Unit: `M04`
-- Declared start ref: `course/m04-start`
-- Declared complete ref: `course/m04-complete`
-- Latest product stopping point: `matching-0.1.0` at M03; M04 has no product release
-- Lifecycle at this boundary: `CODE_VERIFIED / PASS`
+- Plan version: `0.7`
+- Unit: `M05`
+- Declared start ref: `course/m05-start`
+- Declared complete ref: `course/m05-complete`
+- Latest product stopping point: `matching-0.1.0` at M03; M04 and M05 have no product release
+- Lifecycle at this boundary: `READY / GOAL_NOT_IMPLEMENTED`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -29,19 +31,29 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The completed unit is verified with:
+The structured start boundary is verified with:
 
 ```bash
 ./gradlew clean build --no-daemon
-./gradlew m04Check --no-daemon
+./gradlew m05Check --no-daemon
 ```
 
-Both commands pass. The root build is gated by the completed `m04Check`, which writes the strict
-`matching.m04.check.v2` report beneath `build/reports/m04/`. It executes a 14-scenario / 48-command
-fixed corpus and 192 SplitMix64 histories of 64 commands across six lanes, compares production,
-the independent reference, and an event-derived ledger at every boundary, and kills and replays all
-eight required semantic mutants. The exact contract is in
-[`docs/specs/m04.md`](docs/specs/m04.md).
+The clean build remains green because it is still gated by completed M04. `m05Check` intentionally
+writes strict `matching.m05.check.v1`, reports `GOAL_NOT_IMPLEMENTED`, and exits non-zero at the
+start tag. It validates a frozen 12-scenario / 54-command corpus, a 160-by-64 generated profile,
+the M04 proof, the M05RS1 hash contract, 20 coverage obligations, and eight required mutants before
+any production implementation exists. The exact contract is in
+[`docs/specs/m05.md`](docs/specs/m05.md).
+
+M05 uses a precompiled inclusive tick interval. It does not read a reference-price feed or calculate
+percentages in the matcher. Every deterministic core result will consume an in-memory application
+sequence; a successful Activate atomically switches the complete immutable artifact at its exact
+sequence, and governed Place rejects a stale expected identity. Existing resting orders are
+grandfathered: activation never reprices, reorders, or silently cancels them.
+
+The start contract deliberately excludes `OPEN/CANCEL_ONLY/HALTED` and Mass Cancel. Those form M06,
+so this unit cannot repeat the retired course's mistake of implementing four independent control
+state machines at once.
 
 The fixed M04F1 golden is 47,104 bytes / 63 lines with digest
 `sha256:68de35e41358ea72c9852fdf3fd652db116774964360f0b526f43612576bfa77`. The

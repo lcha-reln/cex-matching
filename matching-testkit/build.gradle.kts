@@ -43,6 +43,9 @@ val m03ProductRelease = providers.gradleProperty("m03.productRelease").orElse("m
 val m04ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m04")
 val m04EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M04")
 val m04UnitTag = providers.gradleProperty("m04.unitTag").orElse("course/m04-complete")
+val m05ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m05")
+val m05EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M05")
+val m05UnitTag = providers.gradleProperty("m05.unitTag").orElse("course/m05-complete")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -180,4 +183,32 @@ tasks.register<JavaExec>("m04Evidence") {
         m04UnitTag.get(),
     )
     doNotTrackState("Evidence must re-check the M04 tag and working-tree cleanliness on every invocation")
+}
+
+tasks.register<JavaExec>("m05Check") {
+    group = "verification"
+    description = "Runs the declared M05 versioned price-band boundary."
+    dependsOn("test", ":matching-core:test", ":matching-reference:check", "classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M05CheckMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m05ReportDirectory.get().asFile.absolutePath,
+    )
+    doNotTrackState("M05 must never reuse a stale report")
+}
+
+tasks.register<JavaExec>("m05Evidence") {
+    group = "verification"
+    description = "Generates and validates the clean-tree M05 evidence manifest."
+    dependsOn("m05Check")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M05EvidenceMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m05ReportDirectory.get().asFile.absolutePath,
+        m05EvidenceDirectory.get().asFile.absolutePath,
+        m05UnitTag.get(),
+    )
+    doNotTrackState("Evidence must re-check the M05 tag and working-tree cleanliness on every invocation")
 }

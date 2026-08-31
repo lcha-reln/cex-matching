@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m05.generator.v1.schema.json",
+  "title": "Matching M05 deterministic versioned price-band generator",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "algorithm", "baseSeed", "histories", "commandsPerHistory", "lanes", "randomDomain", "coverageRequirements", "requiredMutants"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m05.generator.v1"},
+    "algorithm": {"const": "splitmix64-v1"},
+    "baseSeed": {"const": "5505"},
+    "histories": {"const": 160},
+    "commandsPerHistory": {"const": 64},
+    "lanes": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "prefixItems": [
+        {"$ref": "#/$defs/lifecycleLane"},
+        {"$ref": "#/$defs/fenceLane"},
+        {"$ref": "#/$defs/bandLane"},
+        {"$ref": "#/$defs/grandfatherLane"},
+        {"$ref": "#/$defs/mixedLane"}
+      ],
+      "items": false
+    },
+    "randomDomain": {"$ref": "#/$defs/randomDomain"},
+    "coverageRequirements": {"type": "array", "minItems": 20, "maxItems": 20, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Z0-9_]+$"}},
+    "requiredMutants": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        {"const": "M05-HASH-MISMATCH-PREPARED"},
+        {"const": "M05-SAME-VERSION-DIFFERENT-HASH-ACCEPTED"},
+        {"const": "M05-ACTIVATE-WITHOUT-PREPARE"},
+        {"const": "M05-STALE-ACTIVATION-FENCE-ACCEPTED"},
+        {"const": "M05-FAILED-ACTIVATION-CHANGES-ACTIVE"},
+        {"const": "M05-OUT-OF-BAND-PLACE-ACCEPTED"},
+        {"const": "M05-STALE-PLACE-RULE-ACCEPTED"},
+        {"const": "M05-ACTIVATION-REVALIDATES-RESTING"}
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "laneBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "historyModulo", "prefixScenario"],
+      "properties": {
+        "id": {"type": "string"},
+        "historyModulo": {"type": "integer", "minimum": 0, "maximum": 4},
+        "prefixScenario": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"}
+      }
+    },
+    "lifecycleLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "RULE_SET_LIFECYCLE_AND_HASH"}, "historyModulo": {"const": 0}, "prefixScenario": {"const": "idempotent-prepare-and-version-conflict"}}}]},
+    "fenceLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "ACTIVATION_AND_PLACE_FENCE"}, "historyModulo": {"const": 1}, "prefixScenario": {"const": "stale-place-fence-and-identity"}}}]},
+    "bandLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "INCLUSIVE_BAND_BUY_SELL"}, "historyModulo": {"const": 2}, "prefixScenario": {"const": "sell-side-band-symmetry"}}}]},
+    "grandfatherLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "GRANDFATHERED_CROSS_VERSION"}, "historyModulo": {"const": 3}, "prefixScenario": {"const": "grandfathered-cross-version-maker"}}}]},
+    "mixedLane": {"allOf": [{"$ref": "#/$defs/laneBase"}, {"properties": {"id": {"const": "MIXED_M04_POLICY_AND_CONTROL"}, "historyModulo": {"const": 4}, "prefixScenario": {"const": "band-precedes-policy-precheck"}}}]},
+    "randomDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["placeWeight", "cancelWeight", "prepareWeight", "activateWeight", "invalidFieldOneIn", "staleRuleOneIn", "outOfBandOneIn", "minimumPriceTicks", "maximumPriceTicks", "maximumQuantityLots", "executionPolicies"],
+      "properties": {
+        "placeWeight": {"const": 65},
+        "cancelWeight": {"const": 15},
+        "prepareWeight": {"const": 12},
+        "activateWeight": {"const": 8},
+        "invalidFieldOneIn": {"const": 32},
+        "staleRuleOneIn": {"const": 16},
+        "outOfBandOneIn": {"const": 8},
+        "minimumPriceTicks": {"const": 80},
+        "maximumPriceTicks": {"const": 120},
+        "maximumQuantityLots": {"const": 5},
+        "executionPolicies": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            {"$ref": "#/$defs/policyGtc"},
+            {"$ref": "#/$defs/policyIoc"},
+            {"$ref": "#/$defs/policyFok"},
+            {"$ref": "#/$defs/policyPostOnly"}
+          ],
+          "items": false
+        }
+      }
+    },
+    "policyGtc": {"type": "object", "additionalProperties": false, "required": ["id", "weight"], "properties": {"id": {"const": "GTC"}, "weight": {"const": 35}}},
+    "policyIoc": {"type": "object", "additionalProperties": false, "required": ["id", "weight"], "properties": {"id": {"const": "IOC"}, "weight": {"const": 25}}},
+    "policyFok": {"type": "object", "additionalProperties": false, "required": ["id", "weight"], "properties": {"id": {"const": "FOK"}, "weight": {"const": 20}}},
+    "policyPostOnly": {"type": "object", "additionalProperties": false, "required": ["id", "weight"], "properties": {"id": {"const": "POST_ONLY"}, "weight": {"const": 20}}}
+  }
+}
