@@ -65,8 +65,7 @@ jobs:
                 .releaseTarget.productRelease == null
               ' build/reports/m04/check.json
 
-              mkdir -p build/reports/m05
-              m05_log=build/reports/m05/gradle-output.log
+              m05_log="${RUNNER_TEMP:-/tmp}/m05-gradle-output.log"
               set +e
               set -o pipefail
               ./gradlew m05Check --no-daemon 2>&1 | tee "$m05_log"
@@ -113,7 +112,8 @@ jobs:
             PASS)
               test -z "$(git tag --points-at HEAD --list 'matching-*')"
               test "$(git cat-file -t course/m05-complete)" = tag
-              test "$(git rev-parse 'course/m05-complete^{}')" = "$(git rev-parse HEAD)"
+              complete_commit="$(git rev-parse 'course/m05-complete^{}')"
+              git merge-base --is-ancestor "$complete_commit" HEAD
               ./gradlew clean build --no-daemon
               ./gradlew m05Check --no-daemon
               jq -e '
@@ -162,19 +162,23 @@ jobs:
                 .architecture.forbiddenFindings == 0 and
                 .releaseTarget.productRelease == null
               ' build/reports/m05/check.json
-              ./gradlew m05Evidence -Pm05.unitTag=course/m05-complete --no-daemon
-              jq -e '
-                .schemaVersion == "cex.lab-evidence.v1" and
-                .case == "high-availability-cex" and
-                .project == "matching" and
-                .unit == "M05" and
-                .unitTag == "course/m05-complete" and
-                .productRelease == null and
-                .planVersion == "0.7" and
-                .source.commit == env.GITHUB_SHA and
-                .source.dirty == false
-              ' build/lab-evidence/M05/manifest.json
-              evidence_generated=true
+              if test "$complete_commit" = "$(git rev-parse HEAD)"; then
+                ./gradlew m05Evidence -Pm05.unitTag=course/m05-complete --no-daemon
+                jq -e '
+                  .schemaVersion == "cex.lab-evidence.v1" and
+                  .case == "high-availability-cex" and
+                  .project == "matching" and
+                  .unit == "M05" and
+                  .unitTag == "course/m05-complete" and
+                  .productRelease == null and
+                  .planVersion == "0.7" and
+                  .source.commit == env.GITHUB_SHA and
+                  .source.dirty == false
+                ' build/lab-evidence/M05/manifest.json
+                evidence_generated=true
+              else
+                echo "M05 evidence remains frozen at $complete_commit; validating descendant maintenance commit only."
+              fi
               ;;
             *)
               echo "unsupported m05Check.expectedStatus: $expected_status" >&2
