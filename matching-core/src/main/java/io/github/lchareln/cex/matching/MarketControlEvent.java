@@ -118,6 +118,14 @@ public sealed interface MarketControlEvent
       Objects.requireNonNull(observedMode, "observedMode");
       Objects.requireNonNull(targetMode, "targetMode");
       Objects.requireNonNull(code, "code");
+      if (code == ChangeMarketModeRejectionCode.NO_MODE_CHANGE && targetMode != observedMode) {
+        throw new IllegalArgumentException("NO_MODE_CHANGE requires an unchanged target");
+      }
+      if (code == ChangeMarketModeRejectionCode.INVALID_TRANSITION
+          && (targetMode == observedMode || observedMode.canTransitionTo(targetMode))) {
+        throw new IllegalArgumentException(
+            "INVALID_TRANSITION requires a distinct forbidden target");
+      }
     }
   }
 }

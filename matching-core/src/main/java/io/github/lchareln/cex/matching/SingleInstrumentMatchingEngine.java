@@ -396,7 +396,7 @@ public final class SingleInstrumentMatchingEngine {
     if (command.targetMode() == marketMode) {
       return modeChangeRejection(command, ChangeMarketModeRejectionCode.NO_MODE_CHANGE, applied);
     }
-    if (!isPermittedTransition(marketMode, command.targetMode())) {
+    if (!marketMode.canTransitionTo(command.targetMode())) {
       return modeChangeRejection(
           command, ChangeMarketModeRejectionCode.INVALID_TRANSITION, applied);
     }
@@ -696,14 +696,6 @@ public final class SingleInstrumentMatchingEngine {
     if (level.isEmpty() && !side.remove(order.priceTicks.value(), level)) {
       throw new IllegalStateException("empty price level disappeared during single-writer removal");
     }
-  }
-
-  private static boolean isPermittedTransition(MarketMode current, MarketMode target) {
-    return switch (current) {
-      case OPEN -> target == MarketMode.CANCEL_ONLY || target == MarketMode.HALTED;
-      case CANCEL_ONLY -> target == MarketMode.OPEN || target == MarketMode.HALTED;
-      case HALTED -> target == MarketMode.CANCEL_ONLY;
-    };
   }
 
   private void match(

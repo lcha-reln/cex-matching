@@ -26,9 +26,13 @@ public record MassCancelFence(
         || firstCanceledSequence.isEmpty() != lastCanceledSequence.isEmpty()) {
       throw new IllegalArgumentException("canceled order count and sequence bounds must agree");
     }
-    if (firstCanceledSequence.isPresent()
-        && firstCanceledSequence.get().value() > lastCanceledSequence.orElseThrow().value()) {
-      throw new IllegalArgumentException("Mass Cancel sequence bounds are reversed");
+    if (firstCanceledSequence.isPresent()) {
+      long first = firstCanceledSequence.orElseThrow().value();
+      long last = lastCanceledSequence.orElseThrow().value();
+      if ((canceledOrderCount == 1 && first != last) || (canceledOrderCount > 1 && first >= last)) {
+        throw new IllegalArgumentException(
+            "Mass Cancel count and acceptance-sequence bounds disagree");
+      }
     }
   }
 }

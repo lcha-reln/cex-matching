@@ -2,6 +2,7 @@ package io.github.lchareln.cex.matching;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigInteger;
@@ -162,6 +163,94 @@ final class SingleInstrumentMassCancelTest {
     assertEquals(v1.identity(), canceled.getLast().executionRuleSet());
     assertEquals(v1.identity(), batch.controlAfter().activeIdentity());
     assertEquals(1, batch.controlAfter().controlRevision());
+  }
+
+  @Test
+  void resultGrammarRejectsDuplicateOrderIdentityAcrossTheFrozenBatch() {
+    SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine();
+    engine.place(place(301, "BUY", 99, 1));
+    engine.place(place(302, "SELL", 101, 1));
+    change(engine, 3, MarketMode.OPEN, MarketMode.HALTED);
+    MassCancelBatch valid =
+        engine.massCancel(new MassCancel(new ApplicationSequence(4), MarketMode.HALTED, OPERATOR));
+    MassCancelEvent.OrderCanceled first =
+        assertInstanceOf(MassCancelEvent.OrderCanceled.class, valid.events().get(1));
+    MassCancelEvent.OrderCanceled second =
+        assertInstanceOf(MassCancelEvent.OrderCanceled.class, valid.events().get(2));
+    MassCancelEvent.OrderCanceled duplicateIdentity =
+        new MassCancelEvent.OrderCanceled(
+            second.applicationSequence(),
+            second.operatorId(),
+            second.sequence(),
+            first.orderId(),
+            second.side(),
+            second.priceTicks(),
+            second.canceledQuantityLots(),
+            second.admissionRuleSet(),
+            second.executionRuleSet());
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new MassCancelBatch(
+                List.of(
+                    valid.events().getFirst(), first, duplicateIdentity, valid.events().getLast()),
+                valid.controlAfter(),
+                valid.bookAfter()));
+  }
+
+  @Test
+  void massCancelFenceRequiresCountConsistentSequenceBounds() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new MassCancelFence(
+                new ApplicationSequence(2),
+                1,
+                OPERATOR,
+                1,
+                Optional.of(new AcceptanceSequence(1)),
+                Optional.of(new AcceptanceSequence(2))));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new MassCancelFence(
+                new ApplicationSequence(2),
+                1,
+                OPERATOR,
+                2,
+                Optional.of(new AcceptanceSequence(1)),
+                Optional.of(new AcceptanceSequence(1))));
+  }
+
+  @Test
+  void snapshotRejectsMassCancelAtTheCurrentRevisionOutsideHalted() {
+    SingleInstrumentMatchingEngine engine = new SingleInstrumentMatchingEngine();
+    change(engine, 1, MarketMode.OPEN, MarketMode.CANCEL_ONLY);
+    MarketControlSnapshot current = engine.marketControlSnapshot();
+    MassCancelFence impossible =
+        new MassCancelFence(
+            new ApplicationSequence(2),
+            current.modeRevision(),
+            OPERATOR,
+            0,
+            Optional.empty(),
+            Optional.empty());
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new MarketControlSnapshot(
+                current.activeRuleSet(),
+                current.preparedRuleSet(),
+                current.controlRevision(),
+                current.lastActivationFence(),
+                new ApplicationSequence(3),
+                current.nextAcceptanceSequence(),
+                current.marketMode(),
+                current.modeRevision(),
+                current.lastModeTransitionFence(),
+                Optional.of(impossible)));
   }
 
   private static void assertMassRejected(

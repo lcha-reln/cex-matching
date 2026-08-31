@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.math.BigInteger;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -181,6 +182,80 @@ final class SingleInstrumentMarketModeTest {
     assertThrows(IllegalArgumentException.class, () -> new OperatorId("   "));
     assertThrows(IllegalArgumentException.class, () -> new OperatorId("x".repeat(129)));
     assertEquals("ops/audit:1", new OperatorId("ops/audit:1").value());
+  }
+
+  @Test
+  void transitionFenceRejectsEdgesOutsideTheFrozenGraph() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new ModeTransitionFence(
+                new ApplicationSequence(1),
+                1,
+                MarketMode.HALTED,
+                MarketMode.OPEN,
+                new AcceptanceSequence(1)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new ModeTransitionFence(
+                new ApplicationSequence(1),
+                1,
+                MarketMode.OPEN,
+                MarketMode.OPEN,
+                new AcceptanceSequence(1)));
+  }
+
+  @Test
+  void publicResultGrammarRejectsModeContradictions() {
+    OrderBookSnapshot empty = new OrderBookSnapshot(List.of(), List.of());
+    RuleSetIdentity rules = MarketRuleSetArtifact.bootstrapIdentity();
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new ExecutionBatch(
+                List.of(
+                    new MatchingEvent.PlaceRejected(
+                        new OrderId(1), PlaceRejectionCode.MARKET_NOT_OPEN)),
+                empty,
+                new MarketExecutionContext(rules, 0, new ApplicationSequence(1), MarketMode.OPEN)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new ExecutionBatch(
+                List.of(
+                    new MatchingEvent.PlaceRejected(
+                        new OrderId(1), PlaceRejectionCode.FOK_NOT_FILLABLE)),
+                empty,
+                new MarketExecutionContext(
+                    rules, 0, new ApplicationSequence(1), MarketMode.CANCEL_ONLY)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new ExecutionBatch(
+                List.of(
+                    new MatchingEvent.CancelRejected(
+                        new OrderId(1), CancelRejectionCode.ORDER_NOT_FOUND)),
+                empty,
+                new MarketExecutionContext(
+                    rules, 0, new ApplicationSequence(1), MarketMode.HALTED)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new MarketControlEvent.ModeChangeRejected(
+                new ApplicationSequence(1),
+                OPERATOR,
+                MarketMode.OPEN,
+                MarketMode.HALTED,
+                ChangeMarketModeRejectionCode.NO_MODE_CHANGE));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new MassCancelEvent.Rejected(
+                new ApplicationSequence(1),
+                OPERATOR,
+                MarketMode.HALTED,
+                MassCancelRejectionCode.MARKET_NOT_HALTED));
   }
 
   private static void change(

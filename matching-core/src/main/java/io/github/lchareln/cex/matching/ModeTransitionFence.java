@@ -17,8 +17,8 @@ public record ModeTransitionFence(
     if (modeRevision <= 0) {
       throw new IllegalArgumentException("mode revision must be positive");
     }
-    if (previousMode == activeMode) {
-      throw new IllegalArgumentException("mode transition must change the active mode");
+    if (!previousMode.canTransitionTo(activeMode)) {
+      throw new IllegalArgumentException("mode transition is not permitted by the contract");
     }
   }
 }

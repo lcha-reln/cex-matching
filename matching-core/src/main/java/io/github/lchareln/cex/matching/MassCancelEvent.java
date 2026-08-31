@@ -94,6 +94,10 @@ public sealed interface MassCancelEvent
       Objects.requireNonNull(operatorId, "operatorId");
       Objects.requireNonNull(observedMode, "observedMode");
       Objects.requireNonNull(code, "code");
+      if (code == MassCancelRejectionCode.MARKET_NOT_HALTED && observedMode == MarketMode.HALTED) {
+        throw new IllegalArgumentException(
+            "MARKET_NOT_HALTED cannot observe the required HALTED mode");
+      }
     }
   }
 }

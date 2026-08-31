@@ -36,6 +36,7 @@ public record ExecutionBatch(
       if (events.size() != 1) {
         throw new IllegalArgumentException("a singleton batch must contain exactly one event");
       }
+      validateModeGrammar(first, context.marketMode());
       if (first instanceof MatchingEvent.Canceled canceled
           && !canceled.executionRuleSet().equals(context.activeRuleSet())) {
         throw new IllegalArgumentException(
@@ -45,6 +46,9 @@ public record ExecutionBatch(
     }
     if (!(first instanceof MatchingEvent.Accepted accepted)) {
       throw new IllegalArgumentException("a valid batch must start with Accepted");
+    }
+    if (context.marketMode() != MarketMode.OPEN) {
+      throw new IllegalArgumentException("an accepted place batch requires OPEN mode");
     }
     if (!accepted.admissionRuleSet().equals(context.activeRuleSet())) {
       throw new IllegalArgumentException(
@@ -123,6 +127,26 @@ public record ExecutionBatch(
           throw new IllegalArgumentException("accepted Post-only must rest without trading");
         }
       }
+    }
+  }
+
+  private static void validateModeGrammar(MatchingEvent event, MarketMode mode) {
+    if (event instanceof MatchingEvent.PlaceRejected rejected) {
+      if (rejected.code() == PlaceRejectionCode.MARKET_NOT_OPEN && mode == MarketMode.OPEN) {
+        throw new IllegalArgumentException("place rejection and market mode disagree");
+      }
+      if ((rejected.code() == PlaceRejectionCode.FOK_NOT_FILLABLE
+              || rejected.code() == PlaceRejectionCode.POST_ONLY_WOULD_TAKE)
+          && mode != MarketMode.OPEN) {
+        throw new IllegalArgumentException("policy-state rejection requires OPEN mode");
+      }
+    } else if (event instanceof MatchingEvent.CancelRejected rejected) {
+      if ((rejected.code() == CancelRejectionCode.MARKET_NOT_CANCELABLE)
+          != (mode == MarketMode.HALTED)) {
+        throw new IllegalArgumentException("cancel rejection and market mode disagree");
+      }
+    } else if (event instanceof MatchingEvent.Canceled && mode == MarketMode.HALTED) {
+      throw new IllegalArgumentException("customer cancel success is forbidden while HALTED");
     }
   }
 }

@@ -64,23 +64,32 @@ public record MarketControlSnapshot(
             throw new IllegalArgumentException("last mode transition is ahead of snapshot state");
           }
         });
-    lastMassCancelFence.ifPresent(
-        fence -> {
-          if (modeRevision == 0
-              || fence.modeRevision() > modeRevision
-              || fence.appliedCommandSequence().value() >= nextApplicationSequence.value()) {
-            throw new IllegalArgumentException("last Mass Cancel is ahead of snapshot state");
-          }
-          fence
-              .lastCanceledSequence()
-              .ifPresent(
-                  sequence -> {
-                    if (sequence.value() >= nextAcceptanceSequence.value()) {
-                      throw new IllegalArgumentException(
-                          "last Mass Cancel canceled an unaccepted sequence");
-                    }
-                  });
-        });
+    if (lastMassCancelFence.isPresent()) {
+      MassCancelFence fence = lastMassCancelFence.orElseThrow();
+      if (modeRevision == 0
+          || fence.modeRevision() > modeRevision
+          || fence.appliedCommandSequence().value() >= nextApplicationSequence.value()) {
+        throw new IllegalArgumentException("last Mass Cancel is ahead of snapshot state");
+      }
+      if (fence.modeRevision() == modeRevision) {
+        ModeTransitionFence transition = lastModeTransitionFence.orElseThrow();
+        if (marketMode != MarketMode.HALTED
+            || transition.modeRevision() != fence.modeRevision()
+            || transition.appliedCommandSequence().value()
+                >= fence.appliedCommandSequence().value()) {
+          throw new IllegalArgumentException("current mode and last Mass Cancel boundary disagree");
+        }
+      }
+      fence
+          .lastCanceledSequence()
+          .ifPresent(
+              sequence -> {
+                if (sequence.value() >= nextAcceptanceSequence.value()) {
+                  throw new IllegalArgumentException(
+                      "last Mass Cancel canceled an unaccepted sequence");
+                }
+              });
+    }
   }
 
   /** Preserves the M05 snapshot constructor with bootstrap operating-mode state. */

@@ -1,7 +1,9 @@
 package io.github.lchareln.cex.matching;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /** One rejected or atomically completed Mass Cancel with detached state after its boundary. */
 public record MassCancelBatch(
@@ -44,6 +46,7 @@ public record MassCancelBatch(
       }
 
       long previousSequence = 0;
+      Set<OrderId> canceledOrderIds = new HashSet<>();
       for (int index = 1; index < events.size() - 1; index++) {
         if (!(events.get(index) instanceof MassCancelEvent.OrderCanceled canceled)) {
           throw new IllegalArgumentException("only OrderCanceled may occur inside Mass Cancel");
@@ -51,6 +54,7 @@ public record MassCancelBatch(
         if (!canceled.applicationSequence().equals(started.applicationSequence())
             || !canceled.operatorId().equals(started.operatorId())
             || canceled.sequence().value() <= previousSequence
+            || !canceledOrderIds.add(canceled.orderId())
             || !canceled.executionRuleSet().equals(controlAfter.activeIdentity())) {
           throw new IllegalArgumentException(
               "Mass Cancel order event lost order or rule attribution");
