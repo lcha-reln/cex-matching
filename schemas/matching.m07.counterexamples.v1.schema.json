@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lchareln.github.io/cex-matching/schemas/matching.m07.counterexamples.v1.schema.json",
+  "title": "M07 minimized counterexample corpus",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "counterexamples"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m07.counterexamples.v1"},
+    "counterexamples": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        {"allOf": [{"$ref": "#/$defs/counterexample"}, {"properties": {"mutantId": {"const": "M07-SAME-GROUP-TRADE-ALLOWED"}}}]},
+        {"allOf": [{"$ref": "#/$defs/counterexample"}, {"properties": {"mutantId": {"const": "M07-DIFFERENT-GROUP-CANCELED"}}}]},
+        {"allOf": [{"$ref": "#/$defs/counterexample"}, {"properties": {"mutantId": {"const": "M07-CANCEL-TAKER-SKIPS-SELF"}}}]},
+        {"allOf": [{"$ref": "#/$defs/counterexample"}, {"properties": {"mutantId": {"const": "M07-CANCEL-MAKER-CANCELS-TAKER"}}}]},
+        {"allOf": [{"$ref": "#/$defs/counterexample"}, {"properties": {"mutantId": {"const": "M07-CANCEL-BOTH-LEAVES-MAKER"}}}]},
+        {"allOf": [{"$ref": "#/$defs/counterexample"}, {"properties": {"mutantId": {"const": "M07-FOK-COUNTS-RAW-SELF-LIQUIDITY"}, "minimizedCommands": {"minimum": 3}, "commands": {"minItems": 3}}}]},
+        {"allOf": [{"$ref": "#/$defs/counterexample"}, {"properties": {"mutantId": {"const": "M07-POST-ONLY-RUNS-STP-FIRST"}}}]},
+        {"allOf": [{"$ref": "#/$defs/counterexample"}, {"properties": {"mutantId": {"const": "M07-CANCEL-MAKER-BEST-LEVEL-ONLY"}, "minimizedCommands": {"minimum": 3}, "commands": {"minItems": 3}}}]}
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "counterexample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mutantId", "classification", "fingerprint", "originalCommands", "minimizedCommands", "oneMinimal", "commands"],
+      "properties": {
+        "mutantId": {"enum": ["M07-SAME-GROUP-TRADE-ALLOWED", "M07-DIFFERENT-GROUP-CANCELED", "M07-CANCEL-TAKER-SKIPS-SELF", "M07-CANCEL-MAKER-CANCELS-TAKER", "M07-CANCEL-BOTH-LEAVES-MAKER", "M07-FOK-COUNTS-RAW-SELF-LIQUIDITY", "M07-POST-ONLY-RUNS-STP-FIRST", "M07-CANCEL-MAKER-BEST-LEVEL-ONLY"]},
+        "classification": {"const": "STUDENT_FAILURE"},
+        "fingerprint": {"type": "string", "minLength": 1},
+        "originalCommands": {"type": "integer", "minimum": 1},
+        "minimizedCommands": {"type": "integer", "minimum": 2},
+        "oneMinimal": {"const": true},
+        "commands": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/command"}}
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "contentHash"],
+      "properties": {
+        "version": {"type": "integer", "minimum": 0},
+        "contentHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "instrumentId", "version", "lowerInclusive", "upperInclusive", "contentHash"],
+      "properties": {
+        "schemaVersion": {"const": "matching.market-rule-set.v1"},
+        "instrumentId": {"const": "BTC-USDT"},
+        "version": {"type": "integer", "minimum": 0},
+        "lowerInclusive": {"type": "integer", "minimum": 1},
+        "upperInclusive": {"type": "integer", "minimum": 1},
+        "contentHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "placeInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrumentId", "orderId", "side", "priceTicks", "quantityLots", "executionPolicy"],
+      "properties": {
+        "instrumentId": {"type": "string", "minLength": 1},
+        "orderId": {"type": "integer"},
+        "side": {"enum": ["BUY", "SELL"]},
+        "priceTicks": {"type": "integer"},
+        "quantityLots": {"type": "integer"},
+        "executionPolicy": {"enum": ["GTC", "IOC", "FOK", "POST_ONLY"]}
+      }
+    },
+    "rawParticipantGroupId": {"type": "integer", "minimum": -1, "maximum": 9223372036854775807},
+    "rawStpPolicy": {"enum": ["NONE", "CANCEL_TAKER", "CANCEL_MAKER", "CANCEL_BOTH", "UNKNOWN", "cancel_taker", " CANCEL_TAKER"]},
+    "command": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "entrypoint", "input"],
+          "properties": {
+            "type": {"const": "PLACE"},
+            "entrypoint": {"const": "LEGACY"},
+            "input": {"$ref": "#/$defs/placeInput"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "entrypoint", "participantGroupId", "stpPolicy", "input"],
+          "properties": {
+            "type": {"const": "PLACE"},
+            "entrypoint": {"const": "STP"},
+            "participantGroupId": {"$ref": "#/$defs/rawParticipantGroupId"},
+            "stpPolicy": {"$ref": "#/$defs/rawStpPolicy"},
+            "input": {"$ref": "#/$defs/placeInput"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "entrypoint", "participantGroupId", "stpPolicy", "expectedRuleSet", "input"],
+          "properties": {
+            "type": {"const": "PLACE"},
+            "entrypoint": {"const": "GOVERNED_STP"},
+            "participantGroupId": {"$ref": "#/$defs/rawParticipantGroupId"},
+            "stpPolicy": {"$ref": "#/$defs/rawStpPolicy"},
+            "expectedRuleSet": {"$ref": "#/$defs/identity"},
+            "input": {"$ref": "#/$defs/placeInput"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "entrypoint", "expectedRuleSet", "input"],
+          "properties": {
+            "type": {"const": "PLACE"},
+            "entrypoint": {"const": "GOVERNED"},
+            "expectedRuleSet": {"$ref": "#/$defs/identity"},
+            "input": {"$ref": "#/$defs/placeInput"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": {"const": "CANCEL"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["instrumentId", "orderId"],
+              "properties": {"instrumentId": {"type": "string", "minLength": 1}, "orderId": {"type": "integer"}}
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": {"const": "PREPARE_RULE_SET"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["expectedActive", "artifact"],
+              "properties": {"expectedActive": {"$ref": "#/$defs/identity"}, "artifact": {"$ref": "#/$defs/artifact"}}
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": {"const": "ACTIVATE_RULE_SET"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["expectedApplicationSequence", "expectedActive", "target"],
+              "properties": {
+                "expectedApplicationSequence": {"type": "integer", "minimum": 1},
+                "expectedActive": {"$ref": "#/$defs/identity"},
+                "target": {"$ref": "#/$defs/identity"}
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": {"const": "CHANGE_MARKET_MODE"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["expectedApplicationSequence", "expectedMode", "targetMode", "operatorId"],
+              "properties": {
+                "expectedApplicationSequence": {"type": "integer", "minimum": 1},
+                "expectedMode": {"enum": ["OPEN", "CANCEL_ONLY", "HALTED"]},
+                "targetMode": {"enum": ["OPEN", "CANCEL_ONLY", "HALTED"]},
+                "operatorId": {"type": "string", "minLength": 1, "maxLength": 128}
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "input"],
+          "properties": {
+            "type": {"const": "MASS_CANCEL"},
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["expectedApplicationSequence", "expectedMode", "operatorId"],
+              "properties": {
+                "expectedApplicationSequence": {"type": "integer", "minimum": 1},
+                "expectedMode": {"enum": ["OPEN", "CANCEL_ONLY", "HALTED"]},
+                "operatorId": {"type": "string", "minLength": 1, "maxLength": 128}
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

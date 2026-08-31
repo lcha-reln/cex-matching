@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lchareln.github.io/cex-matching/schemas/matching.m07.check.v2.schema.json",
+  "title": "Matching M07 completed self-trade-prevention check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "status", "contractPlanVersion", "releaseTarget"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m07.check.v2"},
+    "unit": {"const": "M07"},
+    "status": {"enum": ["PASS", "STUDENT_FAILURE", "SYSTEM_ERROR"]},
+    "contractPlanVersion": {"const": "0.9"},
+    "inheritedM06": {"$ref": "#/$defs/inherited"},
+    "legacyEntrypoints": {"$ref": "#/$defs/legacyEntrypoints"},
+    "fixedCorpus": {"$ref": "#/$defs/fixed"},
+    "generator": {"$ref": "#/$defs/generator"},
+    "properties": {"$ref": "#/$defs/properties"},
+    "coverage": {"$ref": "#/$defs/coverage"},
+    "invariants": {"$ref": "#/$defs/invariants"},
+    "boundaries": {"$ref": "#/$defs/boundaries"},
+    "counterexamples": {"$ref": "#/$defs/counterexamples"},
+    "mutants": {"$ref": "#/$defs/mutants"},
+    "architecture": {"$ref": "#/$defs/architecture"},
+    "evidenceScope": {"$ref": "#/$defs/scope"},
+    "tutorialPermalinks": {
+      "const": [
+        "stp-command-and-opaque-participant-group",
+        "cancel-taker-maker-both-state-machine",
+        "stp-price-time-scan-and-cross-level-cases",
+        "stp-with-ioc-fok-post-only-and-rule-sets",
+        "stp-property-evidence-and-mutants"
+      ]
+    },
+    "failure": {"type": "string", "minLength": 1},
+    "releaseTarget": {"$ref": "#/$defs/release"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "PASS"}}},
+      "then": {
+        "required": ["inheritedM06", "legacyEntrypoints", "fixedCorpus", "generator", "properties", "coverage", "invariants", "boundaries", "counterexamples", "mutants", "architecture", "evidenceScope", "tutorialPermalinks"],
+        "not": {"required": ["failure"]}
+      }
+    },
+    {
+      "if": {"properties": {"status": {"enum": ["STUDENT_FAILURE", "SYSTEM_ERROR"]}}},
+      "then": {
+        "required": ["failure"],
+        "not": {
+          "anyOf": [
+            {"required": ["inheritedM06"]},
+            {"required": ["legacyEntrypoints"]},
+            {"required": ["fixedCorpus"]},
+            {"required": ["generator"]},
+            {"required": ["properties"]},
+            {"required": ["coverage"]},
+            {"required": ["invariants"]},
+            {"required": ["boundaries"]},
+            {"required": ["counterexamples"]},
+            {"required": ["mutants"]},
+            {"required": ["architecture"]},
+            {"required": ["evidenceScope"]},
+            {"required": ["tutorialPermalinks"]}
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "inherited": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "checkSchemaVersion", "fixedScenarios", "fixedCommands", "fixedDigest", "generatedHistories", "generatedCommands", "generatedDigest", "coverageObligations", "mutantsKilled"],
+      "properties": {
+        "status": {"const": "PASS"},
+        "checkSchemaVersion": {"const": "matching.m06.check.v2"},
+        "fixedScenarios": {"const": 15},
+        "fixedCommands": {"const": 64},
+        "fixedDigest": {"$ref": "#/$defs/sha256"},
+        "generatedHistories": {"const": 160},
+        "generatedCommands": {"const": 10240},
+        "generatedDigest": {"$ref": "#/$defs/sha256"},
+        "coverageObligations": {"const": 26},
+        "mutantsKilled": {"const": 10}
+      }
+    },
+    "legacyEntrypoints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executed", "place", "placeRequest", "placeGoverned", "semanticResultsIdentical", "participantGroupId", "stpPolicy"],
+      "properties": {
+        "executed": {"const": 3},
+        "place": {"const": true},
+        "placeRequest": {"const": true},
+        "placeGoverned": {"const": true},
+        "semanticResultsIdentical": {"const": true},
+        "participantGroupId": {"const": 0},
+        "stpPolicy": {"const": "NONE"}
+      }
+    },
+    "fixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarios", "commands", "commandCounts", "canonicalFormat", "canonicalDigest", "canonicalBytes", "canonicalLines", "differentialComparisons", "eventLedgerChecks"],
+      "properties": {
+        "scenarios": {"const": 16},
+        "commands": {"const": 72},
+        "commandCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["PLACE", "CANCEL", "PREPARE_RULE_SET", "ACTIVATE_RULE_SET", "CHANGE_MARKET_MODE"],
+          "properties": {
+            "PLACE": {"const": 61},
+            "CANCEL": {"const": 8},
+            "PREPARE_RULE_SET": {"const": 1},
+            "ACTIVATE_RULE_SET": {"const": 1},
+            "CHANGE_MARKET_MODE": {"const": 1}
+          }
+        },
+        "canonicalFormat": {"const": "M07F1"},
+        "canonicalDigest": {"$ref": "#/$defs/sha256"},
+        "canonicalBytes": {"type": "integer", "minimum": 1},
+        "canonicalLines": {"const": 73},
+        "differentialComparisons": {"const": 72},
+        "eventLedgerChecks": {"const": 72}
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "baseSeed", "histories", "commandsPerHistory", "commands", "lanes", "historiesPerLane", "canonicalFormat", "canonicalDigest", "canonicalBytes", "canonicalLines", "freshGenerations"],
+      "properties": {
+        "algorithm": {"const": "splitmix64-v1"},
+        "baseSeed": {"const": "5707"},
+        "histories": {"const": 160},
+        "commandsPerHistory": {"const": 64},
+        "commands": {"const": 10240},
+        "lanes": {"const": 5},
+        "historiesPerLane": {"const": 32},
+        "canonicalFormat": {"const": "M07H1"},
+        "canonicalDigest": {"$ref": "#/$defs/sha256"},
+        "canonicalBytes": {"type": "integer", "minimum": 1},
+        "canonicalLines": {"const": 10241},
+        "freshGenerations": {"const": 2}
+      }
+    },
+    "properties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["histories", "commands", "differentialComparisons", "eventLedgerChecks", "referenceLedgerChecks"],
+      "properties": {
+        "histories": {"const": 160},
+        "commands": {"const": 10240},
+        "differentialComparisons": {"const": 10240},
+        "eventLedgerChecks": {"const": 10240},
+        "referenceLedgerChecks": {"const": 10240}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiredObligations", "satisfiedObligations", "obligations"],
+      "properties": {
+        "requiredObligations": {"const": 24},
+        "satisfiedObligations": {"const": 24},
+        "obligations": {
+          "type": "array",
+          "minItems": 24,
+          "maxItems": 24,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "satisfied", "source", "history", "commandIndex", "count"],
+            "properties": {
+              "id": {"enum": ["INVALID_STP_GROUP_ID", "INVALID_STP_POLICY", "INVALID_STP_INSTRUCTION", "VALIDATION_FAILURE_ATOMIC", "LEGACY_ZERO_NONE_COMPATIBILITY", "GROUP_ZERO_NEVER_SELF", "DIFFERENT_GROUP_TRADE", "SAME_GROUP_NO_TRADE", "CANCEL_TAKER_CANCELS_FULL_REMAINDER", "CANCEL_TAKER_PRESERVES_MAKER", "CANCEL_MAKER_CANCELS_MAKER", "CANCEL_MAKER_CONTINUES_SAME_LEVEL", "CANCEL_MAKER_CONTINUES_CROSS_LEVEL", "CANCEL_BOTH_CANCELS_BOTH", "PRICE_TIME_EVENT_INTERLEAVING", "PARTIAL_TRADE_BEFORE_STP", "GTC_REMAINDER_RESTS", "IOC_STP_AND_REMAINDER_REASONS", "FOK_TAKER_OR_BOTH_PRECHECK", "FOK_CANCEL_MAKER_PRECHECK", "FOK_FAILURE_ATOMIC", "POST_ONLY_RAW_BOOK_FIRST", "RULE_SET_ATTRIBUTION", "MARKET_MODE_BEFORE_STP"]},
+              "satisfied": {"const": true},
+              "source": {"enum": ["FIXED", "GENERATED"]},
+              "history": {"type": "string", "minLength": 1},
+              "commandIndex": {"type": "integer", "minimum": 0, "maximum": 63},
+              "count": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    "invariants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "checks", "properties"],
+      "properties": {
+        "passed": {"const": true},
+        "checks": {"const": 10240},
+        "properties": {"const": ["APPLICATION_SEQUENCE_CONTIGUITY", "ACCEPTANCE_SEQUENCE_CONTIGUITY", "RAW_STP_VALIDATION_PRIORITY", "LEGACY_GROUP_ZERO_NONE", "GROUP_ZERO_NEVER_SELF", "SAME_GROUP_NEVER_TRADES", "TAKER_OWNED_DISPOSITION", "CANCEL_TAKER_FULL_REMAINDER", "CANCEL_MAKER_CONTINUES_SCAN", "CANCEL_BOTH_FULL_REMAINDERS", "FOK_STP_AWARE_PRECHECK", "POST_ONLY_RAW_BOOK_PRECEDENCE", "RULE_AND_MODE_ATTRIBUTION", "PRICE_TIME_PRIORITY", "QUANTITY_PARTITION"]}
+      }
+    },
+    "boundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["participantGroupOwnership", "legacyMapping", "groupZeroParticipatesInSelfEquality", "takerOwnsDisposition", "cancelTakerCancelsFullRemainder", "cancelMakerContinuesAcrossLevels", "cancelBothCancelsBothFullRemainders", "sameGroupTradeForbidden", "fokPreflight", "fokFailureAtomic", "postOnlyPriority", "marketModePriority", "ruleSetAttributionPreserved", "legacyEntrypointsExecuted", "finiteCorpus", "formalProof", "productionReadinessClaim"],
+      "properties": {
+        "participantGroupOwnership": {"const": "OPAQUE_CALLER_SUPPLIED"},
+        "legacyMapping": {"const": "GROUP_0_NONE"},
+        "groupZeroParticipatesInSelfEquality": {"const": false},
+        "takerOwnsDisposition": {"const": true},
+        "cancelTakerCancelsFullRemainder": {"const": true},
+        "cancelMakerContinuesAcrossLevels": {"const": true},
+        "cancelBothCancelsBothFullRemainders": {"const": true},
+        "sameGroupTradeForbidden": {"const": true},
+        "fokPreflight": {"const": "READ_ONLY_STP_AWARE"},
+        "fokFailureAtomic": {"const": true},
+        "postOnlyPriority": {"const": "RAW_BOOK_BEFORE_STP"},
+        "marketModePriority": {"const": "BEFORE_STP_SCAN"},
+        "ruleSetAttributionPreserved": {"const": true},
+        "legacyEntrypointsExecuted": {"const": 3},
+        "finiteCorpus": {"const": true},
+        "formalProof": {"const": false},
+        "productionReadinessClaim": {"const": false}
+      }
+    },
+    "counterexamples": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "found", "replayed", "oneMinimal", "totalCommands", "canonicalFormat", "canonicalDigest", "canonicalBytes", "canonicalLines"],
+      "properties": {
+        "required": {"const": 8},
+        "found": {"const": 8},
+        "replayed": {"const": 8},
+        "oneMinimal": {"const": 8},
+        "totalCommands": {"type": "integer", "minimum": 8},
+        "canonicalFormat": {"const": "M07X1"},
+        "canonicalDigest": {"$ref": "#/$defs/sha256"},
+        "canonicalBytes": {"type": "integer", "minimum": 1},
+        "canonicalLines": {"type": "integer", "minimum": 9}
+      }
+    },
+    "mutants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "killed", "classification", "systemErrorControl", "systemErrorCountsAsKill"],
+      "properties": {
+        "required": {"const": 8},
+        "killed": {"const": 8},
+        "classification": {"const": "STUDENT_FAILURE"},
+        "systemErrorControl": {"const": "SYSTEM_ERROR"},
+        "systemErrorCountsAsKill": {"const": false}
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "coreSources", "referenceSources", "forbiddenFindings", "violations"],
+      "properties": {
+        "passed": {"const": true},
+        "coreSources": {"type": "integer", "minimum": 1},
+        "referenceSources": {"type": "integer", "minimum": 1},
+        "forbiddenFindings": {"const": 0},
+        "violations": {"const": []}
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finiteCorpus", "formalProof", "productionReadinessClaim", "replicationOrFailoverCovered"],
+      "properties": {
+        "finiteCorpus": {"const": true},
+        "formalProof": {"const": false},
+        "productionReadinessClaim": {"const": false},
+        "replicationOrFailoverCovered": {"const": false}
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "verification"],
+      "properties": {
+        "unitTag": {"const": "course/m07-complete"},
+        "productRelease": {"type": "null"},
+        "verification": {"const": "M07_EVIDENCE_ONLY"}
+      }
+    }
+  }
+}

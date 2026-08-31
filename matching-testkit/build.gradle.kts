@@ -31,6 +31,7 @@ tasks.withType<Test>().configureEach {
         "**/M04ArchitectureGateTest.class",
         "**/M04StartCheckRunnerTest.class",
         "**/M06StartCheckRunnerTest.class",
+        "**/M07StartCheckRunnerTest.class",
     )
 }
 
@@ -57,6 +58,8 @@ val m06ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m06")
 val m06EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M06")
 val m06UnitTag = providers.gradleProperty("m06.unitTag").orElse("course/m06-complete")
 val m07ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m07")
+val m07EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M07")
+val m07UnitTag = providers.gradleProperty("m07.unitTag").orElse("course/m07-complete")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -254,7 +257,7 @@ tasks.register<JavaExec>("m06Evidence") {
 
 tasks.register<JavaExec>("m07Check") {
     group = "verification"
-    description = "Validates the frozen M07 self-trade-prevention RED boundary."
+    description = "Runs the completed M07 self-trade-prevention semantic judge."
     dependsOn("test", ":matching-core:test", ":matching-reference:check", "classes")
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("io.github.lchareln.cex.matching.testkit.M07CheckMain")
@@ -262,5 +265,20 @@ tasks.register<JavaExec>("m07Check") {
         rootProject.layout.projectDirectory.asFile.absolutePath,
         m07ReportDirectory.get().asFile.absolutePath,
     )
-    doNotTrackState("M07 must never reuse a stale RED report")
+    doNotTrackState("M07 must never reuse a stale completion report")
+}
+
+tasks.register<JavaExec>("m07Evidence") {
+    group = "verification"
+    description = "Generates and validates clean-tree annotated-tag M07 evidence."
+    dependsOn("m07Check")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M07EvidenceMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m07ReportDirectory.get().asFile.absolutePath,
+        m07EvidenceDirectory.get().asFile.absolutePath,
+        m07UnitTag.get(),
+    )
+    doNotTrackState("Evidence must re-check the M07 tag and working-tree cleanliness on every invocation")
 }

@@ -83,7 +83,7 @@ tasks.named("assemble") {
 }
 
 tasks.named("check") {
-    dependsOn("spotlessCheck", ":matching-core:check", ":matching-reference:check", ":matching-testkit:check", "m06Check")
+    dependsOn("spotlessCheck", ":matching-core:check", ":matching-reference:check", ":matching-testkit:check", "m07Check")
 }
 
 tasks.register("m00Check") {
@@ -172,6 +172,12 @@ tasks.register("m06Evidence") {
 
 tasks.register("m07Check") {
     group = "verification"
-    description = "Validates the frozen M07 self-trade-prevention RED boundary."
+    description = "Runs the completed M07 self-trade-prevention semantic judge."
     dependsOn(":matching-testkit:m07Check")
+}
+
+tasks.register("m07Evidence") {
+    group = "verification"
+    description = "Generates and validates clean-tree annotated-tag M07 evidence."
+    dependsOn(":matching-testkit:m07Evidence")
 }

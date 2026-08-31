@@ -13,9 +13,9 @@ M05 completes one more closed axis: a content-addressed, versioned absolute orde
 delivered through Prepare/Activate and an in-memory application-sequence fence. M06 completes the
 next closed axis: `OPEN/CANCEL_ONLY/HALTED`, a safe serialized transition graph, and deterministic
 HALTED-only Mass Cancel in global acceptance order.
-M07 now freezes the next deliberately narrow RED boundary: an upstream-resolved opaque participant
-group and taker-owned self-trade-prevention instruction. Persistence, networking, performance work,
-and Aeron Cluster remain later units.
+M07 completes the next deliberately narrow axis: an upstream-resolved opaque participant group and
+taker-owned self-trade-prevention instruction. Persistence, networking, performance work, and
+Aeron Cluster remain later units.
 
 ## Current course boundary
 
@@ -25,7 +25,7 @@ and Aeron Cluster remain later units.
 - Declared start ref: `course/m07-start`
 - Declared complete ref: `course/m07-complete`
 - Latest product stopping point: `matching-0.1.0` at M03; M04–M07 have no product release
-- Lifecycle at this boundary: `READY / GOAL_NOT_IMPLEMENTED`
+- Lifecycle at this boundary: `COMPLETE / PASS`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -33,25 +33,47 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The inherited completed boundary and the intentional M07 RED boundary are verified separately:
+The completed boundary is verified with:
 
 ```bash
 ./gradlew clean build --no-daemon
-./gradlew m07Check --no-daemon # expected to exit non-zero at course/m07-start
+./gradlew m07Check --no-daemon
 ```
 
-The root build remains gated by the completed `m06Check`. `m07Check` validates only the frozen
-16-scenario / 72-command input contract, seed `5707`, 160-by-64 generator declaration, five lanes,
-24 obligations, eight mutant identities, and five tutorial coordinates. It then writes the strict
-`matching.m07.check.v1` report with `GOAL_NOT_IMPLEMENTED` and exits non-zero. It publishes no M07
-output digest, mutant kill, counterexample, implementation, or evidence facts. The exact contract
-is in [`docs/specs/m07.md`](docs/specs/m07.md).
+The root build is gated by `m07Check`. The completion judge executes the exact 16-scenario /
+72-command fixed corpus and regenerates seed `5707` into 160 SplitMix64 histories of 64 commands
+across five lanes. Production, the independent linear reference, and an event-derived ledger agree
+at all 10,240 generated command boundaries; all 24 obligations have concrete witnesses. Eight
+required semantic mutants are killed as `STUDENT_FAILURE`, their persisted one-minimal
+counterexamples strictly replay, and the throwing `SYSTEM_ERROR` control is excluded from kills.
+The strict `matching.m07.check.v2` report is written beneath `build/reports/m07/`. This is bounded
+deterministic evidence, not exhaustive exploration, formal verification, replication evidence, or
+a production-readiness claim. The exact contract is in [`docs/specs/m07.md`](docs/specs/m07.md).
 
 M07 treats a positive participant group as an opaque equality key supplied by an upstream policy
 boundary. Group `0/NONE` preserves every legacy entrypoint. For a real same-positive-group encounter,
 only the incoming taker's `CANCEL_TAKER`, `CANCEL_MAKER`, or `CANCEL_BOTH` instruction is operative;
 FOK preflight is STP-aware, while Post-only observes the raw book before any STP action. None of
-those semantics is claimed implemented at the start ref.
+the upstream account-resolution or authorization logic belongs to matching-core.
+
+The M07F1 fixed history is 10,128 bytes / 73 lines with digest
+`sha256:4c0675ee77458fb10b28e3c13d48767a653a41e922f42264f8d0f76aa5644176`. The M07H1
+generated history is 1,709,692 bytes / 10,241 lines with digest
+`sha256:c2576f10a77c320ec4a9ad75e3dc3c03494f636feabdcc7157ee10e74812718f`. The eight
+M07X1 counterexamples contain 18 minimized commands and occupy 2,778 bytes / 19 lines with digest
+`sha256:97504762c7f6349ac6bb02c26457d608dae6e0ad0231a19b10cf5c998a9c69ee`. Every proper
+prefix remains PASS, so no mutant is killed by exposing rewritten metadata on its first maker order.
+
+After committing the completed source and creating annotated `course/m07-complete` at that exact
+clean HEAD, evidence is generated with:
+
+```bash
+./gradlew m07Evidence -Pm07.unitTag=course/m07-complete --no-daemon
+```
+
+The writer reruns `m07Check`, verifies the annotated tag, clean tree, report schemas, unique artifact
+bindings and hashes, rejects a `matching-*` product tag at the same HEAD, and publishes
+`build/lab-evidence/M07/manifest.json` with `productRelease: null`.
 
 ## Inherited M06 completion
 
