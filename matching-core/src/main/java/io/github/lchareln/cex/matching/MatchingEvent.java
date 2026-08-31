@@ -9,6 +9,7 @@ public sealed interface MatchingEvent
         MatchingEvent.CancelRejected,
         MatchingEvent.Accepted,
         MatchingEvent.Trade,
+        MatchingEvent.SelfTradePrevented,
         MatchingEvent.Rested,
         MatchingEvent.RemainderCanceled,
         MatchingEvent.Canceled {
@@ -52,7 +53,9 @@ public sealed interface MatchingEvent
       PriceTicks priceTicks,
       QuantityLots quantityLots,
       ExecutionPolicy executionPolicy,
-      RuleSetIdentity admissionRuleSet)
+      RuleSetIdentity admissionRuleSet,
+      long participantGroupId,
+      SelfTradePreventionPolicy selfTradePreventionPolicy)
       implements MatchingEvent {
     public Accepted {
       Objects.requireNonNull(sequence, "sequence");
@@ -62,6 +65,27 @@ public sealed interface MatchingEvent
       Objects.requireNonNull(quantityLots, "quantityLots");
       Objects.requireNonNull(executionPolicy, "executionPolicy");
       Objects.requireNonNull(admissionRuleSet, "admissionRuleSet");
+      new SelfTradePreventionInstruction(participantGroupId, selfTradePreventionPolicy);
+    }
+
+    public Accepted(
+        AcceptanceSequence sequence,
+        OrderId orderId,
+        Side side,
+        PriceTicks priceTicks,
+        QuantityLots quantityLots,
+        ExecutionPolicy executionPolicy,
+        RuleSetIdentity admissionRuleSet) {
+      this(
+          sequence,
+          orderId,
+          side,
+          priceTicks,
+          quantityLots,
+          executionPolicy,
+          admissionRuleSet,
+          0,
+          SelfTradePreventionPolicy.NONE);
     }
 
     public Accepted(
@@ -95,6 +119,63 @@ public sealed interface MatchingEvent
           quantityLots,
           ExecutionPolicy.GTC,
           MarketRuleSetArtifact.bootstrapIdentity());
+    }
+  }
+
+  /** One same-group maker/taker encounter resolved without producing a trade. */
+  record SelfTradePrevented(
+      AcceptanceSequence makerSequence,
+      OrderId makerOrderId,
+      AcceptanceSequence takerSequence,
+      OrderId takerOrderId,
+      PriceTicks makerPriceTicks,
+      QuantityLots wouldTradeQuantityLots,
+      long participantGroupId,
+      SelfTradePreventionPolicy policy,
+      long makerCanceledQuantityLots,
+      long takerCanceledQuantityLots,
+      RuleSetIdentity makerAdmissionRuleSet,
+      RuleSetIdentity takerAdmissionRuleSet,
+      RuleSetIdentity executionRuleSet)
+      implements MatchingEvent {
+    public SelfTradePrevented {
+      Objects.requireNonNull(makerSequence, "makerSequence");
+      Objects.requireNonNull(makerOrderId, "makerOrderId");
+      Objects.requireNonNull(takerSequence, "takerSequence");
+      Objects.requireNonNull(takerOrderId, "takerOrderId");
+      Objects.requireNonNull(makerPriceTicks, "makerPriceTicks");
+      Objects.requireNonNull(wouldTradeQuantityLots, "wouldTradeQuantityLots");
+      Objects.requireNonNull(policy, "policy");
+      Objects.requireNonNull(makerAdmissionRuleSet, "makerAdmissionRuleSet");
+      Objects.requireNonNull(takerAdmissionRuleSet, "takerAdmissionRuleSet");
+      Objects.requireNonNull(executionRuleSet, "executionRuleSet");
+      if (makerSequence.value() >= takerSequence.value()) {
+        throw new IllegalArgumentException("STP maker must precede its taker");
+      }
+      if (makerOrderId.equals(takerOrderId)) {
+        throw new IllegalArgumentException("STP maker and taker identities must differ");
+      }
+      if (participantGroupId <= 0 || policy == SelfTradePreventionPolicy.NONE) {
+        throw new IllegalArgumentException("STP event requires a positive active instruction");
+      }
+      if (makerCanceledQuantityLots < 0 || takerCanceledQuantityLots < 0) {
+        throw new IllegalArgumentException("STP canceled quantities must be non-negative");
+      }
+      long wouldTrade = wouldTradeQuantityLots.value();
+      if ((makerCanceledQuantityLots > 0 && wouldTrade > makerCanceledQuantityLots)
+          || (takerCanceledQuantityLots > 0 && wouldTrade > takerCanceledQuantityLots)) {
+        throw new IllegalArgumentException("STP would-trade quantity exceeds a canceled side");
+      }
+      boolean dispositionMatches =
+          switch (policy) {
+            case CANCEL_TAKER -> makerCanceledQuantityLots == 0 && takerCanceledQuantityLots > 0;
+            case CANCEL_MAKER -> makerCanceledQuantityLots > 0 && takerCanceledQuantityLots == 0;
+            case CANCEL_BOTH -> makerCanceledQuantityLots > 0 && takerCanceledQuantityLots > 0;
+            case NONE -> false;
+          };
+      if (!dispositionMatches) {
+        throw new IllegalArgumentException("STP canceled quantities disagree with disposition");
+      }
     }
   }
 
@@ -149,7 +230,9 @@ public sealed interface MatchingEvent
       Side side,
       PriceTicks priceTicks,
       QuantityLots remainingQuantityLots,
-      RuleSetIdentity admissionRuleSet)
+      RuleSetIdentity admissionRuleSet,
+      long participantGroupId,
+      SelfTradePreventionPolicy selfTradePreventionPolicy)
       implements MatchingEvent {
     public Rested {
       Objects.requireNonNull(sequence, "sequence");
@@ -158,6 +241,25 @@ public sealed interface MatchingEvent
       Objects.requireNonNull(priceTicks, "priceTicks");
       Objects.requireNonNull(remainingQuantityLots, "remainingQuantityLots");
       Objects.requireNonNull(admissionRuleSet, "admissionRuleSet");
+      new SelfTradePreventionInstruction(participantGroupId, selfTradePreventionPolicy);
+    }
+
+    public Rested(
+        AcceptanceSequence sequence,
+        OrderId orderId,
+        Side side,
+        PriceTicks priceTicks,
+        QuantityLots remainingQuantityLots,
+        RuleSetIdentity admissionRuleSet) {
+      this(
+          sequence,
+          orderId,
+          side,
+          priceTicks,
+          remainingQuantityLots,
+          admissionRuleSet,
+          0,
+          SelfTradePreventionPolicy.NONE);
     }
 
     public Rested(

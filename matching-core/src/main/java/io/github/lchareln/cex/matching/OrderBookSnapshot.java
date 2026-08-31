@@ -60,12 +60,29 @@ public record OrderBookSnapshot(List<PriceLevel> bids, List<PriceLevel> asks) {
       AcceptanceSequence sequence,
       OrderId orderId,
       QuantityLots remainingQuantityLots,
-      RuleSetIdentity admissionRuleSet) {
+      RuleSetIdentity admissionRuleSet,
+      long participantGroupId,
+      SelfTradePreventionPolicy selfTradePreventionPolicy) {
     public RestingOrderView {
       Objects.requireNonNull(sequence, "sequence");
       Objects.requireNonNull(orderId, "orderId");
       Objects.requireNonNull(remainingQuantityLots, "remainingQuantityLots");
       Objects.requireNonNull(admissionRuleSet, "admissionRuleSet");
+      new SelfTradePreventionInstruction(participantGroupId, selfTradePreventionPolicy);
+    }
+
+    public RestingOrderView(
+        AcceptanceSequence sequence,
+        OrderId orderId,
+        QuantityLots remainingQuantityLots,
+        RuleSetIdentity admissionRuleSet) {
+      this(
+          sequence,
+          orderId,
+          remainingQuantityLots,
+          admissionRuleSet,
+          0,
+          SelfTradePreventionPolicy.NONE);
     }
 
     public RestingOrderView(

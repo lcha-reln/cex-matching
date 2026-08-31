@@ -1,13 +1,16 @@
 package io.github.lchareln.cex.matching;
 
-/** Frozen M00 business validation codes in validation-priority order. */
+/** Stable business validation codes, appended by course unit in decision-priority order. */
 public enum ValidationCode {
   UNKNOWN_INSTRUMENT("instrumentId"),
   INVALID_ORDER_ID("orderId"),
   INVALID_SIDE("side"),
   INVALID_PRICE("priceTicks"),
   INVALID_QUANTITY("quantityLots"),
-  INVALID_EXECUTION_POLICY("executionPolicy");
+  INVALID_EXECUTION_POLICY("executionPolicy"),
+  INVALID_STP_GROUP_ID("participantGroupId"),
+  INVALID_STP_POLICY("stpPolicy"),
+  INVALID_STP_INSTRUCTION("stpInstruction");
 
   private final String field;
 

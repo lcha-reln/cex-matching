@@ -14,10 +14,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
-/** Single-writer, in-memory price-time matcher with M06 deterministic market controls. */
+/** Single-writer, in-memory price-time matcher with M07 taker-side self-trade prevention. */
 public final class SingleInstrumentMatchingEngine {
   private final PlaceLimitOrderValidator placeValidator = new PlaceLimitOrderValidator();
   private final ExecutionPolicyValidator executionPolicyValidator = new ExecutionPolicyValidator();
+  private final SelfTradePreventionValidator selfTradePreventionValidator =
+      new SelfTradePreventionValidator();
   private final CancelOrderValidator cancelValidator = new CancelOrderValidator();
   private final NavigableMap<Long, PriceLevelState> bids =
       new TreeMap<>(Collections.reverseOrder());
@@ -57,38 +59,91 @@ public final class SingleInstrumentMatchingEngine {
   /** Applies one legacy GTC limit command. The caller must serialize calls to this method. */
   public ExecutionBatch place(PlaceLimitOrderInput input) {
     Objects.requireNonNull(input, "input");
-    return applyPlace(new PlaceLimitOrderRequest(input), null);
+    return applyPlace(
+        new PlaceLimitOrderRequest(input),
+        null,
+        SelfTradePreventionInstruction.legacy().participantGroupId(),
+        SelfTradePreventionInstruction.legacy().policy().name());
   }
 
   /** Applies one M04 limit request under its explicit execution policy. */
   public ExecutionBatch placeRequest(PlaceLimitOrderRequest request) {
     Objects.requireNonNull(request, "request");
-    return applyPlace(request, null);
+    return applyPlace(
+        request,
+        null,
+        SelfTradePreventionInstruction.legacy().participantGroupId(),
+        SelfTradePreventionInstruction.legacy().policy().name());
   }
 
   /** Applies one M05 place request guarded by the caller's expected active rule-set identity. */
   public ExecutionBatch placeGoverned(GovernedPlaceLimitOrderRequest request) {
     Objects.requireNonNull(request, "request");
-    return applyPlace(request.orderRequest(), request.expectedActive());
+    return applyPlace(
+        request.orderRequest(),
+        request.expectedActive(),
+        SelfTradePreventionInstruction.legacy().participantGroupId(),
+        SelfTradePreventionInstruction.legacy().policy().name());
+  }
+
+  /** Applies one raw M07 STP request; the incoming taker instruction owns the disposition. */
+  public ExecutionBatch placeStp(StpPlaceLimitOrderRequest request) {
+    Objects.requireNonNull(request, "request");
+    return applyPlace(
+        request.orderRequest(), null, request.participantGroupId(), request.stpPolicy());
+  }
+
+  /** Applies one M07 STP request guarded by the exact active rule-set identity. */
+  public ExecutionBatch placeGovernedStp(GovernedStpPlaceLimitOrderRequest request) {
+    Objects.requireNonNull(request, "request");
+    return applyPlace(
+        request.request().orderRequest(),
+        request.expectedActive(),
+        request.request().participantGroupId(),
+        request.request().stpPolicy());
   }
 
   private ExecutionBatch applyPlace(
-      PlaceLimitOrderRequest request, RuleSetIdentity expectedActive) {
-    assertConsistentState();
-    AppliedCommand applied = nextAppliedCommand();
+      PlaceLimitOrderRequest request,
+      RuleSetIdentity expectedActive,
+      long participantGroupId,
+      String rawStpPolicy) {
     PlaceLimitOrderInput input = request.orderInput();
     ValidationResult validation = placeValidator.validate(input);
+    ValidationResult policyValidation =
+        executionPolicyValidator.validate(request.executionPolicy());
+    ValidationResult stpGroupValidation =
+        selfTradePreventionValidator.validateGroup(participantGroupId);
+    ValidationResult stpPolicyValidation =
+        selfTradePreventionValidator.validatePolicy(rawStpPolicy);
+    ValidationResult stpInstructionValidation =
+        stpGroupValidation instanceof ValidationResult.Valid
+                && stpPolicyValidation instanceof ValidationResult.Valid
+            ? selfTradePreventionValidator.validateInstruction(participantGroupId, rawStpPolicy)
+            : null;
+
+    assertConsistentState();
+    AppliedCommand applied = nextAppliedCommand();
     if (validation instanceof ValidationResult.Invalid invalid) {
       return businessResult(List.of(new MatchingEvent.Rejected(invalid.code())), applied);
     }
-    ValidationResult policyValidation =
-        executionPolicyValidator.validate(request.executionPolicy());
     if (policyValidation instanceof ValidationResult.Invalid invalid) {
+      return businessResult(List.of(new MatchingEvent.Rejected(invalid.code())), applied);
+    }
+    if (stpGroupValidation instanceof ValidationResult.Invalid invalid) {
+      return businessResult(List.of(new MatchingEvent.Rejected(invalid.code())), applied);
+    }
+    if (stpPolicyValidation instanceof ValidationResult.Invalid invalid) {
+      return businessResult(List.of(new MatchingEvent.Rejected(invalid.code())), applied);
+    }
+    if (stpInstructionValidation instanceof ValidationResult.Invalid invalid) {
       return businessResult(List.of(new MatchingEvent.Rejected(invalid.code())), applied);
     }
 
     PlaceLimitOrder command = placeValidator.normalize(input);
     ExecutionPolicy policy = executionPolicyValidator.normalize(request.executionPolicy());
+    SelfTradePreventionInstruction stpInstruction =
+        selfTradePreventionValidator.normalize(participantGroupId, rawStpPolicy);
     if (ordersById.containsKey(command.orderId())) {
       return businessResult(
           List.of(
@@ -117,7 +172,7 @@ public final class SingleInstrumentMatchingEngine {
                   command.orderId(), PlaceRejectionCode.MARKET_NOT_OPEN)),
           applied);
     }
-    if (policy == ExecutionPolicy.FOK && !canFillCompletely(command)) {
+    if (policy == ExecutionPolicy.FOK && !canFillCompletely(command, stpInstruction)) {
       return businessResult(
           List.of(
               new MatchingEvent.PlaceRejected(
@@ -143,7 +198,7 @@ public final class SingleInstrumentMatchingEngine {
 
     AcceptanceSequence sequence = new AcceptanceSequence(sequenceValue);
     RuleSetIdentity admissionRuleSet = activeRuleSet.identity();
-    OrderState taker = new OrderState(sequence, command, policy, admissionRuleSet);
+    OrderState taker = new OrderState(sequence, command, policy, admissionRuleSet, stpInstruction);
     MatchingEvent.Accepted accepted =
         new MatchingEvent.Accepted(
             sequence,
@@ -152,7 +207,9 @@ public final class SingleInstrumentMatchingEngine {
             command.priceTicks(),
             command.quantityLots(),
             policy,
-            admissionRuleSet);
+            admissionRuleSet,
+            stpInstruction.participantGroupId(),
+            stpInstruction.policy());
     if (ordersById.putIfAbsent(command.orderId(), taker) != null) {
       throw new IllegalStateException(
           "duplicate order identity appeared during single-writer apply");
@@ -166,7 +223,9 @@ public final class SingleInstrumentMatchingEngine {
       match(taker, bids, events, false);
     }
 
-    if (taker.remainingQuantityLots == 0) {
+    if (taker.lifecycle == Lifecycle.CANCELED) {
+      // SelfTradePrevented is the terminal event for CANCEL_TAKER and CANCEL_BOTH.
+    } else if (taker.remainingQuantityLots == 0) {
       taker.markFilled();
     } else if (policy == ExecutionPolicy.IOC) {
       long canceledQuantityLots = taker.cancelAcceptedRemainder(applied.current());
@@ -190,7 +249,9 @@ public final class SingleInstrumentMatchingEngine {
               taker.side,
               taker.priceTicks,
               new QuantityLots(taker.remainingQuantityLots),
-              taker.admissionRuleSet));
+              taker.admissionRuleSet,
+              taker.stpInstruction.participantGroupId(),
+              taker.stpInstruction.policy()));
     }
 
     nextAcceptanceSequence = followingSequence;
@@ -719,6 +780,49 @@ public final class SingleInstrumentMatchingEngine {
         throw new IllegalStateException("maker index and price level disagree before fill");
       }
       long traded = Math.min(taker.remainingQuantityLots, maker.remainingQuantityLots);
+      if (taker.stpInstruction.conflictsWith(maker.stpInstruction)) {
+        long makerCanceledQuantityLots = 0;
+        long takerCanceledQuantityLots = 0;
+        SelfTradePreventionPolicy policy = taker.stpInstruction.policy();
+        if (policy == SelfTradePreventionPolicy.CANCEL_MAKER
+            || policy == SelfTradePreventionPolicy.CANCEL_BOTH) {
+          makerCanceledQuantityLots = maker.remainingQuantityLots;
+          if (!level.remove(maker)) {
+            throw new IllegalStateException("STP maker disappeared during single-writer apply");
+          }
+          if (level.isEmpty() && !oppositeSide.remove(makerPrice, level)) {
+            throw new IllegalStateException(
+                "empty STP maker level disappeared during single-writer apply");
+          }
+          maker.markCanceled(
+              CancellationOrigin.SELF_TRADE_PREVENTION, currentApplicationSequence());
+        }
+        if (policy == SelfTradePreventionPolicy.CANCEL_TAKER
+            || policy == SelfTradePreventionPolicy.CANCEL_BOTH) {
+          takerCanceledQuantityLots =
+              taker.cancelAcceptedRemainder(
+                  CancellationOrigin.SELF_TRADE_PREVENTION, currentApplicationSequence());
+        }
+        events.add(
+            new MatchingEvent.SelfTradePrevented(
+                maker.sequence,
+                maker.orderId,
+                taker.sequence,
+                taker.orderId,
+                maker.priceTicks,
+                new QuantityLots(traded),
+                taker.stpInstruction.participantGroupId(),
+                policy,
+                makerCanceledQuantityLots,
+                takerCanceledQuantityLots,
+                maker.admissionRuleSet,
+                taker.admissionRuleSet,
+                activeRuleSet.identity()));
+        if (policy != SelfTradePreventionPolicy.CANCEL_MAKER) {
+          return;
+        }
+        continue;
+      }
       maker.fill(traded);
       taker.fill(traded);
       events.add(
@@ -755,7 +859,8 @@ public final class SingleInstrumentMatchingEngine {
     return crosses(command.side(), command.priceTicks().value(), bestOppositePrice);
   }
 
-  private boolean canFillCompletely(PlaceLimitOrder command) {
+  private boolean canFillCompletely(
+      PlaceLimitOrder command, SelfTradePreventionInstruction takerInstruction) {
     NavigableMap<Long, PriceLevelState> opposite = command.side() == Side.BUY ? asks : bids;
     long required = command.quantityLots().value();
     for (Map.Entry<Long, PriceLevelState> levelEntry : opposite.entrySet()) {
@@ -763,6 +868,12 @@ public final class SingleInstrumentMatchingEngine {
         break;
       }
       for (OrderState maker : levelEntry.getValue().values()) {
+        if (takerInstruction.conflictsWith(maker.stpInstruction)) {
+          if (takerInstruction.policy() == SelfTradePreventionPolicy.CANCEL_MAKER) {
+            continue;
+          }
+          return false;
+        }
         if (maker.remainingQuantityLots >= required) {
           return true;
         }
@@ -770,6 +881,10 @@ public final class SingleInstrumentMatchingEngine {
       }
     }
     return false;
+  }
+
+  private ApplicationSequence currentApplicationSequence() {
+    return new ApplicationSequence(nextApplicationSequence);
   }
 
   private static boolean crosses(Side takerSide, long takerLimitPrice, long makerPrice) {
@@ -835,7 +950,9 @@ public final class SingleInstrumentMatchingEngine {
                     order.sequence,
                     order.orderId,
                     new QuantityLots(order.remainingQuantityLots),
-                    order.admissionRuleSet));
+                    order.admissionRuleSet,
+                    order.stpInstruction.participantGroupId(),
+                    order.stpInstruction.policy()));
           }
           levels.add(
               new OrderBookSnapshot.PriceLevel(
@@ -854,7 +971,8 @@ public final class SingleInstrumentMatchingEngine {
   private enum CancellationOrigin {
     USER_REQUEST,
     OPERATOR_MASS_CANCEL,
-    IOC_REMAINDER
+    IOC_REMAINDER,
+    SELF_TRADE_PREVENTION
   }
 
   private record AppliedCommand(ApplicationSequence current, long following) {
@@ -914,6 +1032,7 @@ public final class SingleInstrumentMatchingEngine {
     private final PriceTicks priceTicks;
     private final ExecutionPolicy executionPolicy;
     private final RuleSetIdentity admissionRuleSet;
+    private final SelfTradePreventionInstruction stpInstruction;
     private final long originalQuantityLots;
 
     private long remainingQuantityLots;
@@ -927,13 +1046,15 @@ public final class SingleInstrumentMatchingEngine {
         AcceptanceSequence sequence,
         PlaceLimitOrder command,
         ExecutionPolicy executionPolicy,
-        RuleSetIdentity admissionRuleSet) {
+        RuleSetIdentity admissionRuleSet,
+        SelfTradePreventionInstruction stpInstruction) {
       this.sequence = sequence;
       this.orderId = command.orderId();
       this.side = command.side();
       this.priceTicks = command.priceTicks();
       this.executionPolicy = executionPolicy;
       this.admissionRuleSet = Objects.requireNonNull(admissionRuleSet, "admissionRuleSet");
+      this.stpInstruction = Objects.requireNonNull(stpInstruction, "stpInstruction");
       this.originalQuantityLots = command.quantityLots().value();
       this.remainingQuantityLots = originalQuantityLots;
     }
@@ -977,13 +1098,23 @@ public final class SingleInstrumentMatchingEngine {
     }
 
     private long cancelAcceptedRemainder(ApplicationSequence applicationSequence) {
-      if (lifecycle != Lifecycle.ACCEPTED
-          || executionPolicy != ExecutionPolicy.IOC
-          || remainingQuantityLots <= 0) {
-        throw new IllegalStateException("invalid IOC remainder cancellation");
+      return cancelAcceptedRemainder(CancellationOrigin.IOC_REMAINDER, applicationSequence);
+    }
+
+    private long cancelAcceptedRemainder(
+        CancellationOrigin origin, ApplicationSequence applicationSequence) {
+      if (lifecycle != Lifecycle.ACCEPTED || remainingQuantityLots <= 0) {
+        throw new IllegalStateException("invalid accepted remainder cancellation");
+      }
+      if (origin == CancellationOrigin.IOC_REMAINDER && executionPolicy != ExecutionPolicy.IOC) {
+        throw new IllegalStateException("only an IOC order has an IOC remainder");
+      }
+      if (origin != CancellationOrigin.IOC_REMAINDER
+          && origin != CancellationOrigin.SELF_TRADE_PREVENTION) {
+        throw new IllegalStateException("unsupported accepted cancellation origin");
       }
       long canceled = remainingQuantityLots;
-      cancellationOrigin = CancellationOrigin.IOC_REMAINDER;
+      cancellationOrigin = Objects.requireNonNull(origin, "origin");
       cancellationApplicationSequence =
           Objects.requireNonNull(applicationSequence, "applicationSequence");
       canceledQuantityLots = canceled;
@@ -1032,6 +1163,9 @@ public final class SingleInstrumentMatchingEngine {
       if (executionPolicy == ExecutionPolicy.FOK
           && (lifecycle == Lifecycle.RESTING || lifecycle == Lifecycle.CANCELED)) {
         throw new IllegalStateException("FOK order must be fully filled when accepted");
+      }
+      if (stpInstruction == null) {
+        throw new IllegalStateException("accepted order lost its STP instruction");
       }
     }
   }

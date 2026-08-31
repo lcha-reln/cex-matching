@@ -57,7 +57,9 @@ public record ExecutionBatch(
     BigInteger remaining = BigInteger.valueOf(accepted.quantityLots().value());
     boolean restedSeen = false;
     boolean remainderCanceledSeen = false;
+    boolean stpTakerCanceledSeen = false;
     int trades = 0;
+    int stpEvents = 0;
     for (int index = 1; index < events.size(); index++) {
       MatchingEvent event = events.get(index);
       if (event instanceof MatchingEvent.Trade trade) {
@@ -74,6 +76,32 @@ public record ExecutionBatch(
           throw new IllegalArgumentException("trade quantity exceeds the accepted quantity");
         }
         trades++;
+      } else if (event instanceof MatchingEvent.SelfTradePrevented prevented) {
+        if (!prevented.takerSequence().equals(accepted.sequence())
+            || !prevented.takerOrderId().equals(accepted.orderId())) {
+          throw new IllegalArgumentException("STP taker must be the accepted order");
+        }
+        if (prevented.participantGroupId() != accepted.participantGroupId()
+            || prevented.policy() != accepted.selfTradePreventionPolicy()
+            || !prevented.takerAdmissionRuleSet().equals(accepted.admissionRuleSet())
+            || !prevented.executionRuleSet().equals(context.activeRuleSet())) {
+          throw new IllegalArgumentException("STP instruction or rule-set attribution changed");
+        }
+        if (BigInteger.valueOf(prevented.wouldTradeQuantityLots().value()).compareTo(remaining)
+            > 0) {
+          throw new IllegalArgumentException("STP would-trade quantity exceeds taker remainder");
+        }
+        if (prevented.policy() == SelfTradePreventionPolicy.CANCEL_TAKER
+            || prevented.policy() == SelfTradePreventionPolicy.CANCEL_BOTH) {
+          if (index != events.size() - 1
+              || prevented.takerCanceledQuantityLots() != remaining.longValueExact()) {
+            throw new IllegalArgumentException(
+                "taker-canceling STP must terminate with the complete taker remainder");
+          }
+          remaining = BigInteger.ZERO;
+          stpTakerCanceledSeen = true;
+        }
+        stpEvents++;
       } else if (event instanceof MatchingEvent.Rested rested) {
         if (index != events.size() - 1) {
           throw new IllegalArgumentException("Rested must be the final event");
@@ -83,7 +111,9 @@ public record ExecutionBatch(
             || rested.side() != accepted.side()
             || !rested.priceTicks().equals(accepted.priceTicks())
             || !remaining.equals(BigInteger.valueOf(rested.remainingQuantityLots().value()))
-            || !rested.admissionRuleSet().equals(accepted.admissionRuleSet())) {
+            || !rested.admissionRuleSet().equals(accepted.admissionRuleSet())
+            || rested.participantGroupId() != accepted.participantGroupId()
+            || rested.selfTradePreventionPolicy() != accepted.selfTradePreventionPolicy()) {
           throw new IllegalArgumentException("resting remainder must belong to the accepted order");
         }
         restedSeen = true;
@@ -103,27 +133,35 @@ public record ExecutionBatch(
         remainderCanceledSeen = true;
       } else {
         throw new IllegalArgumentException(
-            "only Trade, final Rested, or final RemainderCanceled may follow Accepted");
+            "only Trade, SelfTradePrevented, final Rested, or final RemainderCanceled may follow Accepted");
       }
     }
     switch (accepted.executionPolicy()) {
       case GTC -> {
-        if ((remaining.signum() > 0) != restedSeen || remainderCanceledSeen) {
+        if ((remaining.signum() > 0) != restedSeen
+            || remainderCanceledSeen
+            || (stpTakerCanceledSeen && restedSeen)) {
           throw new IllegalArgumentException("GTC remainder must rest exactly once");
         }
       }
       case IOC -> {
-        if (restedSeen || (remaining.signum() > 0) != remainderCanceledSeen) {
+        if (restedSeen
+            || (remaining.signum() > 0) != remainderCanceledSeen
+            || (stpTakerCanceledSeen && remainderCanceledSeen)) {
           throw new IllegalArgumentException("IOC remainder must be canceled exactly once");
         }
       }
       case FOK -> {
-        if (remaining.signum() != 0 || restedSeen || remainderCanceledSeen || trades == 0) {
+        if (remaining.signum() != 0
+            || restedSeen
+            || remainderCanceledSeen
+            || stpTakerCanceledSeen
+            || trades == 0) {
           throw new IllegalArgumentException("accepted FOK must fill completely");
         }
       }
       case POST_ONLY -> {
-        if (trades != 0 || !restedSeen || remainderCanceledSeen) {
+        if (trades != 0 || stpEvents != 0 || !restedSeen || remainderCanceledSeen) {
           throw new IllegalArgumentException("accepted Post-only must rest without trading");
         }
       }
