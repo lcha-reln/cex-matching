@@ -51,7 +51,8 @@ public sealed interface MatchingEvent
       Side side,
       PriceTicks priceTicks,
       QuantityLots quantityLots,
-      ExecutionPolicy executionPolicy)
+      ExecutionPolicy executionPolicy,
+      RuleSetIdentity admissionRuleSet)
       implements MatchingEvent {
     public Accepted {
       Objects.requireNonNull(sequence, "sequence");
@@ -60,6 +61,24 @@ public sealed interface MatchingEvent
       Objects.requireNonNull(priceTicks, "priceTicks");
       Objects.requireNonNull(quantityLots, "quantityLots");
       Objects.requireNonNull(executionPolicy, "executionPolicy");
+      Objects.requireNonNull(admissionRuleSet, "admissionRuleSet");
+    }
+
+    public Accepted(
+        AcceptanceSequence sequence,
+        OrderId orderId,
+        Side side,
+        PriceTicks priceTicks,
+        QuantityLots quantityLots,
+        ExecutionPolicy executionPolicy) {
+      this(
+          sequence,
+          orderId,
+          side,
+          priceTicks,
+          quantityLots,
+          executionPolicy,
+          MarketRuleSetArtifact.bootstrapIdentity());
     }
 
     public Accepted(
@@ -68,7 +87,14 @@ public sealed interface MatchingEvent
         Side side,
         PriceTicks priceTicks,
         QuantityLots quantityLots) {
-      this(sequence, orderId, side, priceTicks, quantityLots, ExecutionPolicy.GTC);
+      this(
+          sequence,
+          orderId,
+          side,
+          priceTicks,
+          quantityLots,
+          ExecutionPolicy.GTC,
+          MarketRuleSetArtifact.bootstrapIdentity());
     }
   }
 
@@ -79,7 +105,10 @@ public sealed interface MatchingEvent
       AcceptanceSequence takerSequence,
       OrderId takerOrderId,
       PriceTicks priceTicks,
-      QuantityLots quantityLots)
+      QuantityLots quantityLots,
+      RuleSetIdentity makerAdmissionRuleSet,
+      RuleSetIdentity takerAdmissionRuleSet,
+      RuleSetIdentity executionRuleSet)
       implements MatchingEvent {
     public Trade {
       Objects.requireNonNull(makerSequence, "makerSequence");
@@ -88,6 +117,28 @@ public sealed interface MatchingEvent
       Objects.requireNonNull(takerOrderId, "takerOrderId");
       Objects.requireNonNull(priceTicks, "priceTicks");
       Objects.requireNonNull(quantityLots, "quantityLots");
+      Objects.requireNonNull(makerAdmissionRuleSet, "makerAdmissionRuleSet");
+      Objects.requireNonNull(takerAdmissionRuleSet, "takerAdmissionRuleSet");
+      Objects.requireNonNull(executionRuleSet, "executionRuleSet");
+    }
+
+    public Trade(
+        AcceptanceSequence makerSequence,
+        OrderId makerOrderId,
+        AcceptanceSequence takerSequence,
+        OrderId takerOrderId,
+        PriceTicks priceTicks,
+        QuantityLots quantityLots) {
+      this(
+          makerSequence,
+          makerOrderId,
+          takerSequence,
+          takerOrderId,
+          priceTicks,
+          quantityLots,
+          MarketRuleSetArtifact.bootstrapIdentity(),
+          MarketRuleSetArtifact.bootstrapIdentity(),
+          MarketRuleSetArtifact.bootstrapIdentity());
     }
   }
 
@@ -97,7 +148,8 @@ public sealed interface MatchingEvent
       OrderId orderId,
       Side side,
       PriceTicks priceTicks,
-      QuantityLots remainingQuantityLots)
+      QuantityLots remainingQuantityLots,
+      RuleSetIdentity admissionRuleSet)
       implements MatchingEvent {
     public Rested {
       Objects.requireNonNull(sequence, "sequence");
@@ -105,6 +157,22 @@ public sealed interface MatchingEvent
       Objects.requireNonNull(side, "side");
       Objects.requireNonNull(priceTicks, "priceTicks");
       Objects.requireNonNull(remainingQuantityLots, "remainingQuantityLots");
+      Objects.requireNonNull(admissionRuleSet, "admissionRuleSet");
+    }
+
+    public Rested(
+        AcceptanceSequence sequence,
+        OrderId orderId,
+        Side side,
+        PriceTicks priceTicks,
+        QuantityLots remainingQuantityLots) {
+      this(
+          sequence,
+          orderId,
+          side,
+          priceTicks,
+          remainingQuantityLots,
+          MarketRuleSetArtifact.bootstrapIdentity());
     }
   }
 
@@ -115,7 +183,8 @@ public sealed interface MatchingEvent
       Side side,
       PriceTicks priceTicks,
       QuantityLots canceledQuantityLots,
-      RemainderCancelReason reason)
+      RemainderCancelReason reason,
+      RuleSetIdentity admissionRuleSet)
       implements MatchingEvent {
     public RemainderCanceled {
       Objects.requireNonNull(sequence, "sequence");
@@ -124,6 +193,24 @@ public sealed interface MatchingEvent
       Objects.requireNonNull(priceTicks, "priceTicks");
       Objects.requireNonNull(canceledQuantityLots, "canceledQuantityLots");
       Objects.requireNonNull(reason, "reason");
+      Objects.requireNonNull(admissionRuleSet, "admissionRuleSet");
+    }
+
+    public RemainderCanceled(
+        AcceptanceSequence sequence,
+        OrderId orderId,
+        Side side,
+        PriceTicks priceTicks,
+        QuantityLots canceledQuantityLots,
+        RemainderCancelReason reason) {
+      this(
+          sequence,
+          orderId,
+          side,
+          priceTicks,
+          canceledQuantityLots,
+          reason,
+          MarketRuleSetArtifact.bootstrapIdentity());
     }
   }
 
@@ -133,7 +220,9 @@ public sealed interface MatchingEvent
       OrderId orderId,
       Side side,
       PriceTicks priceTicks,
-      QuantityLots canceledQuantityLots)
+      QuantityLots canceledQuantityLots,
+      RuleSetIdentity admissionRuleSet,
+      RuleSetIdentity executionRuleSet)
       implements MatchingEvent {
     public Canceled {
       Objects.requireNonNull(sequence, "sequence");
@@ -141,6 +230,24 @@ public sealed interface MatchingEvent
       Objects.requireNonNull(side, "side");
       Objects.requireNonNull(priceTicks, "priceTicks");
       Objects.requireNonNull(canceledQuantityLots, "canceledQuantityLots");
+      Objects.requireNonNull(admissionRuleSet, "admissionRuleSet");
+      Objects.requireNonNull(executionRuleSet, "executionRuleSet");
+    }
+
+    public Canceled(
+        AcceptanceSequence sequence,
+        OrderId orderId,
+        Side side,
+        PriceTicks priceTicks,
+        QuantityLots canceledQuantityLots) {
+      this(
+          sequence,
+          orderId,
+          side,
+          priceTicks,
+          canceledQuantityLots,
+          MarketRuleSetArtifact.bootstrapIdentity(),
+          MarketRuleSetArtifact.bootstrapIdentity());
     }
   }
 }

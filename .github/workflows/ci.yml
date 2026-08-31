@@ -41,7 +41,7 @@ jobs:
           test "${#resources[@]}" -gt 0
           jq empty "${resources[@]}"
 
-      - name: Execute the inherited M04 proof and declared M05 boundary
+      - name: Execute the inherited M04 semantics and M05 completion proof
         id: boundary
         shell: bash
         run: |
@@ -124,16 +124,42 @@ jobs:
                 .inheritedM04.status == "PASS" and
                 .fixedCorpus.scenarios == 12 and
                 .fixedCorpus.commands == 54 and
+                .fixedCorpus.commandCounts == {
+                  "PLACE": 21,
+                  "CANCEL": 3,
+                  "PREPARE_RULE_SET": 16,
+                  "ACTIVATE_RULE_SET": 14
+                } and
+                .fixedCorpus.canonicalFormat == "M05F1" and
+                .fixedCorpus.canonicalDigest == "sha256:45be63337da83103a45040f5f73e9b996018d76f6d91f77e27cd5b2d9dbb8f7b" and
+                .fixedCorpus.canonicalBytes == 109974 and
+                .fixedCorpus.canonicalLines == 67 and
                 .generator.histories == 160 and
                 .generator.commands == 10240 and
+                .generator.canonicalFormat == "M05H1" and
+                .generator.canonicalDigest == "sha256:e742e53e1846730a0f242447b3065e23e352059807d8593dcc3e489498d453f5" and
+                .generator.canonicalBytes == 2553580 and
+                .generator.canonicalLines == 10401 and
+                .properties.differentialComparisons == 10240 and
+                .properties.ledgerChecks == 10240 and
+                .properties.bookChecks == 10240 and
+                .properties.marketControlChecks == 10240 and
                 .coverage.requiredObligations == 20 and
                 .coverage.satisfiedObligations == 20 and
+                .boundaries.canonicalFormat == "M05RS1" and
+                .boundaries.hashVectors == 4 and
+                .boundaries.grandfatherExistingOrders == true and
                 .counterexamples.required == 8 and
                 .counterexamples.replayed == 8 and
                 .counterexamples.oneMinimal == 8 and
+                .counterexamples.totalCommands == 57 and
+                .counterexamples.canonicalFormat == "M05X1" and
+                .counterexamples.canonicalDigest == "sha256:ea4aa501053d8bf11d8c31a4ba2f2b590b7b69d2c68d7c06cfaa7bf2c7c85a25" and
                 .mutants.required == 8 and
                 .mutants.killed == 8 and
                 .mutants.systemErrorControl == "SYSTEM_ERROR" and
+                .architecture.passed == true and
+                .architecture.forbiddenFindings == 0 and
                 .releaseTarget.productRelease == null
               ' build/reports/m05/check.json
               ./gradlew m05Evidence -Pm05.unitTag=course/m05-complete --no-daemon

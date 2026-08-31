@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m05.check.v2.schema.json",
+  "title": "Matching M05 completed versioned price-band check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "status", "contractPlanVersion", "releaseTarget"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m05.check.v2"},
+    "unit": {"const": "M05"},
+    "status": {"enum": ["PASS", "STUDENT_FAILURE", "SYSTEM_ERROR"]},
+    "contractPlanVersion": {"const": "0.7"},
+    "inheritedM04": {"$ref": "#/$defs/inheritedM04"},
+    "fixedCorpus": {"$ref": "#/$defs/fixedCorpus"},
+    "generator": {"$ref": "#/$defs/generator"},
+    "properties": {"$ref": "#/$defs/properties"},
+    "coverage": {"$ref": "#/$defs/coverage"},
+    "invariants": {"$ref": "#/$defs/invariants"},
+    "boundaries": {"$ref": "#/$defs/boundaries"},
+    "counterexamples": {"$ref": "#/$defs/counterexamples"},
+    "mutants": {"$ref": "#/$defs/mutants"},
+    "architecture": {"$ref": "#/$defs/architecture"},
+    "failure": {"type": "string", "minLength": 1},
+    "releaseTarget": {"$ref": "#/$defs/releaseTarget"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "PASS"}}},
+      "then": {
+        "required": ["inheritedM04", "fixedCorpus", "generator", "properties", "coverage", "invariants", "boundaries", "counterexamples", "mutants", "architecture"],
+        "not": {"required": ["failure"]}
+      }
+    },
+    {
+      "if": {"properties": {"status": {"enum": ["STUDENT_FAILURE", "SYSTEM_ERROR"]}}},
+      "then": {"required": ["failure"]}
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "inheritedM04": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "checkSchemaVersion", "fixedScenarios", "fixedCommands", "fixedDigest", "generatedHistories", "generatedCommands", "generatedDigest", "coverageObligations", "counterexamples", "mutantsKilled", "productRelease"],
+      "properties": {
+        "status": {"const": "PASS"},
+        "checkSchemaVersion": {"const": "matching.m04.check.v2"},
+        "fixedScenarios": {"const": 14},
+        "fixedCommands": {"const": 48},
+        "fixedDigest": {"const": "sha256:68de35e41358ea72c9852fdf3fd652db116774964360f0b526f43612576bfa77"},
+        "generatedHistories": {"const": 192},
+        "generatedCommands": {"const": 12288},
+        "generatedDigest": {"const": "sha256:6005c674d0c42927989f1c8c4d1ddce224d06ceff0b95bf58615d23c4496ba51"},
+        "coverageObligations": {"const": 23},
+        "counterexamples": {"const": 8},
+        "mutantsKilled": {"const": 8},
+        "productRelease": {"type": "null"}
+      }
+    },
+    "fixedCorpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarios", "commands", "commandCounts", "canonicalFormat", "canonicalDigest", "canonicalBytes", "canonicalLines", "differentialComparisons", "ledgerChecks"],
+      "properties": {
+        "scenarios": {"const": 12},
+        "commands": {"const": 54},
+        "commandCounts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "canonicalFormat": {"const": "M05F1"},
+        "canonicalDigest": {"$ref": "#/$defs/sha256"},
+        "canonicalBytes": {"type": "integer", "minimum": 1},
+        "canonicalLines": {"type": "integer", "minimum": 1},
+        "differentialComparisons": {"const": 54},
+        "ledgerChecks": {"const": 54}
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "baseSeed", "histories", "commandsPerHistory", "commands", "lanes", "historiesPerLane", "canonicalFormat", "canonicalDigest", "canonicalBytes", "canonicalLines", "freshGenerations"],
+      "properties": {
+        "algorithm": {"const": "splitmix64-v1"},
+        "baseSeed": {"const": "5505"},
+        "histories": {"const": 160},
+        "commandsPerHistory": {"const": 64},
+        "commands": {"const": 10240},
+        "lanes": {"const": 5},
+        "historiesPerLane": {"const": 32},
+        "canonicalFormat": {"const": "M05H1"},
+        "canonicalDigest": {"$ref": "#/$defs/sha256"},
+        "canonicalBytes": {"type": "integer", "minimum": 1},
+        "canonicalLines": {"type": "integer", "minimum": 1},
+        "freshGenerations": {"const": 2}
+      }
+    },
+    "properties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["histories", "commands", "differentialComparisons", "ledgerChecks", "bookChecks", "marketControlChecks"],
+      "properties": {
+        "histories": {"const": 160},
+        "commands": {"const": 10240},
+        "differentialComparisons": {"const": 10240},
+        "ledgerChecks": {"const": 10240},
+        "bookChecks": {"const": 10240},
+        "marketControlChecks": {"const": 10240}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiredObligations", "satisfiedObligations", "obligations"],
+      "properties": {
+        "requiredObligations": {"const": 20},
+        "satisfiedObligations": {"type": "integer", "minimum": 0, "maximum": 20},
+        "obligations": {"type": "array", "minItems": 20, "maxItems": 20, "items": {"type": "object", "additionalProperties": false, "required": ["id", "satisfied", "historyIndex", "commandIndex"], "properties": {"id": {"type": "string"}, "satisfied": {"type": "boolean"}, "historyIndex": {"type": "integer", "minimum": -1}, "commandIndex": {"type": "integer", "minimum": -1}}}}
+      }
+    },
+    "invariants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "checks", "properties"],
+      "properties": {
+        "passed": {"const": true},
+        "checks": {"type": "integer", "minimum": 10240},
+        "properties": {"type": "array", "minItems": 8, "uniqueItems": true, "items": {"type": "string"}}
+      }
+    },
+    "boundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonicalFormat", "hashVectors", "hashMismatchFailsClosed", "sameVersionDifferentHashFailsClosed", "lowerInclusive", "upperInclusive", "longMaximumInclusive", "staleActivationFenceFailsClosed", "stalePlaceFenceFailsClosed", "grandfatherExistingOrders"],
+      "properties": {
+        "canonicalFormat": {"const": "M05RS1"},
+        "hashVectors": {"type": "integer", "minimum": 4},
+        "hashMismatchFailsClosed": {"const": true},
+        "sameVersionDifferentHashFailsClosed": {"const": true},
+        "lowerInclusive": {"const": true},
+        "upperInclusive": {"const": true},
+        "longMaximumInclusive": {"const": true},
+        "staleActivationFenceFailsClosed": {"const": true},
+        "stalePlaceFenceFailsClosed": {"const": true},
+        "grandfatherExistingOrders": {"const": true}
+      }
+    },
+    "counterexamples": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "found", "replayed", "oneMinimal", "totalCommands", "canonicalFormat", "canonicalDigest", "canonicalBytes", "canonicalLines"],
+      "properties": {
+        "required": {"const": 8},
+        "found": {"type": "integer", "minimum": 0, "maximum": 8},
+        "replayed": {"type": "integer", "minimum": 0, "maximum": 8},
+        "oneMinimal": {"type": "integer", "minimum": 0, "maximum": 8},
+        "totalCommands": {"type": "integer", "minimum": 1},
+        "canonicalFormat": {"const": "M05X1"},
+        "canonicalDigest": {"$ref": "#/$defs/sha256"},
+        "canonicalBytes": {"type": "integer", "minimum": 1},
+        "canonicalLines": {"type": "integer", "minimum": 1}
+      }
+    },
+    "mutants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "killed", "classification", "systemErrorControl"],
+      "properties": {
+        "required": {"const": 8},
+        "killed": {"type": "integer", "minimum": 0, "maximum": 8},
+        "classification": {"const": "STUDENT_FAILURE"},
+        "systemErrorControl": {"const": "SYSTEM_ERROR"}
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "coreSources", "referenceSources", "forbiddenFindings", "violations"],
+      "properties": {
+        "passed": {"type": "boolean"},
+        "coreSources": {"type": "integer", "minimum": 1},
+        "referenceSources": {"type": "integer", "minimum": 1},
+        "forbiddenFindings": {"type": "integer", "minimum": 0},
+        "violations": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "releaseTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "verification"],
+      "properties": {"unitTag": {"const": "course/m05-complete"}, "productRelease": {"type": "null"}, "verification": {"const": "M05_EVIDENCE_ONLY"}}
+    }
+  }
+}

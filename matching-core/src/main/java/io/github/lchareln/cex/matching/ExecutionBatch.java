@@ -10,14 +10,21 @@ import java.util.Objects;
  * <p>The constructor closes the event grammar. Cross-checking those events against the supplied
  * book is an engine invariant and judge responsibility.
  */
-public record ExecutionBatch(List<MatchingEvent> events, OrderBookSnapshot bookAfter) {
+public record ExecutionBatch(
+    List<MatchingEvent> events, OrderBookSnapshot bookAfter, MarketExecutionContext context) {
   public ExecutionBatch {
     events = List.copyOf(events);
     Objects.requireNonNull(bookAfter, "bookAfter");
-    validateGrammar(events);
+    Objects.requireNonNull(context, "context");
+    validateGrammar(events, context);
   }
 
-  private static void validateGrammar(List<MatchingEvent> events) {
+  /** Preserves the M00-M04 value constructor with bootstrap rule attribution. */
+  public ExecutionBatch(List<MatchingEvent> events, OrderBookSnapshot bookAfter) {
+    this(events, bookAfter, MarketExecutionContext.bootstrapCompatibility());
+  }
+
+  private static void validateGrammar(List<MatchingEvent> events, MarketExecutionContext context) {
     if (events.isEmpty()) {
       throw new IllegalArgumentException("execution batch must contain at least one event");
     }
@@ -29,10 +36,19 @@ public record ExecutionBatch(List<MatchingEvent> events, OrderBookSnapshot bookA
       if (events.size() != 1) {
         throw new IllegalArgumentException("a singleton batch must contain exactly one event");
       }
+      if (first instanceof MatchingEvent.Canceled canceled
+          && !canceled.executionRuleSet().equals(context.activeRuleSet())) {
+        throw new IllegalArgumentException(
+            "canceled event must carry the batch active execution rule set");
+      }
       return;
     }
     if (!(first instanceof MatchingEvent.Accepted accepted)) {
       throw new IllegalArgumentException("a valid batch must start with Accepted");
+    }
+    if (!accepted.admissionRuleSet().equals(context.activeRuleSet())) {
+      throw new IllegalArgumentException(
+          "accepted order must carry the batch active admission rule set");
     }
     BigInteger remaining = BigInteger.valueOf(accepted.quantityLots().value());
     boolean restedSeen = false;
@@ -44,6 +60,10 @@ public record ExecutionBatch(List<MatchingEvent> events, OrderBookSnapshot bookA
         if (!trade.takerSequence().equals(accepted.sequence())
             || !trade.takerOrderId().equals(accepted.orderId())) {
           throw new IllegalArgumentException("trade taker must be the accepted order");
+        }
+        if (!trade.takerAdmissionRuleSet().equals(accepted.admissionRuleSet())
+            || !trade.executionRuleSet().equals(context.activeRuleSet())) {
+          throw new IllegalArgumentException("trade rule-set attribution changed");
         }
         remaining = remaining.subtract(BigInteger.valueOf(trade.quantityLots().value()));
         if (remaining.signum() < 0) {
@@ -58,7 +78,8 @@ public record ExecutionBatch(List<MatchingEvent> events, OrderBookSnapshot bookA
             || !rested.orderId().equals(accepted.orderId())
             || rested.side() != accepted.side()
             || !rested.priceTicks().equals(accepted.priceTicks())
-            || !remaining.equals(BigInteger.valueOf(rested.remainingQuantityLots().value()))) {
+            || !remaining.equals(BigInteger.valueOf(rested.remainingQuantityLots().value()))
+            || !rested.admissionRuleSet().equals(accepted.admissionRuleSet())) {
           throw new IllegalArgumentException("resting remainder must belong to the accepted order");
         }
         restedSeen = true;
@@ -71,7 +92,8 @@ public record ExecutionBatch(List<MatchingEvent> events, OrderBookSnapshot bookA
             || canceled.side() != accepted.side()
             || !canceled.priceTicks().equals(accepted.priceTicks())
             || !remaining.equals(BigInteger.valueOf(canceled.canceledQuantityLots().value()))
-            || canceled.reason() != RemainderCancelReason.IOC_REMAINDER) {
+            || canceled.reason() != RemainderCancelReason.IOC_REMAINDER
+            || !canceled.admissionRuleSet().equals(accepted.admissionRuleSet())) {
           throw new IllegalArgumentException("canceled remainder must belong to the accepted IOC");
         }
         remainderCanceledSeen = true;

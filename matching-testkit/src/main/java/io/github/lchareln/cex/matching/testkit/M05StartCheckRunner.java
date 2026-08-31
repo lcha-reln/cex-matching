@@ -210,34 +210,17 @@ public final class M05StartCheckRunner {
   private static InheritedM04 runInheritedM04(Path root, Path reports, Path trustedOutputRoot) {
     Path inheritedReports = reports.resolve(".inherited-m04");
     try {
-      M04CheckRunner.Result result =
-          new M04CheckRunner().run(root, inheritedReports, trustedOutputRoot);
-      require(M04CheckRunner.PASS.equals(result.status()), "inherited M04 check is not PASS");
-      JsonNode check = JsonSupport.parse(readBytes(result.reportPath()));
-      JsonSupport.validate(
-          check, readString(root.resolve("schemas/matching.m04.check.v2.schema.json")), false);
+      M05LegacyRegression.Result result =
+          new M05LegacyRegression().run(root, inheritedReports, trustedOutputRoot);
       require(
-          "matching.m04.check.v2".equals(check.path("schemaVersion").stringValue()),
-          "inherited M04 check schema changed");
+          result.fixedScenarios() == 14 && result.fixedCommands() == 48,
+          "inherited M04 fixed corpus changed");
       require(
-          check.path("fixedCorpus").path("scenarios").intValue() == 14, "M04 scenarios changed");
-      require(check.path("fixedCorpus").path("commands").intValue() == 48, "M04 commands changed");
+          result.generatedHistories() == 192 && result.generatedCommands() == 12_288,
+          "inherited M04 generated suite changed");
       require(
-          "sha256:68de35e41358ea72c9852fdf3fd652db116774964360f0b526f43612576bfa77"
-              .equals(check.path("fixedCorpus").path("canonicalDigest").stringValue()),
-          "M04F1 digest changed");
-      require(
-          "sha256:6005c674d0c42927989f1c8c4d1ddce224d06ceff0b95bf58615d23c4496ba51"
-              .equals(check.path("generator").path("canonicalDigest").stringValue()),
-          "M04H1 digest changed");
-      require(
-          check.path("properties").path("commands").intValue() == 12_288,
-          "M04 generated commands changed");
-      require(check.path("counterexamples").path("replayed").intValue() == 8, "M04 replay changed");
-      require(check.path("mutants").path("killed").intValue() == 8, "M04 mutants changed");
-      require(
-          check.path("releaseTarget").path("productRelease").isNull(),
-          "M04 unexpectedly claims a product release");
+          result.counterexamples() == 8 && result.mutantsKilled() == 8,
+          "inherited M04 semantic mutants changed");
       return new InheritedM04();
     } finally {
       deleteTree(inheritedReports);

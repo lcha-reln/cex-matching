@@ -9,10 +9,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
-/** Single-writer, in-memory price-time matcher with an addressable M04 order lifecycle. */
+/** Single-writer, in-memory price-time matcher with M05 versioned order-entry governance. */
 public final class SingleInstrumentMatchingEngine {
   private final PlaceLimitOrderValidator placeValidator = new PlaceLimitOrderValidator();
   private final ExecutionPolicyValidator executionPolicyValidator = new ExecutionPolicyValidator();
@@ -23,54 +24,100 @@ public final class SingleInstrumentMatchingEngine {
   private final Map<OrderId, OrderState> ordersById = new HashMap<>();
 
   private long nextAcceptanceSequence;
+  private long nextApplicationSequence;
+  private MarketRuleSetArtifact activeRuleSet = MarketRuleSetArtifact.bootstrap();
+  private MarketRuleSetArtifact preparedRuleSet;
+  private long controlRevision;
+  private ActivationFence lastActivationFence;
 
   public SingleInstrumentMatchingEngine() {
-    this(1);
+    this(1, 1);
   }
 
   SingleInstrumentMatchingEngine(long nextAcceptanceSequence) {
+    this(nextAcceptanceSequence, 1);
+  }
+
+  SingleInstrumentMatchingEngine(long nextAcceptanceSequence, long nextApplicationSequence) {
     if (nextAcceptanceSequence <= 0) {
       throw new IllegalArgumentException("next acceptance sequence must be positive");
     }
+    if (nextApplicationSequence <= 0) {
+      throw new IllegalArgumentException("next application sequence must be positive");
+    }
     this.nextAcceptanceSequence = nextAcceptanceSequence;
+    this.nextApplicationSequence = nextApplicationSequence;
   }
 
   /** Applies one legacy GTC limit command. The caller must serialize calls to this method. */
   public ExecutionBatch place(PlaceLimitOrderInput input) {
     Objects.requireNonNull(input, "input");
-    return placeRequest(new PlaceLimitOrderRequest(input));
+    return applyPlace(new PlaceLimitOrderRequest(input), null);
   }
 
   /** Applies one M04 limit request under its explicit execution policy. */
   public ExecutionBatch placeRequest(PlaceLimitOrderRequest request) {
     Objects.requireNonNull(request, "request");
+    return applyPlace(request, null);
+  }
+
+  /** Applies one M05 place request guarded by the caller's expected active rule-set identity. */
+  public ExecutionBatch placeGoverned(GovernedPlaceLimitOrderRequest request) {
+    Objects.requireNonNull(request, "request");
+    return applyPlace(request.orderRequest(), request.expectedActive());
+  }
+
+  private ExecutionBatch applyPlace(
+      PlaceLimitOrderRequest request, RuleSetIdentity expectedActive) {
     assertConsistentState();
+    AppliedCommand applied = nextAppliedCommand();
     PlaceLimitOrderInput input = request.orderInput();
     ValidationResult validation = placeValidator.validate(input);
     if (validation instanceof ValidationResult.Invalid invalid) {
-      return singleton(new MatchingEvent.Rejected(invalid.code()));
+      return businessResult(List.of(new MatchingEvent.Rejected(invalid.code())), applied);
     }
     ValidationResult policyValidation =
         executionPolicyValidator.validate(request.executionPolicy());
     if (policyValidation instanceof ValidationResult.Invalid invalid) {
-      return singleton(new MatchingEvent.Rejected(invalid.code()));
+      return businessResult(List.of(new MatchingEvent.Rejected(invalid.code())), applied);
     }
 
     PlaceLimitOrder command = placeValidator.normalize(input);
     ExecutionPolicy policy = executionPolicyValidator.normalize(request.executionPolicy());
     if (ordersById.containsKey(command.orderId())) {
-      return singleton(
-          new MatchingEvent.PlaceRejected(
-              command.orderId(), PlaceRejectionCode.DUPLICATE_ORDER_ID));
+      return businessResult(
+          List.of(
+              new MatchingEvent.PlaceRejected(
+                  command.orderId(), PlaceRejectionCode.DUPLICATE_ORDER_ID)),
+          applied);
+    }
+    if (expectedActive != null && !expectedActive.equals(activeRuleSet.identity())) {
+      return businessResult(
+          List.of(
+              new MatchingEvent.PlaceRejected(
+                  command.orderId(), PlaceRejectionCode.RULE_SET_MISMATCH)),
+          applied);
+    }
+    if (!activeRuleSet.admits(command.priceTicks())) {
+      return businessResult(
+          List.of(
+              new MatchingEvent.PlaceRejected(
+                  command.orderId(), PlaceRejectionCode.PRICE_OUTSIDE_ACTIVE_BAND)),
+          applied);
     }
     if (policy == ExecutionPolicy.FOK && !canFillCompletely(command)) {
-      return singleton(
-          new MatchingEvent.PlaceRejected(command.orderId(), PlaceRejectionCode.FOK_NOT_FILLABLE));
+      return businessResult(
+          List.of(
+              new MatchingEvent.PlaceRejected(
+                  command.orderId(), PlaceRejectionCode.FOK_NOT_FILLABLE)),
+          applied);
     }
     if (policy == ExecutionPolicy.POST_ONLY && wouldTake(command)) {
-      return singleton(
-          new MatchingEvent.PlaceRejected(
-              command.orderId(), PlaceRejectionCode.POST_ONLY_WOULD_TAKE));
+      return businessResult(
+          List.of(
+              new MatchingEvent.PlaceRejected(
+                  command.orderId(), PlaceRejectionCode.POST_ONLY_WOULD_TAKE)),
+          applied);
     }
 
     long sequenceValue = nextAcceptanceSequence;
@@ -83,7 +130,8 @@ public final class SingleInstrumentMatchingEngine {
     }
 
     AcceptanceSequence sequence = new AcceptanceSequence(sequenceValue);
-    OrderState taker = new OrderState(sequence, command, policy);
+    RuleSetIdentity admissionRuleSet = activeRuleSet.identity();
+    OrderState taker = new OrderState(sequence, command, policy, admissionRuleSet);
     MatchingEvent.Accepted accepted =
         new MatchingEvent.Accepted(
             sequence,
@@ -91,7 +139,8 @@ public final class SingleInstrumentMatchingEngine {
             command.side(),
             command.priceTicks(),
             command.quantityLots(),
-            policy);
+            policy,
+            admissionRuleSet);
     if (ordersById.putIfAbsent(command.orderId(), taker) != null) {
       throw new IllegalStateException(
           "duplicate order identity appeared during single-writer apply");
@@ -116,7 +165,8 @@ public final class SingleInstrumentMatchingEngine {
               taker.side,
               taker.priceTicks,
               new QuantityLots(canceledQuantityLots),
-              RemainderCancelReason.IOC_REMAINDER));
+              RemainderCancelReason.IOC_REMAINDER,
+              taker.admissionRuleSet));
     } else if (policy == ExecutionPolicy.FOK) {
       throw new IllegalStateException("FOK preflight and execution disagreed");
     } else {
@@ -127,38 +177,47 @@ public final class SingleInstrumentMatchingEngine {
               taker.orderId,
               taker.side,
               taker.priceTicks,
-              new QuantityLots(taker.remainingQuantityLots)));
+              new QuantityLots(taker.remainingQuantityLots),
+              taker.admissionRuleSet));
     }
 
     nextAcceptanceSequence = followingSequence;
     assertConsistentState();
-    return new ExecutionBatch(events, detachedSnapshot());
+    return businessResult(events, applied);
   }
 
   /** Cancels the positive active remainder addressed by instrument and order identity. */
   public ExecutionBatch cancel(CancelOrderInput input) {
     Objects.requireNonNull(input, "input");
     assertConsistentState();
+    AppliedCommand applied = nextAppliedCommand();
     ValidationResult validation = cancelValidator.validate(input);
     if (validation instanceof ValidationResult.Invalid invalid) {
-      return singleton(new MatchingEvent.Rejected(invalid.code()));
+      return businessResult(List.of(new MatchingEvent.Rejected(invalid.code())), applied);
     }
 
     CancelOrder command = cancelValidator.normalize(input);
     OrderState order = ordersById.get(command.orderId());
     if (order == null) {
-      return singleton(
-          new MatchingEvent.CancelRejected(command.orderId(), CancelRejectionCode.ORDER_NOT_FOUND));
+      return businessResult(
+          List.of(
+              new MatchingEvent.CancelRejected(
+                  command.orderId(), CancelRejectionCode.ORDER_NOT_FOUND)),
+          applied);
     }
     if (order.lifecycle == Lifecycle.FILLED) {
-      return singleton(
-          new MatchingEvent.CancelRejected(
-              command.orderId(), CancelRejectionCode.ORDER_ALREADY_FILLED));
+      return businessResult(
+          List.of(
+              new MatchingEvent.CancelRejected(
+                  command.orderId(), CancelRejectionCode.ORDER_ALREADY_FILLED)),
+          applied);
     }
     if (order.lifecycle == Lifecycle.CANCELED) {
-      return singleton(
-          new MatchingEvent.CancelRejected(
-              command.orderId(), CancelRejectionCode.ORDER_ALREADY_CANCELED));
+      return businessResult(
+          List.of(
+              new MatchingEvent.CancelRejected(
+                  command.orderId(), CancelRejectionCode.ORDER_ALREADY_CANCELED)),
+          applied);
     }
     if (order.lifecycle != Lifecycle.RESTING) {
       throw new IllegalStateException("cancel observed an order in a transient lifecycle state");
@@ -176,7 +235,9 @@ public final class SingleInstrumentMatchingEngine {
             order.orderId,
             order.side,
             order.priceTicks,
-            new QuantityLots(order.remainingQuantityLots));
+            new QuantityLots(order.remainingQuantityLots),
+            order.admissionRuleSet,
+            activeRuleSet.identity());
     if (!level.remove(order)) {
       throw new IllegalStateException("active order disappeared during single-writer cancel");
     }
@@ -186,7 +247,117 @@ public final class SingleInstrumentMatchingEngine {
     order.markCanceled();
 
     assertConsistentState();
-    return new ExecutionBatch(List.of(canceled), detachedSnapshot());
+    return businessResult(List.of(canceled), applied);
+  }
+
+  /** Prepares one valid newer artifact without changing current order admission. */
+  public MarketControlBatch prepareRuleSet(PrepareRuleSet command) {
+    Objects.requireNonNull(command, "command");
+    assertConsistentState();
+    AppliedCommand applied = nextAppliedCommand();
+    MarketRuleSetArtifact candidate = command.artifact();
+
+    if (!command.expectedActive().equals(activeRuleSet.identity())) {
+      return controlRejection(
+          candidate, PrepareRuleSetRejectionCode.EXPECTED_ACTIVE_RULE_SET_MISMATCH, applied);
+    }
+    if (!candidate.hasCanonicalContentHash()) {
+      return controlRejection(
+          candidate, PrepareRuleSetRejectionCode.MALFORMED_CONTENT_HASH, applied);
+    }
+    if (!candidate.contentHashMatches()) {
+      return controlRejection(
+          candidate, PrepareRuleSetRejectionCode.CONTENT_HASH_MISMATCH, applied);
+    }
+
+    int comparedWithActive = candidate.version().compareTo(activeRuleSet.version());
+    if (comparedWithActive == 0 && !candidate.equals(activeRuleSet)) {
+      return controlRejection(
+          candidate, PrepareRuleSetRejectionCode.SAME_VERSION_DIFFERENT_CONTENT, applied);
+    }
+    if (comparedWithActive <= 0) {
+      return controlRejection(
+          candidate, PrepareRuleSetRejectionCode.VERSION_NOT_INCREASING, applied);
+    }
+
+    PrepareRuleSetStatus status = PrepareRuleSetStatus.PREPARED;
+    if (preparedRuleSet != null) {
+      int comparedWithPrepared = candidate.version().compareTo(preparedRuleSet.version());
+      if (comparedWithPrepared == 0) {
+        if (candidate.equals(preparedRuleSet)) {
+          status = PrepareRuleSetStatus.ALREADY_PREPARED;
+        } else {
+          return controlRejection(
+              candidate, PrepareRuleSetRejectionCode.SAME_VERSION_DIFFERENT_CONTENT, applied);
+        }
+      } else if (comparedWithPrepared < 0) {
+        return controlRejection(
+            candidate, PrepareRuleSetRejectionCode.VERSION_NOT_INCREASING, applied);
+      } else {
+        status = PrepareRuleSetStatus.SUPERSEDED;
+      }
+    }
+
+    if (status != PrepareRuleSetStatus.ALREADY_PREPARED) {
+      preparedRuleSet = candidate;
+    }
+    MarketControlEvent.RuleSetPrepared event =
+        new MarketControlEvent.RuleSetPrepared(
+            applied.current(), activeRuleSet.identity(), candidate.identity(), status);
+    assertConsistentState();
+    return controlResult(event, applied);
+  }
+
+  /** Activates exactly the prepared identity at the declared serialized application boundary. */
+  public MarketControlBatch activateRuleSet(ActivateRuleSet command) {
+    Objects.requireNonNull(command, "command");
+    assertConsistentState();
+    AppliedCommand applied = nextAppliedCommand();
+
+    if (!command.expectedApplicationSequence().equals(applied.current())) {
+      return activateRejection(
+          command.target(), ActivateRuleSetRejectionCode.APPLICATION_SEQUENCE_MISMATCH, applied);
+    }
+    if (!command.expectedActive().equals(activeRuleSet.identity())) {
+      return activateRejection(
+          command.target(),
+          ActivateRuleSetRejectionCode.EXPECTED_ACTIVE_RULE_SET_MISMATCH,
+          applied);
+    }
+    if (preparedRuleSet == null) {
+      return activateRejection(
+          command.target(), ActivateRuleSetRejectionCode.NO_PREPARED_RULE_SET, applied);
+    }
+    if (!command.target().equals(preparedRuleSet.identity())) {
+      return activateRejection(
+          command.target(), ActivateRuleSetRejectionCode.TARGET_RULE_SET_MISMATCH, applied);
+    }
+    if (!preparedRuleSet.contentHashMatches()) {
+      return activateRejection(
+          command.target(), ActivateRuleSetRejectionCode.PREPARED_CONTENT_HASH_MISMATCH, applied);
+    }
+
+    final long nextControlRevision;
+    try {
+      nextControlRevision = Math.incrementExact(controlRevision);
+    } catch (ArithmeticException failure) {
+      throw new IllegalStateException("control revision exhausted before state mutation", failure);
+    }
+    RuleSetIdentity previousActive = activeRuleSet.identity();
+    MarketRuleSetArtifact activated = preparedRuleSet;
+    ActivationFence fence =
+        new ActivationFence(
+            applied.current(), nextControlRevision, new AcceptanceSequence(nextAcceptanceSequence));
+    activeRuleSet = activated;
+    preparedRuleSet = null;
+    controlRevision = nextControlRevision;
+    lastActivationFence = fence;
+
+    MarketControlEvent.RuleSetActivated event =
+        new MarketControlEvent.RuleSetActivated(
+            applied.current(), previousActive, activated.identity(), fence);
+    assertConsistentState();
+    return controlResult(event, applied);
   }
 
   /** Returns a detached immutable full-depth snapshot. */
@@ -195,10 +366,33 @@ public final class SingleInstrumentMatchingEngine {
     return detachedSnapshot();
   }
 
+  /** Returns detached active, prepared, revision, fence, and next-sequence state. */
+  public MarketControlSnapshot marketControlSnapshot() {
+    assertConsistentState();
+    return detachedMarketControlSnapshot(nextApplicationSequence);
+  }
+
   /** Package-local correctness hook; it exposes no order lifecycle data. */
   void assertConsistentState() {
     if (nextAcceptanceSequence <= 0) {
       throw new IllegalStateException("next acceptance sequence is not positive");
+    }
+    if (nextApplicationSequence <= 0) {
+      throw new IllegalStateException("next application sequence is not positive");
+    }
+    if (!activeRuleSet.contentHashMatches()) {
+      throw new IllegalStateException("active rule-set content hash changed");
+    }
+    if (preparedRuleSet != null
+        && (!preparedRuleSet.contentHashMatches()
+            || preparedRuleSet.version().compareTo(activeRuleSet.version()) <= 0)) {
+      throw new IllegalStateException("prepared rule set is not valid and newer than active");
+    }
+    if (controlRevision < 0
+        || (controlRevision == 0) != (lastActivationFence == null)
+        || (lastActivationFence != null
+            && lastActivationFence.controlRevision() != controlRevision)) {
+      throw new IllegalStateException("control revision and last activation fence disagree");
     }
 
     Set<OrderId> restingIds = new HashSet<>();
@@ -220,6 +414,9 @@ public final class SingleInstrumentMatchingEngine {
       if (order.sequence.value() >= nextAcceptanceSequence) {
         throw new IllegalStateException("accepted order is not behind the next sequence");
       }
+      if (order.admissionRuleSet == null) {
+        throw new IllegalStateException("accepted order lost its admission rule set");
+      }
       order.assertQuantityPartition();
       boolean inBook = restingIds.contains(order.orderId);
       if ((order.lifecycle == Lifecycle.RESTING) != inBook) {
@@ -231,9 +428,62 @@ public final class SingleInstrumentMatchingEngine {
     }
   }
 
-  private ExecutionBatch singleton(MatchingEvent event) {
+  private AppliedCommand nextAppliedCommand() {
+    long current = nextApplicationSequence;
+    final long following;
+    try {
+      following = Math.incrementExact(current);
+    } catch (ArithmeticException failure) {
+      throw new IllegalStateException(
+          "application sequence exhausted before state mutation", failure);
+    }
+    return new AppliedCommand(new ApplicationSequence(current), following);
+  }
+
+  private ExecutionBatch businessResult(List<MatchingEvent> events, AppliedCommand applied) {
     assertConsistentState();
-    return new ExecutionBatch(List.of(event), detachedSnapshot());
+    ExecutionBatch result =
+        new ExecutionBatch(
+            events,
+            detachedSnapshot(),
+            new MarketExecutionContext(
+                activeRuleSet.identity(), controlRevision, applied.current()));
+    commitApplication(applied);
+    assertConsistentState();
+    return result;
+  }
+
+  private MarketControlBatch controlRejection(
+      MarketRuleSetArtifact candidate, PrepareRuleSetRejectionCode code, AppliedCommand applied) {
+    return controlResult(
+        new MarketControlEvent.PrepareRejected(
+            applied.current(), candidate.version(), candidate.contentHash(), code),
+        applied);
+  }
+
+  private MarketControlBatch activateRejection(
+      RuleSetIdentity target, ActivateRuleSetRejectionCode code, AppliedCommand applied) {
+    return controlResult(
+        new MarketControlEvent.ActivateRejected(
+            applied.current(), activeRuleSet.identity(), target, code),
+        applied);
+  }
+
+  private MarketControlBatch controlResult(MarketControlEvent event, AppliedCommand applied) {
+    assertConsistentState();
+    MarketControlBatch result =
+        new MarketControlBatch(
+            List.of(event), detachedMarketControlSnapshot(applied.following()), detachedSnapshot());
+    commitApplication(applied);
+    assertConsistentState();
+    return result;
+  }
+
+  private void commitApplication(AppliedCommand applied) {
+    if (nextApplicationSequence != applied.current().value()) {
+      throw new IllegalStateException("application sequence changed during one serialized command");
+    }
+    nextApplicationSequence = applied.following();
   }
 
   private void rest(OrderState order) {
@@ -277,7 +527,10 @@ public final class SingleInstrumentMatchingEngine {
               taker.sequence,
               taker.orderId,
               maker.priceTicks,
-              new QuantityLots(traded)));
+              new QuantityLots(traded),
+              maker.admissionRuleSet,
+              taker.admissionRuleSet,
+              activeRuleSet.identity()));
 
       if (maker.remainingQuantityLots == 0) {
         if (!level.remove(maker)) {
@@ -336,6 +589,7 @@ public final class SingleInstrumentMatchingEngine {
             || order.side != expectedSide
             || order.priceTicks.value() != levelEntry.getKey()
             || order.lifecycle != Lifecycle.RESTING
+            || order.admissionRuleSet == null
             || order.remainingQuantityLots <= 0) {
           throw new IllegalStateException("active order index and price level disagree");
         }
@@ -354,6 +608,16 @@ public final class SingleInstrumentMatchingEngine {
     return new OrderBookSnapshot(snapshotSide(bids, Side.BUY), snapshotSide(asks, Side.SELL));
   }
 
+  private MarketControlSnapshot detachedMarketControlSnapshot(long nextApplication) {
+    return new MarketControlSnapshot(
+        activeRuleSet,
+        Optional.ofNullable(preparedRuleSet),
+        controlRevision,
+        Optional.ofNullable(lastActivationFence),
+        new ApplicationSequence(nextApplication),
+        new AcceptanceSequence(nextAcceptanceSequence));
+  }
+
   private static List<OrderBookSnapshot.PriceLevel> snapshotSide(
       NavigableMap<Long, PriceLevelState> side, Side sideName) {
     List<OrderBookSnapshot.PriceLevel> levels = new ArrayList<>(side.size());
@@ -363,7 +627,10 @@ public final class SingleInstrumentMatchingEngine {
           for (OrderState order : level.values()) {
             views.add(
                 new OrderBookSnapshot.RestingOrderView(
-                    order.sequence, order.orderId, new QuantityLots(order.remainingQuantityLots)));
+                    order.sequence,
+                    order.orderId,
+                    new QuantityLots(order.remainingQuantityLots),
+                    order.admissionRuleSet));
           }
           levels.add(
               new OrderBookSnapshot.PriceLevel(
@@ -377,6 +644,15 @@ public final class SingleInstrumentMatchingEngine {
     RESTING,
     FILLED,
     CANCELED
+  }
+
+  private record AppliedCommand(ApplicationSequence current, long following) {
+    private AppliedCommand {
+      Objects.requireNonNull(current, "current");
+      if (following <= current.value()) {
+        throw new IllegalArgumentException("following application sequence must increase");
+      }
+    }
   }
 
   private static final class PriceLevelState {
@@ -426,6 +702,7 @@ public final class SingleInstrumentMatchingEngine {
     private final Side side;
     private final PriceTicks priceTicks;
     private final ExecutionPolicy executionPolicy;
+    private final RuleSetIdentity admissionRuleSet;
     private final long originalQuantityLots;
 
     private long remainingQuantityLots;
@@ -434,12 +711,16 @@ public final class SingleInstrumentMatchingEngine {
     private Lifecycle lifecycle = Lifecycle.ACCEPTED;
 
     private OrderState(
-        AcceptanceSequence sequence, PlaceLimitOrder command, ExecutionPolicy executionPolicy) {
+        AcceptanceSequence sequence,
+        PlaceLimitOrder command,
+        ExecutionPolicy executionPolicy,
+        RuleSetIdentity admissionRuleSet) {
       this.sequence = sequence;
       this.orderId = command.orderId();
       this.side = command.side();
       this.priceTicks = command.priceTicks();
       this.executionPolicy = executionPolicy;
+      this.admissionRuleSet = Objects.requireNonNull(admissionRuleSet, "admissionRuleSet");
       this.originalQuantityLots = command.quantityLots().value();
       this.remainingQuantityLots = originalQuantityLots;
     }

@@ -83,7 +83,7 @@ tasks.named("assemble") {
 }
 
 tasks.named("check") {
-    dependsOn("spotlessCheck", ":matching-core:check", ":matching-reference:check", ":matching-testkit:check", "m04Check")
+    dependsOn("spotlessCheck", ":matching-core:check", ":matching-reference:check", ":matching-testkit:check", "m05Check")
 }
 
 tasks.register("m00Check") {

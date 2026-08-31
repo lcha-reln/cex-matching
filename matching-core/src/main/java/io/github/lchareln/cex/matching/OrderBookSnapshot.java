@@ -57,11 +57,20 @@ public record OrderBookSnapshot(List<PriceLevel> bids, List<PriceLevel> asks) {
 
   /** The active remainder of one accepted order. */
   public record RestingOrderView(
-      AcceptanceSequence sequence, OrderId orderId, QuantityLots remainingQuantityLots) {
+      AcceptanceSequence sequence,
+      OrderId orderId,
+      QuantityLots remainingQuantityLots,
+      RuleSetIdentity admissionRuleSet) {
     public RestingOrderView {
       Objects.requireNonNull(sequence, "sequence");
       Objects.requireNonNull(orderId, "orderId");
       Objects.requireNonNull(remainingQuantityLots, "remainingQuantityLots");
+      Objects.requireNonNull(admissionRuleSet, "admissionRuleSet");
+    }
+
+    public RestingOrderView(
+        AcceptanceSequence sequence, OrderId orderId, QuantityLots remainingQuantityLots) {
+      this(sequence, orderId, remainingQuantityLots, MarketRuleSetArtifact.bootstrapIdentity());
     }
   }
 }

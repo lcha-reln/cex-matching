@@ -17,12 +17,18 @@ tasks.withType<Test>().configureEach {
     systemProperty("m00.repositoryRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
     systemProperty("matching.repositoryRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
     // Historical source-identity checks remain executable from their immutable completion tags.
-    // M04 runs their semantic contracts but must not rebind old exact source counts to this tree.
+    // M05 re-runs their semantic contracts but must not rebind old source/import gates to this tree.
     exclude(
         "**/M00ArchitectureBoundaryTest.class",
         "**/M00MutantJudgeTest.class",
+        "**/M01ArchitectureBoundaryTest.class",
+        "**/M01CheckRunnerTest.class",
+        "**/M01EvidenceWriterTest.class",
+        "**/M02ArchitectureBoundaryTest.class",
+        "**/M02CheckRunnerTest.class",
         "**/M03ArchitectureBoundaryTest.class",
         "**/M03CheckRunnerTest.class",
+        "**/M04ArchitectureGateTest.class",
         "**/M04StartCheckRunnerTest.class",
     )
 }

@@ -1,0 +1,429 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m05.counterexamples.v1.schema.json",
+  "title": "Matching M05 persisted one-minimal counterexamples",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "fixtureSha256",
+    "profileSha256",
+    "generatorAlgorithm",
+    "seedDerivation",
+    "modelVersion",
+    "scenarios"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "matching.m05.counterexamples.v1"},
+    "fixtureSha256": {"const": "cd56fbbb0bc56dc809f741ed15ac53c7e8e41162745db7841cb853fc2768c53e"},
+    "profileSha256": {"const": "52dba5c70152eac7ae41464ec7e669526845ca7460deda160de3d9d614c69d57"},
+    "generatorAlgorithm": {"const": "splitmix64-v1"},
+    "seedDerivation": {"const": "splitmix64(baseSeed+historyIndex).nextLong"},
+    "modelVersion": {"const": "linear-scan-reference-m05-v1"},
+    "scenarios": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        {"$ref": "#/$defs/hashMismatchPrepared"},
+        {"$ref": "#/$defs/sameVersionDifferentHashAccepted"},
+        {"$ref": "#/$defs/activateWithoutPrepare"},
+        {"$ref": "#/$defs/staleActivationFenceAccepted"},
+        {"$ref": "#/$defs/failedActivationChangesActive"},
+        {"$ref": "#/$defs/outOfBandPlaceAccepted"},
+        {"$ref": "#/$defs/stalePlaceRuleAccepted"},
+        {"$ref": "#/$defs/activationRevalidatesResting"}
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "hashMismatchPrepared": {
+      "allOf": [
+        {"$ref": "#/$defs/scenario"},
+        {"properties": {
+          "scenarioId": {"const": "hash-mismatch-prepared"},
+          "mutantId": {"const": "M05-HASH-MISMATCH-PREPARED"},
+          "propertyId": {"const": "EXACT_COMMAND_DIFFERENTIAL"},
+          "divergenceKind": {"const": "EVENT_BATCH"},
+          "coverageKey": {"const": "CONTENT_HASH_MISMATCH"}
+        }}
+      ]
+    },
+    "sameVersionDifferentHashAccepted": {
+      "allOf": [
+        {"$ref": "#/$defs/scenario"},
+        {"properties": {
+          "scenarioId": {"const": "same-version-different-hash-accepted"},
+          "mutantId": {"const": "M05-SAME-VERSION-DIFFERENT-HASH-ACCEPTED"},
+          "propertyId": {"const": "RULE_SET_PREPARE_IDEMPOTENCY"},
+          "divergenceKind": {"const": "IDEMPOTENT_PREPARE_CHANGED_IDENTITY"},
+          "coverageKey": {"const": "VERSION_CONTENT_CONFLICT"}
+        }}
+      ]
+    },
+    "activateWithoutPrepare": {
+      "allOf": [
+        {"$ref": "#/$defs/scenario"},
+        {"properties": {
+          "scenarioId": {"const": "activate-without-prepare"},
+          "mutantId": {"const": "M05-ACTIVATE-WITHOUT-PREPARE"},
+          "propertyId": {"const": "ACTIVATE_REQUIRES_PREPARED"},
+          "divergenceKind": {"const": "UNPREPARED_ACTIVATION_ACCEPTED"},
+          "coverageKey": {"const": "ACTIVATE_WITHOUT_PREPARE"}
+        }}
+      ]
+    },
+    "staleActivationFenceAccepted": {
+      "allOf": [
+        {"$ref": "#/$defs/scenario"},
+        {"properties": {
+          "scenarioId": {"const": "stale-activation-fence-accepted"},
+          "mutantId": {"const": "M05-STALE-ACTIVATION-FENCE-ACCEPTED"},
+          "propertyId": {"const": "ACTIVATION_SEQUENCE_FENCE"},
+          "divergenceKind": {"const": "STALE_ACTIVATION_ACCEPTED"},
+          "coverageKey": {"const": "STALE_ACTIVATION_FENCE"}
+        }}
+      ]
+    },
+    "failedActivationChangesActive": {
+      "allOf": [
+        {"$ref": "#/$defs/scenario"},
+        {"properties": {
+          "scenarioId": {"const": "failed-activation-changes-active"},
+          "mutantId": {"const": "M05-FAILED-ACTIVATION-CHANGES-ACTIVE"},
+          "propertyId": {"const": "RULE_SET_ACTIVATION_ATOMICITY"},
+          "divergenceKind": {"const": "ACTIVE_RULE_STATE"},
+          "coverageKey": {"const": "FAILED_ACTIVATION_ATOMICITY"}
+        }}
+      ]
+    },
+    "outOfBandPlaceAccepted": {
+      "allOf": [
+        {"$ref": "#/$defs/scenario"},
+        {"properties": {
+          "scenarioId": {"const": "out-of-band-place-accepted"},
+          "mutantId": {"const": "M05-OUT-OF-BAND-PLACE-ACCEPTED"},
+          "propertyId": {"const": "INCLUSIVE_ORDER_ENTRY_PRICE_BAND"},
+          "divergenceKind": {"const": "OUT_OF_BAND_PLACE_ACCEPTED"},
+          "coverageKey": {"const": "BELOW_BAND"}
+        }}
+      ]
+    },
+    "stalePlaceRuleAccepted": {
+      "allOf": [
+        {"$ref": "#/$defs/scenario"},
+        {"properties": {
+          "scenarioId": {"const": "stale-place-rule-accepted"},
+          "mutantId": {"const": "M05-STALE-PLACE-RULE-ACCEPTED"},
+          "propertyId": {"const": "GOVERNED_PLACE_FENCE"},
+          "divergenceKind": {"const": "STALE_PLACE_RULE_ACCEPTED"},
+          "coverageKey": {"const": "STALE_PLACE_FENCE"}
+        }}
+      ]
+    },
+    "activationRevalidatesResting": {
+      "allOf": [
+        {"$ref": "#/$defs/scenario"},
+        {"properties": {
+          "scenarioId": {"const": "activation-revalidates-resting"},
+          "mutantId": {"const": "M05-ACTIVATION-REVALIDATES-RESTING"},
+          "propertyId": {"const": "GRANDFATHER_RESTING_ORDERS"},
+          "divergenceKind": {"const": "ACTIVATION_REVALIDATED_BOOK"},
+          "coverageKey": {"const": "GRANDFATHERED_MAKER"}
+        }}
+      ]
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenarioId", "mutantId", "classification", "propertyId", "divergenceKind",
+        "sourceKind", "historyIndex", "lane", "seed", "coverageKey",
+        "sourceFailingCommandIndex", "originalCommandCount", "minimizedCommandCount",
+        "firstFailingCommandIndex", "oneMinimal", "shrinkTrials", "originalCommands",
+        "commands", "actualAtFailure"
+      ],
+      "properties": {
+        "scenarioId": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "mutantId": {"enum": [
+          "M05-HASH-MISMATCH-PREPARED",
+          "M05-SAME-VERSION-DIFFERENT-HASH-ACCEPTED",
+          "M05-ACTIVATE-WITHOUT-PREPARE",
+          "M05-STALE-ACTIVATION-FENCE-ACCEPTED",
+          "M05-FAILED-ACTIVATION-CHANGES-ACTIVE",
+          "M05-OUT-OF-BAND-PLACE-ACCEPTED",
+          "M05-STALE-PLACE-RULE-ACCEPTED",
+          "M05-ACTIVATION-REVALIDATES-RESTING"
+        ]},
+        "classification": {"const": "STUDENT_FAILURE"},
+        "propertyId": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"},
+        "divergenceKind": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"},
+        "sourceKind": {"const": "GENERATED"},
+        "historyIndex": {"type": "integer", "minimum": 0, "maximum": 159},
+        "lane": {"enum": [
+          "RULE_SET_LIFECYCLE_AND_HASH",
+          "ACTIVATION_AND_PLACE_FENCE",
+          "INCLUSIVE_BAND_BUY_SELL",
+          "GRANDFATHERED_CROSS_VERSION",
+          "MIXED_M04_POLICY_AND_CONTROL"
+        ]},
+        "seed": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+        "coverageKey": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"},
+        "sourceFailingCommandIndex": {"type": "integer", "minimum": 0, "maximum": 63},
+        "originalCommandCount": {"const": 64},
+        "minimizedCommandCount": {"type": "integer", "minimum": 1, "maximum": 63},
+        "firstFailingCommandIndex": {"type": "integer", "minimum": 0, "maximum": 62},
+        "oneMinimal": {"const": true},
+        "shrinkTrials": {"type": "integer", "minimum": 1, "maximum": 50000},
+        "originalCommands": {
+          "type": "array", "minItems": 64, "maxItems": 64,
+          "items": {"$ref": "#/$defs/rawCommand"}
+        },
+        "commands": {
+          "type": "array", "minItems": 1, "maxItems": 63,
+          "items": {"$ref": "#/$defs/replayCommand"}
+        },
+        "actualAtFailure": {"$ref": "#/$defs/outcome"}
+      }
+    },
+    "rawCommand": {
+      "allOf": [
+        {"$ref": "#/$defs/command"},
+        {"not": {"anyOf": [{"required": ["caseId"]}, {"required": ["expected"]}]}}
+      ]
+    },
+    "replayCommand": {
+      "allOf": [
+        {"$ref": "#/$defs/command"},
+        {"required": ["caseId", "expected"]}
+      ]
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "caseId": {"type": "string", "pattern": "^command-[1-9][0-9]*$"},
+        "type": {"enum": ["PLACE", "CANCEL", "PREPARE_RULE_SET", "ACTIVATE_RULE_SET"]},
+        "entrypoint": {"enum": ["LEGACY", "GOVERNED"]},
+        "expectedRuleSet": {"$ref": "#/$defs/identity"},
+        "input": {"type": "object"},
+        "expected": {"$ref": "#/$defs/outcome"}
+      },
+      "oneOf": [
+        {
+          "required": ["type", "entrypoint", "input"],
+          "properties": {
+            "type": {"const": "PLACE"},
+            "entrypoint": {"const": "LEGACY"},
+            "input": {"$ref": "#/$defs/placeInput"}
+          },
+          "not": {"required": ["expectedRuleSet"]}
+        },
+        {
+          "required": ["type", "entrypoint", "expectedRuleSet", "input"],
+          "properties": {
+            "type": {"const": "PLACE"},
+            "entrypoint": {"const": "GOVERNED"},
+            "input": {"$ref": "#/$defs/placeInput"}
+          }
+        },
+        {
+          "required": ["type", "input"],
+          "properties": {"type": {"const": "CANCEL"}, "input": {"$ref": "#/$defs/cancelInput"}},
+          "not": {"anyOf": [{"required": ["entrypoint"]}, {"required": ["expectedRuleSet"]}]}
+        },
+        {
+          "required": ["type", "input"],
+          "properties": {"type": {"const": "PREPARE_RULE_SET"}, "input": {"$ref": "#/$defs/prepareInput"}},
+          "not": {"anyOf": [{"required": ["entrypoint"]}, {"required": ["expectedRuleSet"]}]}
+        },
+        {
+          "required": ["type", "input"],
+          "properties": {"type": {"const": "ACTIVATE_RULE_SET"}, "input": {"$ref": "#/$defs/activateInput"}},
+          "not": {"anyOf": [{"required": ["entrypoint"]}, {"required": ["expectedRuleSet"]}]}
+        }
+      ]
+    },
+    "placeInput": {
+      "type": "object", "additionalProperties": false,
+      "required": ["instrumentId", "orderId", "side", "priceTicks", "quantityLots", "executionPolicy"],
+      "properties": {
+        "instrumentId": {"type": "string"}, "orderId": {"type": "integer"},
+        "side": {"type": "string"}, "priceTicks": {"type": "integer"},
+        "quantityLots": {"type": "integer"}, "executionPolicy": {"type": "string"}
+      }
+    },
+    "cancelInput": {
+      "type": "object", "additionalProperties": false,
+      "required": ["instrumentId", "orderId"],
+      "properties": {"instrumentId": {"type": "string"}, "orderId": {"type": "integer"}}
+    },
+    "prepareInput": {
+      "type": "object", "additionalProperties": false,
+      "required": ["expectedActive", "artifact"],
+      "properties": {"expectedActive": {"$ref": "#/$defs/identity"}, "artifact": {"$ref": "#/$defs/artifact"}}
+    },
+    "activateInput": {
+      "type": "object", "additionalProperties": false,
+      "required": ["expectedApplicationSequence", "expectedActive", "target"],
+      "properties": {
+        "expectedApplicationSequence": {"type": "integer"},
+        "expectedActive": {"$ref": "#/$defs/identity"},
+        "target": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "contentHash"],
+      "properties": {
+        "version": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+        "contentHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "instrumentId", "version", "lowerInclusive", "upperInclusive", "contentHash"],
+      "properties": {
+        "schemaVersion": {"const": "matching.market-rule-set.v1"},
+        "instrumentId": {"const": "BTC-USDT"},
+        "version": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+        "lowerInclusive": {"type": "integer", "minimum": 1, "maximum": 9223372036854775807},
+        "upperInclusive": {"type": "integer", "minimum": 1, "maximum": 9223372036854775807},
+        "contentHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "outcome": {
+      "type": "object", "additionalProperties": false,
+      "required": ["applicationSequence", "events", "stateAfter"],
+      "properties": {
+        "applicationSequence": {"type": "integer", "minimum": 1},
+        "events": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/event"}},
+        "stateAfter": {"$ref": "#/$defs/state"}
+      }
+    },
+    "event": {
+      "oneOf": [
+        {"$ref": "#/$defs/rejected"}, {"$ref": "#/$defs/placeRejected"},
+        {"$ref": "#/$defs/cancelRejected"}, {"$ref": "#/$defs/accepted"},
+        {"$ref": "#/$defs/trade"}, {"$ref": "#/$defs/rested"},
+        {"$ref": "#/$defs/remainderCanceled"}, {"$ref": "#/$defs/canceled"},
+        {"$ref": "#/$defs/ruleSetPrepared"}, {"$ref": "#/$defs/prepareRejected"},
+        {"$ref": "#/$defs/ruleSetActivated"}, {"$ref": "#/$defs/activateRejected"}
+      ]
+    },
+    "rejected": {
+      "type": "object", "additionalProperties": false, "required": ["type", "code", "field"],
+      "properties": {"type": {"const": "REJECTED"}, "code": {"type": "string", "minLength": 1}, "field": {"type": "string", "minLength": 1}}
+    },
+    "placeRejected": {
+      "type": "object", "additionalProperties": false, "required": ["type", "orderId", "code", "executionRuleSet"],
+      "properties": {"type": {"const": "PLACE_REJECTED"}, "orderId": {"type": "integer"}, "code": {"type": "string", "minLength": 1}, "executionRuleSet": {"$ref": "#/$defs/identity"}}
+    },
+    "cancelRejected": {
+      "type": "object", "additionalProperties": false, "required": ["type", "orderId", "code", "executionRuleSet"],
+      "properties": {"type": {"const": "CANCEL_REJECTED"}, "orderId": {"type": "integer"}, "code": {"type": "string", "minLength": 1}, "executionRuleSet": {"$ref": "#/$defs/identity"}}
+    },
+    "accepted": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "acceptanceSequence", "orderId", "side", "priceTicks", "quantityLots", "executionPolicy", "admissionRuleSet", "executionRuleSet"],
+      "properties": {
+        "type": {"const": "ACCEPTED"}, "acceptanceSequence": {"type": "integer"}, "orderId": {"type": "integer"},
+        "side": {"type": "string"}, "priceTicks": {"type": "integer"}, "quantityLots": {"type": "integer"},
+        "executionPolicy": {"type": "string"}, "admissionRuleSet": {"$ref": "#/$defs/identity"}, "executionRuleSet": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "trade": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "makerSequence", "makerOrderId", "takerSequence", "takerOrderId", "priceTicks", "quantityLots", "makerAdmissionRuleSet", "takerAdmissionRuleSet", "executionRuleSet"],
+      "properties": {
+        "type": {"const": "TRADE"}, "makerSequence": {"type": "integer"}, "makerOrderId": {"type": "integer"},
+        "takerSequence": {"type": "integer"}, "takerOrderId": {"type": "integer"}, "priceTicks": {"type": "integer"},
+        "quantityLots": {"type": "integer"}, "makerAdmissionRuleSet": {"$ref": "#/$defs/identity"},
+        "takerAdmissionRuleSet": {"$ref": "#/$defs/identity"}, "executionRuleSet": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "rested": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "acceptanceSequence", "orderId", "side", "priceTicks", "remainingQuantityLots", "admissionRuleSet", "executionRuleSet"],
+      "properties": {
+        "type": {"const": "RESTED"}, "acceptanceSequence": {"type": "integer"}, "orderId": {"type": "integer"},
+        "side": {"type": "string"}, "priceTicks": {"type": "integer"}, "remainingQuantityLots": {"type": "integer"},
+        "admissionRuleSet": {"$ref": "#/$defs/identity"}, "executionRuleSet": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "remainderCanceled": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "acceptanceSequence", "orderId", "side", "priceTicks", "canceledQuantityLots", "reason", "admissionRuleSet", "executionRuleSet"],
+      "properties": {
+        "type": {"const": "REMAINDER_CANCELED"}, "acceptanceSequence": {"type": "integer"}, "orderId": {"type": "integer"},
+        "side": {"type": "string"}, "priceTicks": {"type": "integer"}, "canceledQuantityLots": {"type": "integer"},
+        "reason": {"const": "IOC_REMAINDER"}, "admissionRuleSet": {"$ref": "#/$defs/identity"}, "executionRuleSet": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "canceled": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "acceptanceSequence", "orderId", "side", "priceTicks", "canceledQuantityLots", "admissionRuleSet", "executionRuleSet"],
+      "properties": {
+        "type": {"const": "CANCELED"}, "acceptanceSequence": {"type": "integer"}, "orderId": {"type": "integer"},
+        "side": {"type": "string"}, "priceTicks": {"type": "integer"}, "canceledQuantityLots": {"type": "integer"},
+        "admissionRuleSet": {"$ref": "#/$defs/identity"}, "executionRuleSet": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "ruleSetPrepared": {
+      "type": "object", "additionalProperties": false, "required": ["type", "identity", "status"],
+      "properties": {
+        "type": {"const": "RULE_SET_PREPARED"}, "identity": {"$ref": "#/$defs/identity"},
+        "status": {"enum": ["PREPARED", "ALREADY_PREPARED", "SUPERSEDED"]},
+        "supersededIdentity": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "prepareRejected": {
+      "type": "object", "additionalProperties": false, "required": ["type", "code"],
+      "properties": {"type": {"const": "PREPARE_RULE_SET_REJECTED"}, "code": {"type": "string", "minLength": 1}}
+    },
+    "ruleSetActivated": {
+      "type": "object", "additionalProperties": false, "required": ["type", "previousActive", "active", "fence"],
+      "properties": {"type": {"const": "RULE_SET_ACTIVATED"}, "previousActive": {"$ref": "#/$defs/identity"}, "active": {"$ref": "#/$defs/identity"}, "fence": {"$ref": "#/$defs/fence"}}
+    },
+    "activateRejected": {
+      "type": "object", "additionalProperties": false, "required": ["type", "code"],
+      "properties": {"type": {"const": "ACTIVATE_RULE_SET_REJECTED"}, "code": {"type": "string", "minLength": 1}}
+    },
+    "fence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["applicationSequence", "controlRevision", "firstAcceptanceSequence"],
+      "properties": {"applicationSequence": {"type": "integer"}, "controlRevision": {"type": "integer"}, "firstAcceptanceSequence": {"type": "integer"}}
+    },
+    "state": {
+      "type": "object", "additionalProperties": false,
+      "required": ["nextApplicationSequence", "nextAcceptanceSequence", "controlRevision", "activeRuleSet", "book"],
+      "properties": {
+        "nextApplicationSequence": {"type": "integer"}, "nextAcceptanceSequence": {"type": "integer"},
+        "controlRevision": {"type": "integer"}, "activeRuleSet": {"$ref": "#/$defs/artifact"},
+        "preparedRuleSet": {"$ref": "#/$defs/artifact"}, "lastActivationFence": {"$ref": "#/$defs/fence"},
+        "book": {"$ref": "#/$defs/book"}
+      }
+    },
+    "book": {
+      "type": "object", "additionalProperties": false, "required": ["bids", "asks"],
+      "properties": {"bids": {"$ref": "#/$defs/levels"}, "asks": {"$ref": "#/$defs/levels"}}
+    },
+    "levels": {"type": "array", "items": {"$ref": "#/$defs/level"}},
+    "level": {
+      "type": "object", "additionalProperties": false, "required": ["side", "priceTicks", "orders"],
+      "properties": {
+        "side": {"enum": ["BUY", "SELL"]}, "priceTicks": {"type": "integer"},
+        "orders": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/restingOrder"}}
+      }
+    },
+    "restingOrder": {
+      "type": "object", "additionalProperties": false,
+      "required": ["acceptanceSequence", "orderId", "remainingQuantityLots", "admissionRuleSet"],
+      "properties": {
+        "acceptanceSequence": {"type": "integer"}, "orderId": {"type": "integer"},
+        "remainingQuantityLots": {"type": "integer"}, "admissionRuleSet": {"$ref": "#/$defs/identity"}
+      }
+    }
+  }
+}
