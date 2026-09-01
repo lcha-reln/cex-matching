@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m09.scenario.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "faultModel", "scenarios"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m09.scenario.v1"},
+    "faultModel": {"const": "CODE_LEVEL_INJECTION_AND_PROCESS_HALT"},
+    "scenarios": {
+      "type": "array",
+      "minItems": 22,
+      "maxItems": 22,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenarioId", "operations", "proofObligations"],
+        "properties": {
+          "scenarioId": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"},
+          "operations": {
+            "type": "array",
+            "minItems": 4,
+            "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"}
+          },
+          "proofObligations": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"$ref": "#/$defs/coverageId"}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "coverageId": {
+      "enum": [
+        "QUIESCENT_COMMAND_BOUNDARY_CAPTURE",
+        "FULL_ORDER_REGISTRY_ROUND_TRIP",
+        "PRICE_TIME_FIFO_ROUND_TRIP",
+        "TERMINAL_ORDER_NON_RESURRECTION",
+        "STP_STATE_ROUND_TRIP",
+        "ACTIVE_RULE_SET_ROUND_TRIP",
+        "PREPARED_RULE_SET_ROUND_TRIP",
+        "CONTROL_FENCES_ROUND_TRIP",
+        "MARKET_MODE_ROUND_TRIP",
+        "MASS_CANCEL_FENCE_ROUND_TRIP",
+        "SEQUENCE_CURSORS_ROUND_TRIP",
+        "DURABLE_IDENTITY_INDEX_ROUND_TRIP",
+        "ORIGINAL_RESULT_REPLAY_ROUND_TRIP",
+        "TRANSCRIPT_DIGEST_ROUND_TRIP",
+        "SEMANTIC_SERIALIZATION_DIGEST_SEPARATION",
+        "SNAPSHOT_SUFFIX_GENESIS_EQUIVALENCE",
+        "EMPTY_SUFFIX_RECOVERY",
+        "MULTI_SEGMENT_SUFFIX_RECOVERY",
+        "CUT_RECORD_EXACTLY_ONCE",
+        "RECOVERY_BUDGET_ENFORCED_PRE_WAL",
+        "ORPHAN_TEMP_IGNORED",
+        "SNAPSHOT_FORCE_BEFORE_RENAME",
+        "SNAPSHOT_RENAME_BEFORE_DIRECTORY_FORCE",
+        "SNAPSHOT_DIRECTORY_FORCE_BEFORE_RETIREMENT",
+        "NEWEST_PUBLISHED_GENERATION_SELECTED",
+        "UNKNOWN_SNAPSHOT_VERSION_FAIL_CLOSED",
+        "SNAPSHOT_CORRUPTION_FAIL_CLOSED",
+        "GENERATION_SHARD_CUT_MISMATCH_FAIL_CLOSED",
+        "RETIRE_ONLY_FULLY_COVERED_CLOSED_SEGMENTS",
+        "ACTIVE_OR_CROSSING_SEGMENT_RETAINED",
+        "RETIREMENT_DELETE_DIRECTORY_FORCE",
+        "MISSING_PREFIX_WITHOUT_VALID_SNAPSHOT_FAIL_CLOSED"
+      ]
+    }
+  }
+}

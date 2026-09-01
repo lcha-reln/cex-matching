@@ -16,18 +16,20 @@ HALTED-only Mass Cancel in global acceptance order.
 M07 completes the next deliberately narrow axis: an upstream-resolved opaque participant group and
 taker-owned self-trade-prevention instruction. M08 completes the first local durability axis: a
 caller-serialized, single-shard M08C1/M08W1 runtime with durable bidirectional identity, genesis
-recovery, and an ACK that may occur only after append, force, and matching apply. Networking,
-Snapshot, replication, failover, performance work, and Aeron Cluster remain later units.
+recovery, and an ACK that may occur only after append, force, and matching apply. M09 now freezes
+the next structured RED: one `M09S1` snapshot, a 64-record / 1-MiB WAL-suffix recovery budget, and
+whole-segment retirement after durable snapshot publication. No M09 production snapshot code or
+completion evidence exists at this start boundary.
 
 ## Current course boundary
 
 - Profile: `SPOT-CEX-1.0`
-- Plan version: `0.10`
-- Unit: `M08`
-- Declared start ref: `course/m08-start`
-- Declared complete ref: `course/m08-complete`
+- Plan version: `0.11`
+- Unit: `M09`
+- Declared start ref: `course/m09-start`
+- Declared future complete ref: `course/m09-complete`
 - Latest product stopping point: `matching-0.1.0` at M03; M04–M08 have no product release
-- Lifecycle at this boundary: `COMPLETE / PASS`
+- Lifecycle at this boundary: `READY / CONTRACT / GOAL_NOT_IMPLEMENTED`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -35,12 +37,28 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The completed M08 boundary is verified with:
+The root build remains GREEN by rerunning the completed M08 semantic boundary:
 
 ```bash
 ./gradlew clean build --no-daemon
-./gradlew m08Check --no-daemon
 ```
+
+The explicit M09 command intentionally exits nonzero after writing a schema-valid structured RED:
+
+```bash
+./gradlew m09Check --no-daemon
+# M09 check status: GOAL_NOT_IMPLEMENTED
+```
+
+The start contract freezes 22 fixed scenarios, seed `5909`, 96 histories by 40 operations across
+four lanes, 32 obligations, seven child-process crash windows, eight deterministic failure seams,
+12 executable semantic-mutant IDs, and five tutorial permalinks. Unknown snapshot versions fail
+closed; M09 has no N-1 fixture or format-evolution claim. The exact contract is in
+[`docs/specs/m09.md`](docs/specs/m09.md). CI requires annotated `course/m09-start` to peel to the
+exact start HEAD, forbids `course/m09-complete`, evidence, and a `matching-*` product release, and
+checks that explicit `m09Check` remains `GOAL_NOT_IMPLEMENTED`.
+
+## Inherited M08 completion
 
 `m08Check` first reruns the inherited M07 semantic judge. It then executes 20 fixed scenarios and
 two byte-exact generations of seed `5808` across 96 histories by 48 boundaries. The frozen weighted
@@ -242,7 +260,8 @@ matching-testkit    generators, differential judge, replay, mutants, and evidenc
 M08 adds exactly one production module, `matching-local-runtime`, after the start tag. The core stays
 infrastructure-free, and the runtime has no matching-reference, testkit, network, database, Aeron,
 cluster, Counter, or Rest dependency. Historical M00–M07 evidence stays attached to immutable
-completion tags.
+completion tags. The M09 start boundary changes only course contracts, fixtures, schemas, the RED
+runner, tests, and CI; it adds no production snapshot implementation.
 
 Course dashboard: <https://lcha-reln.github.io/signal-grid-blog/practice/high-availability-cex/>
 

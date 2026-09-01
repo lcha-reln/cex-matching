@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m09.check.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "unit",
+    "status",
+    "contractPlanVersion",
+    "objective",
+    "courseDeclaration",
+    "inheritedBaseline",
+    "fixedCorpus",
+    "generator",
+    "snapshotContract",
+    "tutorialPermalinks",
+    "requiredMutants",
+    "missingCapabilities",
+    "releaseTarget"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "matching.m09.check.v1"},
+    "unit": {"const": "M09"},
+    "status": {"const": "GOAL_NOT_IMPLEMENTED"},
+    "contractPlanVersion": {"const": "0.11"},
+    "objective": {"const": "Add one M09S1 snapshot, bounded WAL-suffix recovery, and safe whole-segment retirement."},
+    "courseDeclaration": {"$ref": "#/$defs/course"},
+    "inheritedBaseline": {"$ref": "#/$defs/inherited"},
+    "fixedCorpus": {"$ref": "#/$defs/fixed"},
+    "generator": {"$ref": "#/$defs/generator"},
+    "snapshotContract": {"$ref": "#/$defs/snapshot"},
+    "tutorialPermalinks": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"}
+    },
+    "requiredMutants": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^M09-[A-Z0-9-]+$"}
+    },
+    "missingCapabilities": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"}
+    },
+    "releaseTarget": {"$ref": "#/$defs/release"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "course": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case", "profile", "planVersion", "project", "unit", "lifecycle", "designDepth", "startRef", "completeRef", "m09Check.expectedStatus", "evidencePath"],
+      "properties": {
+        "case": {"const": "high-availability-cex"},
+        "profile": {"const": "SPOT-CEX-1.0"},
+        "planVersion": {"const": "0.11"},
+        "project": {"const": "matching"},
+        "unit": {"const": "M09"},
+        "lifecycle": {"const": "READY"},
+        "designDepth": {"const": "CONTRACT"},
+        "startRef": {"const": "course/m09-start"},
+        "completeRef": {"const": "course/m09-complete"},
+        "m09Check.expectedStatus": {"const": "GOAL_NOT_IMPLEMENTED"},
+        "evidencePath": {"const": "build/lab-evidence/M09/manifest.json"}
+      }
+    },
+    "inherited": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "completeRef", "expectedStatus"],
+      "properties": {
+        "unit": {"const": "M08"},
+        "completeRef": {"const": "course/m08-complete"},
+        "expectedStatus": {"const": "PASS"}
+      }
+    },
+    "fixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "primaryCount", "operations", "schemaProbes"],
+      "properties": {
+        "sha256": {"const": "b9fd2679d3c82c52875e2a756a26f9c17c19072534477139331426d38f5393cd"},
+        "primaryCount": {"const": 22},
+        "operations": {"const": 88},
+        "schemaProbes": {"const": 5}
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "baseSeed", "primaryCount", "operations", "schemaProbes", "lanes", "historiesPerLane", "generatedOperations", "coverageObligations", "crashWindows", "failureSeams", "recoveryBudget"],
+      "properties": {
+        "sha256": {"const": "794621a446f7896cd43b741809393025e063b0ffb190570d9057b90ce1dabda8"},
+        "baseSeed": {"const": "5909"},
+        "primaryCount": {"const": 96},
+        "operations": {"const": 3840},
+        "schemaProbes": {"const": 6},
+        "lanes": {"const": 4},
+        "historiesPerLane": {"const": 24},
+        "generatedOperations": {"const": 3840},
+        "coverageObligations": {"const": 32},
+        "crashWindows": {"const": 7},
+        "failureSeams": {"const": 8},
+        "recoveryBudget": {"$ref": "#/$defs/budget"}
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxSuffixRecords", "maxSuffixBytes", "exhaustionResult"],
+      "properties": {
+        "maxSuffixRecords": {"const": 64},
+        "maxSuffixBytes": {"const": 1048576},
+        "exhaustionResult": {"const": "CHECKPOINT_REQUIRED_BEFORE_WAL"}
+      }
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "capture", "state", "publication", "recovery", "retirement", "recoveryBudget", "faultEvidence", "unknownVersion", "formatEvolution", "realPowerLossClaim", "replication", "aeron"],
+      "properties": {
+        "format": {"const": "M09S1"},
+        "capture": {"const": "QUIESCENT_CALLER_SERIALIZED_COMMAND_BOUNDARY"},
+        "state": {"const": "COMPLETE_CORE_IDENTITY_ORIGINAL_RESULTS_AND_TRANSCRIPT"},
+        "publication": {"const": "WRITE_TEMP_FORCE_ATOMIC_RENAME_DIRECTORY_FORCE"},
+        "recovery": {"const": "VALID_SNAPSHOT_THEN_CONTIGUOUS_M08W1_SUFFIX"},
+        "retirement": {"const": "PUBLISHED_CUT_THEN_FULLY_COVERED_CLOSED_SEGMENTS_ONLY"},
+        "recoveryBudget": {"$ref": "#/$defs/budget"},
+        "faultEvidence": {"const": "CODE_LEVEL_INJECTION_AND_PROCESS_HALT"},
+        "unknownVersion": {"const": "FAIL_CLOSED"},
+        "formatEvolution": {"const": false},
+        "realPowerLossClaim": {"const": false},
+        "replication": {"const": false},
+        "aeron": {"const": false}
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "verification"],
+      "properties": {
+        "unitTag": {"const": "course/m09-complete"},
+        "productRelease": {"type": "null"},
+        "verification": {"const": "M09_EVIDENCE_ONLY"}
+      }
+    }
+  }
+}

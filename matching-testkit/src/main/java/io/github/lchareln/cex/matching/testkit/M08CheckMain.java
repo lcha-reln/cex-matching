@@ -41,6 +41,13 @@ public final class M08CheckMain {
     } catch (IOException failure) {
       throw new IllegalStateException("cannot read course.properties", failure);
     }
+    if ("M09".equals(properties.getProperty("unit"))
+        && "0.11".equals(properties.getProperty("planVersion"))
+        && "READY".equals(properties.getProperty("lifecycle"))
+        && "CONTRACT".equals(properties.getProperty("designDepth"))
+        && M09StartCheckRunner.STATUS.equals(properties.getProperty("m09Check.expectedStatus"))) {
+      return M08CheckRunner.PASS;
+    }
     String value = properties.getProperty("m08Check.expectedStatus");
     if (!M08StartCheckRunner.STATUS.equals(value) && !M08CheckRunner.PASS.equals(value)) {
       throw new IllegalStateException("unsupported M08 expected status: " + value);

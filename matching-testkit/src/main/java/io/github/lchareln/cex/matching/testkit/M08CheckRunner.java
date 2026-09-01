@@ -6,7 +6,6 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Properties;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -69,7 +68,8 @@ public final class M08CheckRunner {
   }
 
   private static Artifacts execute(Path root, Path reports) {
-    verifyCourse(root);
+    // M08 is now an inherited semantic regression. Its evidence writer, immutable completion tag,
+    // and frozen inputs retain source identity; the current course declaration belongs to M09.
     verifyFrozenInputs(root);
     Path inheritedPath = reports.resolve(".m07-regression");
     InheritedResult inherited = runM07(root, inheritedPath);
@@ -382,24 +382,6 @@ public final class M08CheckRunner {
     release.put("verification", "M08_EVIDENCE_ONLY");
     JsonSupport.validate(failure, readString(root.resolve(CHECK_SCHEMA_PATH)), false);
     write(reports, "check.json", failure);
-  }
-
-  private static void verifyCourse(Path root) {
-    Properties properties = new Properties();
-    try (var input = Files.newInputStream(root.resolve("course.properties"))) {
-      properties.load(input);
-    } catch (IOException failure) {
-      throw new IllegalStateException("cannot read course.properties", failure);
-    }
-    studentRequire("M08".equals(properties.getProperty("unit")), "course unit is not M08");
-    studentRequire("0.10".equals(properties.getProperty("planVersion")), "course plan is not 0.10");
-    studentRequire("COMPLETE".equals(properties.getProperty("lifecycle")), "M08 is not complete");
-    studentRequire(
-        "IMPLEMENTED".equals(properties.getProperty("designDepth")),
-        "M08 design is not implemented");
-    studentRequire(
-        PASS.equals(properties.getProperty("m08Check.expectedStatus")),
-        "course does not require M08 PASS");
   }
 
   private static void verifyFrozenInputs(Path root) {

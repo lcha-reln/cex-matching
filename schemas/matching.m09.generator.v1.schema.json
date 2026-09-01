@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m09.generator.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "algorithm",
+    "baseSeed",
+    "histories",
+    "operationsPerHistory",
+    "lanes",
+    "operationDomain",
+    "recoveryBudget",
+    "crashWindows",
+    "failureSeams",
+    "coverageRequirements",
+    "requiredMutants"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "matching.m09.generator.v1"},
+    "algorithm": {"const": "splitmix64-v1"},
+    "baseSeed": {"const": "5909"},
+    "histories": {"const": 96},
+    "operationsPerHistory": {"const": 40},
+    "lanes": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "historyModulo", "prefixScenario"],
+        "properties": {
+          "id": {"enum": ["STATE_AND_IDENTITY", "CUT_AND_SUFFIX", "PUBLISH_AND_SELECTION", "RETIREMENT_AND_BUDGET"]},
+          "historyModulo": {"type": "integer", "minimum": 0, "maximum": 3},
+          "prefixScenario": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"}
+        }
+      }
+    },
+    "operationDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "submitWeight",
+        "duplicateOrConflictWeight",
+        "snapshotWeight",
+        "restartWeight",
+        "rolloverWeight",
+        "retireWeight",
+        "crashWeight",
+        "businessRejectionOneIn",
+        "controlCommandOneIn"
+      ],
+      "properties": {
+        "submitWeight": {"const": 44},
+        "duplicateOrConflictWeight": {"const": 10},
+        "snapshotWeight": {"const": 14},
+        "restartWeight": {"const": 12},
+        "rolloverWeight": {"const": 6},
+        "retireWeight": {"const": 8},
+        "crashWeight": {"const": 6},
+        "businessRejectionOneIn": {"const": 8},
+        "controlCommandOneIn": {"const": 8}
+      }
+    },
+    "recoveryBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxSuffixRecords", "maxSuffixBytes", "exhaustionResult"],
+      "properties": {
+        "maxSuffixRecords": {"const": 64},
+        "maxSuffixBytes": {"const": 1048576},
+        "exhaustionResult": {"const": "CHECKPOINT_REQUIRED_BEFORE_WAL"}
+      }
+    },
+    "crashWindows": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/crashWindow"}
+    },
+    "failureSeams": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/failureSeam"}
+    },
+    "coverageRequirements": {
+      "type": "array",
+      "minItems": 32,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/coverageId"}
+    },
+    "requiredMutants": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/mutantId"}
+    }
+  },
+  "$defs": {
+    "coverageId": {
+      "enum": [
+        "QUIESCENT_COMMAND_BOUNDARY_CAPTURE",
+        "FULL_ORDER_REGISTRY_ROUND_TRIP",
+        "PRICE_TIME_FIFO_ROUND_TRIP",
+        "TERMINAL_ORDER_NON_RESURRECTION",
+        "STP_STATE_ROUND_TRIP",
+        "ACTIVE_RULE_SET_ROUND_TRIP",
+        "PREPARED_RULE_SET_ROUND_TRIP",
+        "CONTROL_FENCES_ROUND_TRIP",
+        "MARKET_MODE_ROUND_TRIP",
+        "MASS_CANCEL_FENCE_ROUND_TRIP",
+        "SEQUENCE_CURSORS_ROUND_TRIP",
+        "DURABLE_IDENTITY_INDEX_ROUND_TRIP",
+        "ORIGINAL_RESULT_REPLAY_ROUND_TRIP",
+        "TRANSCRIPT_DIGEST_ROUND_TRIP",
+        "SEMANTIC_SERIALIZATION_DIGEST_SEPARATION",
+        "SNAPSHOT_SUFFIX_GENESIS_EQUIVALENCE",
+        "EMPTY_SUFFIX_RECOVERY",
+        "MULTI_SEGMENT_SUFFIX_RECOVERY",
+        "CUT_RECORD_EXACTLY_ONCE",
+        "RECOVERY_BUDGET_ENFORCED_PRE_WAL",
+        "ORPHAN_TEMP_IGNORED",
+        "SNAPSHOT_FORCE_BEFORE_RENAME",
+        "SNAPSHOT_RENAME_BEFORE_DIRECTORY_FORCE",
+        "SNAPSHOT_DIRECTORY_FORCE_BEFORE_RETIREMENT",
+        "NEWEST_PUBLISHED_GENERATION_SELECTED",
+        "UNKNOWN_SNAPSHOT_VERSION_FAIL_CLOSED",
+        "SNAPSHOT_CORRUPTION_FAIL_CLOSED",
+        "GENERATION_SHARD_CUT_MISMATCH_FAIL_CLOSED",
+        "RETIRE_ONLY_FULLY_COVERED_CLOSED_SEGMENTS",
+        "ACTIVE_OR_CROSSING_SEGMENT_RETAINED",
+        "RETIREMENT_DELETE_DIRECTORY_FORCE",
+        "MISSING_PREFIX_WITHOUT_VALID_SNAPSHOT_FAIL_CLOSED"
+      ]
+    },
+    "crashWindow": {
+      "enum": [
+        "BEFORE_SNAPSHOT_TEMP_WRITE",
+        "AFTER_PARTIAL_SNAPSHOT_TEMP_WRITE",
+        "AFTER_SNAPSHOT_FILE_FORCE_BEFORE_RENAME",
+        "AFTER_SNAPSHOT_RENAME_BEFORE_DIRECTORY_FORCE",
+        "AFTER_SNAPSHOT_DIRECTORY_FORCE_BEFORE_RETIREMENT",
+        "AFTER_FIRST_SEGMENT_DELETE_BEFORE_DIRECTORY_FORCE",
+        "AFTER_RETIREMENT_DIRECTORY_FORCE_BEFORE_RETURN"
+      ]
+    },
+    "failureSeam": {
+      "enum": [
+        "SNAPSHOT_TEMP_WRITE",
+        "SNAPSHOT_FILE_FORCE",
+        "SNAPSHOT_ATOMIC_RENAME",
+        "SNAPSHOT_DIRECTORY_FORCE",
+        "RETIREMENT_SEGMENT_DELETE",
+        "RETIREMENT_DIRECTORY_FORCE",
+        "SNAPSHOT_READ",
+        "WAL_SUFFIX_READ"
+      ]
+    },
+    "mutantId": {
+      "enum": [
+        "M09-SNAPSHOT-DROPS-RESTING-ORDER",
+        "M09-SNAPSHOT-RESETS-MARKET-MODE",
+        "M09-SNAPSHOT-DROPS-PREPARED-RULE-SET",
+        "M09-SNAPSHOT-DROPS-DURABLE-IDENTITY-RESULT",
+        "M09-SUFFIX-REPLAYS-CUT-RECORD",
+        "M09-SUFFIX-SKIPS-FIRST-RECORD",
+        "M09-UNKNOWN-VERSION-ACCEPTED",
+        "M09-CORRUPT-SNAPSHOT-ACCEPTED",
+        "M09-SNAPSHOT-IDENTITY-MISMATCH-ACCEPTED",
+        "M09-RETIREMENT-BEFORE-SNAPSHOT-DIRECTORY-FORCE",
+        "M09-RETIREMENT-DELETES-CROSSING-SEGMENT",
+        "M09-GENESIS-FALLBACK-WITH-MISSING-PREFIX"
+      ]
+    }
+  }
+}
