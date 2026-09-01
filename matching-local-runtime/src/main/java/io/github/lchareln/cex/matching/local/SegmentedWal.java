@@ -227,6 +227,7 @@ final class SegmentedWal implements AutoCloseable {
     }
 
     List<RecoveredRecord> records = new ArrayList<>();
+    RecoveryUsage recoveryUsage = new RecoveryUsage();
     long expectedSegmentId = segments.getFirst().segmentId();
     long expectedWalSequence = snapshot.isPresent() ? 0 : 1;
     long minimumWalExclusive = snapshot.map(SnapshotAnchor::lastWalSequence).orElse(0L);
@@ -237,7 +238,8 @@ final class SegmentedWal implements AutoCloseable {
         throw new WalCorruptionException("M08W1 segment ids contain a gap");
       }
       RecoveryCursor cursor =
-          recoverSegment(segment, isFinal, expectedWalSequence, minimumWalExclusive, records);
+          recoverSegment(
+              segment, isFinal, expectedWalSequence, minimumWalExclusive, recoveryUsage, records);
       if (index == 0
           && snapshot.isPresent()
           && cursor.firstWalSequence() > Math.incrementExact(minimumWalExclusive)) {
@@ -278,6 +280,7 @@ final class SegmentedWal implements AutoCloseable {
       boolean isFinal,
       long expectedFirstWalSequence,
       long minimumWalExclusive,
+      RecoveryUsage recoveryUsage,
       List<RecoveredRecord> records)
       throws IOException {
     try (FileChannel channel =
@@ -319,6 +322,9 @@ final class SegmentedWal implements AutoCloseable {
         if (minimumWalExclusive > 0 && expectedWalSequence > minimumWalExclusive) {
           faultInjector.hit(FaultPoint.BEFORE_SNAPSHOT_SUFFIX_READ);
         }
+        if (expectedWalSequence > minimumWalExclusive) {
+          recoveryUsage.requireAccepts(config.recoveryBudget(), recordLength, expectedWalSequence);
+        }
         byte[] encoded = readExactly(channel, offset, recordLength);
         M08WalFormat.DecodedRecord decoded = M08WalFormat.decodeRecord(encoded);
         if (decoded.walSequence() != expectedWalSequence) {
@@ -339,6 +345,7 @@ final class SegmentedWal implements AutoCloseable {
                 recordLength);
         if (decoded.walSequence() > minimumWalExclusive) {
           records.add(new RecoveredRecord(position, decoded.envelopeBytes()));
+          recoveryUsage.include(recordLength);
         }
         expectedWalSequence = Math.incrementExact(expectedWalSequence);
         offset += recordLength;
@@ -608,4 +615,23 @@ final class SegmentedWal implements AutoCloseable {
   private record SegmentFile(long segmentId, Path path) {}
 
   private record RecoveryCursor(long firstWalSequence, long nextWalSequence, long size) {}
+
+  private static final class RecoveryUsage {
+    private long records;
+    private long bytes;
+
+    private void requireAccepts(RecoveryBudget budget, int nextRecordBytes, long walSequence)
+        throws RecoveryException {
+      if (!budget.accepts(records, bytes, nextRecordBytes)) {
+        throw new RecoveryException(
+            "M09 recovery suffix exceeds the configured records-and-bytes budget before WAL "
+                + walSequence);
+      }
+    }
+
+    private void include(int recordBytes) {
+      records = Math.incrementExact(records);
+      bytes = Math.addExact(bytes, recordBytes);
+    }
+  }
 }

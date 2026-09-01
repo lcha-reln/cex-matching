@@ -132,6 +132,49 @@ class M09SnapshotRuntimeTest {
   }
 
   @Test
+  void finiteRecoveryRejectsLegacySuffixBeyondRecordBudgetBeforeAnyApply() throws Exception {
+    Path directory = directory("recovery-record-budget");
+    List<byte[]> commands = new ArrayList<>();
+    for (long sequence = 1;
+        sequence <= RecoveryBudget.M09_DEFAULT.maxSuffixRecords() + 1;
+        sequence++) {
+      commands.add(envelope(sequence, cancel(sequence)));
+    }
+    writeLegacySuffix(directory, commands);
+
+    assertFiniteRecoveryRejectedBeforeApply(directory, commands.size());
+  }
+
+  @Test
+  void finiteRecoveryRejectsLegacySuffixBeyondByteBudgetBeforeAnyApply() throws Exception {
+    Path directory = directory("recovery-byte-budget");
+    String wide = "x".repeat(16 * 1024);
+    List<byte[]> commands = new ArrayList<>();
+    for (long sequence = 1; sequence <= 17; sequence++) {
+      commands.add(
+          envelope(
+              sequence,
+              new M08Command.Place(
+                  wide,
+                  BigInteger.valueOf(sequence),
+                  wide,
+                  BigInteger.ONE,
+                  BigInteger.ONE,
+                  wide,
+                  0,
+                  wide,
+                  Optional.empty())));
+    }
+    long encodedBytes =
+        commands.stream().mapToLong(command -> M08WalFormat.RECORD_OVERHEAD + command.length).sum();
+    assertTrue(commands.size() < RecoveryBudget.M09_DEFAULT.maxSuffixRecords());
+    assertTrue(encodedBytes > RecoveryBudget.M09_DEFAULT.maxSuffixBytes());
+    writeLegacySuffix(directory, commands);
+
+    assertFiniteRecoveryRejectedBeforeApply(directory, commands.size());
+  }
+
+  @Test
   void retainsTwoGenerationsPrunesOnlyCoveredClosedSegmentsAndRejectsCorruptLatest()
       throws Exception {
     Path directory = directory("retention");
@@ -315,6 +358,31 @@ class M09SnapshotRuntimeTest {
 
   private WalConfig config(Path directory) {
     return WalConfig.snapshotDefaults(directory, SHARD);
+  }
+
+  private void writeLegacySuffix(Path directory, List<byte[]> commands) throws Exception {
+    try (LocalMatchingRuntime runtime =
+        LocalMatchingRuntime.openForTesting(
+            WalConfig.defaults(directory, SHARD), new TestCommandApplier(), FaultInjector.NONE)) {
+      commands.forEach(command -> assertDurable(runtime.submit(command)));
+    }
+  }
+
+  private void assertFiniteRecoveryRejectedBeforeApply(Path directory, int expectedLegacyApplies)
+      throws Exception {
+    TestCommandApplier bounded = new TestCommandApplier();
+    assertThrows(
+        RecoveryException.class,
+        () -> LocalMatchingRuntime.openForTesting(config(directory), bounded, FaultInjector.NONE));
+    assertEquals(0, bounded.applied().size());
+
+    TestCommandApplier legacy = new TestCommandApplier();
+    try (LocalMatchingRuntime recovered =
+        LocalMatchingRuntime.openForTesting(
+            WalConfig.defaults(directory, SHARD), legacy, FaultInjector.NONE)) {
+      assertEquals(expectedLegacyApplies, legacy.applied().size());
+      assertEquals(expectedLegacyApplies + 1L, recovered.nextWalSequence());
+    }
   }
 
   private Path directory(String name) throws Exception {
