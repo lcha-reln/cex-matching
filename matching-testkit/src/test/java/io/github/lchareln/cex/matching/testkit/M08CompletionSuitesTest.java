@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,9 @@ class M08CompletionSuitesTest {
     assertEquals(
         java.util.Set.of("SUBMIT", "DUPLICATE", "CONFLICT", "RESTART", "ROLLOVER", "FAULT"),
         result.selectedOperations().keySet());
+    assertEquals(
+        List.of("SUBMIT", "DUPLICATE", "CONFLICT", "RESTART", "ROLLOVER", "FAULT"),
+        new ArrayList<>(result.selectedOperations().keySet()));
     assertTrue(result.selectedOperations().values().stream().allMatch(count -> count > 0));
     assertEquals(
         1_152, result.selectedOperations().values().stream().mapToInt(Integer::intValue).sum());

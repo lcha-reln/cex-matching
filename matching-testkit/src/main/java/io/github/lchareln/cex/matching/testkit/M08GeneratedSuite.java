@@ -24,8 +24,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -817,9 +819,11 @@ final class M08GeneratedSuite {
   }
 
   private static Map<String, Integer> operationCounts(Metrics metrics) {
-    Map<String, Integer> counts = new HashMap<>();
-    metrics.selectedOperations.forEach((kind, count) -> counts.put(kind.name(), count));
-    return Map.copyOf(counts);
+    Map<String, Integer> counts = new LinkedHashMap<>();
+    for (OperationKind kind : OperationKind.values()) {
+      counts.put(kind.name(), metrics.selectedOperations.getOrDefault(kind, 0));
+    }
+    return Collections.unmodifiableMap(counts);
   }
 
   private static Path repositoryRoot(Path workingRoot) {
@@ -1571,7 +1575,7 @@ final class M08GeneratedSuite {
       byte[] canonicalBytes,
       String digest) {
     Result {
-      selectedOperations = Map.copyOf(selectedOperations);
+      selectedOperations = Collections.unmodifiableMap(new LinkedHashMap<>(selectedOperations));
       canonicalBytes = canonicalBytes.clone();
     }
 
