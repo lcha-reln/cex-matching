@@ -71,7 +71,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["scenarios", "declaredOperations", "digest"],
-      "properties": {"scenarios": {"const": 22}, "declaredOperations": {"const": 88}, "digest": {"const": "8d7e20c4b19dd51b8ca8b20d7d511b32c64c73dc1763434b62865303a00b76d5"}}
+      "properties": {"scenarios": {"const": 22}, "declaredOperations": {"const": 88}, "digest": {"const": "1636ed177f59347ec11b8e9ffe1fb6d872fd3de5225298381a161a0b7d755f43"}}
     },
     "generator": {
       "type": "object",

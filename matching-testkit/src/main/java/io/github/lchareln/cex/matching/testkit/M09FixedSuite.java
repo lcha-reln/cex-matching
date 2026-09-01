@@ -806,7 +806,7 @@ final class M09FixedSuite {
       // Missing prefix plus no valid authority must fail closed.
     }
     return proved(
-        "first-delete interruption reopened from published authority",
+        "first-delete interruption reopened from published authority; after removing the required snapshot, missing-prefix reopen failed closed",
         "RETIREMENT_DELETE_DIRECTORY_FORCE",
         "MISSING_PREFIX_WITHOUT_VALID_SNAPSHOT_FAIL_CLOSED");
   }

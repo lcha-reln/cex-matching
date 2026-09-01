@@ -79,7 +79,7 @@ jobs:
             } and
             .fixed.scenarios == 22 and
             .fixed.declaredOperations == 88 and
-            .fixed.digest == "8d7e20c4b19dd51b8ca8b20d7d511b32c64c73dc1763434b62865303a00b76d5" and
+            .fixed.digest == "1636ed177f59347ec11b8e9ffe1fb6d872fd3de5225298381a161a0b7d755f43" and
             .generator.baseSeed == "5909" and
             .generator.histories == 96 and
             .generator.operationsPerHistory == 40 and

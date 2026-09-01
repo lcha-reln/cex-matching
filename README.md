@@ -83,7 +83,7 @@ externally deleted final active segment. The fixed multi-segment suffix mechanis
 4-MiB byte budget to create a crossing suffix; the production default remains 64 records / 1 MiB.
 
 The M09 fixed canonical digest is
-`sha256:8d7e20c4b19dd51b8ca8b20d7d511b32c64c73dc1763434b62865303a00b76d5`. The
+`sha256:1636ed177f59347ec11b8e9ffe1fb6d872fd3de5225298381a161a0b7d755f43`. The
 generated canonical digest is
 `sha256:9551ad7a3026964b57b366e39d6307510789cd83c750bf239098f9ba299354e5`; its
 3,840 declared operations and separate 65-operation setup produce 4,225 ledger checks, 1,366 exact
