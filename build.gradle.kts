@@ -83,7 +83,7 @@ tasks.named("assemble") {
 }
 
 tasks.named("check") {
-    dependsOn("spotlessCheck", ":matching-core:check", ":matching-local-runtime:check", ":matching-reference:check", ":matching-testkit:check", "m08Check")
+    dependsOn("spotlessCheck", ":matching-core:check", ":matching-local-runtime:check", ":matching-reference:check", ":matching-testkit:check", "m09Check")
 }
 
 tasks.register("m00Check") {
@@ -196,6 +196,12 @@ tasks.register("m08Evidence") {
 
 tasks.register("m09Check") {
     group = "verification"
-    description = "Runs the frozen M09 snapshot and bounded-recovery structured RED."
+    description = "Runs the completed M09 snapshot and bounded-recovery judge."
     dependsOn(":matching-testkit:m09Check")
+}
+
+tasks.register("m09Evidence") {
+    group = "verification"
+    description = "Generates and validates clean-tree annotated-tag M09 evidence."
+    dependsOn(":matching-testkit:m09Evidence")
 }

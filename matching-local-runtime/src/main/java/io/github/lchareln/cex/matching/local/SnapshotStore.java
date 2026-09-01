@@ -7,7 +7,6 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -25,14 +24,20 @@ final class SnapshotStore {
   private final Path directory;
   private final long shardId;
   private final FaultInjector faultInjector;
+  private final StorageOperations storageOperations;
   private final M09SnapshotCodec codec = new M09SnapshotCodec();
   private final List<PublishedSnapshot> published = new ArrayList<>();
   private Optional<M09SnapshotCodec.DecodedSnapshot> latest = Optional.empty();
 
-  SnapshotStore(Path directory, long shardId, FaultInjector faultInjector) {
+  SnapshotStore(
+      Path directory,
+      long shardId,
+      FaultInjector faultInjector,
+      StorageOperations storageOperations) {
     this.directory = directory;
     this.shardId = shardId;
     this.faultInjector = faultInjector;
+    this.storageOperations = storageOperations;
   }
 
   Optional<M09SnapshotCodec.DecodedSnapshot> discover() throws IOException {
@@ -92,7 +97,7 @@ final class SnapshotStore {
       faultInjector.hit(FaultPoint.AFTER_PARTIAL_SNAPSHOT_TEMP_WRITE);
       writeFully(channel, ByteBuffer.wrap(encoded, partialLength, encoded.length - partialLength));
       faultInjector.hit(FaultPoint.BEFORE_SNAPSHOT_FILE_FORCE);
-      channel.force(true);
+      storageOperations.forceFile(temporary, channel);
     }
     faultInjector.hit(FaultPoint.BEFORE_SNAPSHOT_READ);
     M09SnapshotCodec.DecodedSnapshot readBack = decode(temporary);
@@ -101,7 +106,7 @@ final class SnapshotStore {
     }
     try {
       faultInjector.hit(FaultPoint.BEFORE_SNAPSHOT_ATOMIC_RENAME);
-      Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE);
+      storageOperations.atomicMove(temporary, target);
     } catch (AtomicMoveNotSupportedException failure) {
       throw new IOException("M09S1 requires atomic snapshot publication", failure);
     }
@@ -122,7 +127,7 @@ final class SnapshotStore {
       List<PublishedSnapshot> obsolete = List.copyOf(published.subList(0, published.size() - 2));
       faultInjector.hit(FaultPoint.BEFORE_RETENTION_DELETE);
       for (PublishedSnapshot snapshot : obsolete) {
-        Files.delete(snapshot.path());
+        storageOperations.delete(snapshot.path());
       }
       faultInjector.hit(FaultPoint.BEFORE_RETENTION_DIRECTORY_FORCE);
       forceDirectory();
@@ -168,7 +173,7 @@ final class SnapshotStore {
     try (DirectoryStream<Path> paths = Files.newDirectoryStream(directory)) {
       for (Path path : paths) {
         if (TEMP_NAME.matcher(path.getFileName().toString()).matches()) {
-          Files.delete(path);
+          storageOperations.delete(path);
           removed = true;
         }
       }
@@ -179,9 +184,7 @@ final class SnapshotStore {
   }
 
   private void forceDirectory() throws IOException {
-    try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) {
-      channel.force(true);
-    }
+    storageOperations.forceDirectory(directory);
   }
 
   private static void writeFully(FileChannel channel, ByteBuffer source) throws IOException {

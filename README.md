@@ -16,10 +16,11 @@ HALTED-only Mass Cancel in global acceptance order.
 M07 completes the next deliberately narrow axis: an upstream-resolved opaque participant group and
 taker-owned self-trade-prevention instruction. M08 completes the first local durability axis: a
 caller-serialized, single-shard M08C1/M08W1 runtime with durable bidirectional identity, genesis
-recovery, and an ACK that may occur only after append, force, and matching apply. M09 now freezes
-the next structured RED: one `M09S1` snapshot, a 64-record / 1-MiB WAL-suffix recovery budget, and
-whole-segment retirement after durable snapshot publication. No M09 production snapshot code or
-completion evidence exists at this start boundary.
+recovery, and an ACK that may occur only after append, force, and matching apply. M09 completes the
+next local-storage axis: one `M09S1` snapshot, a 64-record / 1-MiB WAL-suffix recovery budget, and
+whole-segment retirement after durable snapshot publication. The completion judge compares the
+snapshot runtime with a retained-genesis-WAL runtime and a separate no-I/O storage ledger; it does
+not claim a third independent implementation of all inherited matching semantics.
 
 ## Current course boundary
 
@@ -27,9 +28,9 @@ completion evidence exists at this start boundary.
 - Plan version: `0.11`
 - Unit: `M09`
 - Declared start ref: `course/m09-start`
-- Declared future complete ref: `course/m09-complete`
-- Latest product stopping point: `matching-0.1.0` at M03; M04–M08 have no product release
-- Lifecycle at this boundary: `READY / CONTRACT / GOAL_NOT_IMPLEMENTED`
+- Declared complete ref: `course/m09-complete`
+- Latest product stopping point: `matching-0.1.0` at M03; M04–M09 have no product release
+- Lifecycle at this boundary: `COMPLETE / IMPLEMENTED / PASS`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -37,26 +38,72 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The root build remains GREEN by rerunning the completed M08 semantic boundary:
+The root build is GREEN only after the completed M09 judge and inherited M08 boundary pass:
 
 ```bash
 ./gradlew clean build --no-daemon
 ```
 
-The explicit M09 command intentionally exits nonzero after writing a schema-valid structured RED:
+The explicit M09 command writes the strict completion report and exits successfully:
 
 ```bash
 ./gradlew m09Check --no-daemon
-# M09 check status: GOAL_NOT_IMPLEMENTED
+# M09 check status: PASS
 ```
 
-The start contract freezes 22 fixed scenarios, seed `5909`, 96 histories by 40 operations across
-four lanes, 32 obligations, seven child-process crash windows, eight deterministic failure seams,
-12 executable semantic-mutant IDs, and five tutorial permalinks. Unknown snapshot versions fail
-closed; M09 has no N-1 fixture or format-evolution claim. The exact contract is in
-[`docs/specs/m09.md`](docs/specs/m09.md). CI requires annotated `course/m09-start` to peel to the
-exact start HEAD, forbids `course/m09-complete`, evidence, and a `matching-*` product release, and
-checks that explicit `m09Check` remains `GOAL_NOT_IMPLEMENTED`.
+The frozen contract executes 22 fixed scenarios with 88 declared fixture tokens, seed `5909`, 96
+histories by 40 operations across four lanes, 32 obligation witnesses, seven child-process
+`Runtime.halt(86)` windows, eight deterministic failure seams, and 12 executable candidates: nine
+storage/state mutants plus three
+invalid-latest acceptance candidates. Unknown snapshot versions fail closed; M09 has no N-1
+fixture or format-evolution claim. `SYSTEM_ERROR` and `INVALID_HISTORY` never count as a kill. The
+exact contract and evidence limits are in [`docs/specs/m09.md`](docs/specs/m09.md).
+
+The generated suite uses two fresh directories and byte-exact regeneration. Its `CRASH` operation
+is a controlled forced-durable unknown-outcome/reopen path, not child-process crash evidence; only
+the seven explicit child JVM histories carry the process-halt claim. The independent ledger checks
+the configured suffix budget and exact whole-segment inventory without parsing production WAL or
+Snapshot bytes. Both candidate and retained-genesis runtimes still use the production WAL parser
+and inherited matching core.
+
+The eight deterministic failures are injected at declared pre-operation hooks; they do not claim
+independent observation that the underlying operation was absent. Child halts bind their declared
+hooks to the observed namespace and fresh reopen, not to an independently traced JDK call. Actual
+file-force, move, directory-force, and delete order is established separately by the fixed suite's
+real-JDK `StorageOperations` trace.
+
+The 3,840 declared generated operations do not absorb setup traffic. History zero first executes a
+separate 65-operation budget prelude. The independent ledger predicts only fresh append candidates
+and their checkpoint-required retries; duplicate, conflict, snapshot, and restart operations are
+not padded into the prediction count.
+
+M09 retirement evidence proves runtime-created non-terminal missing-prefix gaps fail closed and
+that active or crossing segments are retained. It explicitly does not prove detection of an
+externally deleted final active segment. The fixed multi-segment suffix mechanism uses a test-only
+4-MiB byte budget to create a crossing suffix; the production default remains 64 records / 1 MiB.
+
+The M09 fixed canonical digest is
+`sha256:8d7e20c4b19dd51b8ca8b20d7d511b32c64c73dc1763434b62865303a00b76d5`. The
+generated canonical digest is
+`sha256:9551ad7a3026964b57b366e39d6307510789cd83c750bf239098f9ba299354e5`; its
+3,840 declared operations and separate 65-operation setup produce 4,225 ledger checks, 1,366 exact
+inventory checks, 544 fresh restarts, 822 snapshots, and one automatic checkpoint. The ledger makes
+2,703 budget predictions: 2,702 accepts and one reject, with one checkpoint-required witness. The
+12 minimized counterexamples contain 64 operations after 152 shrink trials, execute 13 real
+mutation actions, and have digest
+`sha256:0dd88e0ced4a35dab53f357a657c299484eabeeb6111cd70221603a971f0a3eb`.
+
+After committing the completed source and creating annotated `course/m09-complete` at that exact
+clean HEAD, evidence is generated with:
+
+```bash
+./gradlew m09Evidence -Pm09.unitTag=course/m09-complete --no-daemon
+```
+
+The writer reruns `m09Check`, rejects a dirty tree, symlinked output components, a non-annotated or
+wrong-HEAD unit tag, and a `matching-*` product tag. It repeats that full release-state check before
+and after atomic publication. Every copied input and report is bound exactly once by SHA-256 in
+`build/lab-evidence/M09/manifest.json`; `productRelease` remains `null`.
 
 ## Inherited M08 completion
 
@@ -253,15 +300,16 @@ architecture limitation still describes current HEAD.
 ```text
 matching-core       deterministic business semantics; no I/O or runtime dependencies
 matching-reference independent model; main/runtime is JDK-only with no project or production dependency
-matching-local-runtime caller-serialized M08C1/M08W1 local journal and genesis recovery; JDK + core only
+matching-local-runtime caller-serialized M08C1/M08W1 journal plus M09S1 snapshot recovery; JDK + core only
 matching-testkit    generators, differential judge, replay, mutants, and evidence tooling
 ```
 
-M08 adds exactly one production module, `matching-local-runtime`, after the start tag. The core stays
+M08 introduced the `matching-local-runtime` production module; M09 extends that same module with
+snapshot publication, bounded suffix recovery, and whole-segment retirement. The core stays
 infrastructure-free, and the runtime has no matching-reference, testkit, network, database, Aeron,
-cluster, Counter, or Rest dependency. Historical M00–M07 evidence stays attached to immutable
-completion tags. The M09 start boundary changes only course contracts, fixtures, schemas, the RED
-runner, tests, and CI; it adds no production snapshot implementation.
+cluster, Counter, or Rest dependency. The public mutation bridge is compiled only in
+`matching-testkit` and is absent from matching-local-runtime production sources and dependencies.
+Historical M00–M08 evidence stays attached to immutable completion tags.
 
 Course dashboard: <https://lcha-reln.github.io/signal-grid-blog/practice/high-availability-cex/>
 

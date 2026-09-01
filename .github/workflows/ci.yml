@@ -1,4 +1,4 @@
-name: Matching M09 contract
+name: Matching M09 completion
 
 on:
   push:
@@ -41,102 +41,215 @@ jobs:
           test "${#resources[@]}" -gt 0
           jq empty "${resources[@]}"
 
-      - name: Verify M08 inherited GREEN and M09 structured RED
+      - name: Execute declared M09 boundary
+        id: boundary
         shell: bash
         run: |
           test "$(sed -n 's/^unit=//p' course.properties)" = M09
           test "$(sed -n 's/^planVersion=//p' course.properties)" = 0.11
-          test "$(sed -n 's/^lifecycle=//p' course.properties)" = READY
-          test "$(sed -n 's/^designDepth=//p' course.properties)" = CONTRACT
-          test "$(sed -n 's/^m09Check.expectedStatus=//p' course.properties)" = GOAL_NOT_IMPLEMENTED
+          test "$(sed -n 's/^lifecycle=//p' course.properties)" = COMPLETE
+          test "$(sed -n 's/^designDepth=//p' course.properties)" = IMPLEMENTED
+          test "$(sed -n 's/^m09Check.expectedStatus=//p' course.properties)" = PASS
           test "$(sed -n 's/^startRef=//p' course.properties)" = course/m09-start
           test "$(sed -n 's/^completeRef=//p' course.properties)" = course/m09-complete
           test "$(git cat-file -t course/m08-complete)" = tag
           git merge-base --is-ancestor "$(git rev-parse 'course/m08-complete^{}')" HEAD
           test "$(git cat-file -t course/m09-start)" = tag
-          test "$(git rev-parse 'course/m09-start^{}')" = "$(git rev-parse HEAD)"
-          test -z "$(git tag --list 'course/m09-complete')"
+          git merge-base --is-ancestor "$(git rev-parse 'course/m09-start^{}')" HEAD
+          test "$(git cat-file -t course/m09-complete)" = tag
+          complete_commit="$(git rev-parse 'course/m09-complete^{}')"
+          git merge-base --is-ancestor "$complete_commit" HEAD
           test -z "$(git tag --points-at HEAD --list 'matching-*')"
 
           ./gradlew clean build --no-daemon --max-workers=1
+          ./gradlew m09Check --no-daemon --max-workers=1
           jq -e '
-            .schemaVersion == "matching.m08.check.v2" and
-            .unit == "M08" and
-            .status == "PASS" and
-            .contractPlanVersion == "0.10" and
-            .coverage == {"required": 24, "observed": 24} and
-            .mutants.required == 10 and
-            .mutants.killed == 10 and
-            .mutants.systemErrorCountedAsKill == false and
-            .releaseTarget.productRelease == null
-          ' build/reports/m08/check.json
-
-          m09_log="${RUNNER_TEMP:-/tmp}/m09-gradle-output.log"
-          set +e
-          set -o pipefail
-          ./gradlew m09Check --no-daemon --max-workers=1 2>&1 | tee "$m09_log"
-          exit_code="${PIPESTATUS[0]}"
-          set +o pipefail
-          set -e
-          test "$exit_code" -ne 0
-          grep -Fq "M09 check status: GOAL_NOT_IMPLEMENTED" "$m09_log"
-          jq -e '
-            .schemaVersion == "matching.m09.check.v1" and
+            .schemaVersion == "matching.m09.check.v2" and
             .unit == "M09" and
-            .status == "GOAL_NOT_IMPLEMENTED" and
+            .status == "PASS" and
             .contractPlanVersion == "0.11" and
-            .inheritedBaseline == {
+            .inheritedM08 == {
               "unit": "M08",
               "completeRef": "course/m08-complete",
-              "expectedStatus": "PASS"
+              "status": "PASS"
             } and
-            .fixedCorpus.sha256 == "b9fd2679d3c82c52875e2a756a26f9c17c19072534477139331426d38f5393cd" and
-            .fixedCorpus.primaryCount == 22 and
-            .fixedCorpus.operations == 88 and
-            .fixedCorpus.schemaProbes == 5 and
-            .generator.sha256 == "794621a446f7896cd43b741809393025e063b0ffb190570d9057b90ce1dabda8" and
+            .inputs == {
+              "fixedSha256": "b9fd2679d3c82c52875e2a756a26f9c17c19072534477139331426d38f5393cd",
+              "generatorSha256": "794621a446f7896cd43b741809393025e063b0ffb190570d9057b90ce1dabda8"
+            } and
+            .fixed.scenarios == 22 and
+            .fixed.declaredOperations == 88 and
+            .fixed.digest == "8d7e20c4b19dd51b8ca8b20d7d511b32c64c73dc1763434b62865303a00b76d5" and
             .generator.baseSeed == "5909" and
-            .generator.primaryCount == 96 and
+            .generator.histories == 96 and
+            .generator.operationsPerHistory == 40 and
             .generator.operations == 3840 and
-            .generator.generatedOperations == 3840 and
+            .generator.declaredGeneratedOperations == 3840 and
+            .generator.setupBudgetOperations == 65 and
             .generator.lanes == 4 and
             .generator.historiesPerLane == 24 and
-            .generator.coverageObligations == 32 and
-            .generator.crashWindows == 7 and
-            .generator.failureSeams == 8 and
-            .generator.recoveryBudget == {
+            .generator.comparisons == 3840 and
+            .generator.ledgerChecks == 4225 and
+            .generator.budgetPredictionScope == "FRESH_APPEND_CANDIDATES_PLUS_CHECKPOINT_RETRIES_AND_65_SETUP_OPERATIONS" and
+            .generator.budgetPredictionChecks == 2703 and
+            .generator.budgetPredictedAccepts == 2702 and
+            .generator.budgetPredictedRejects == 1 and
+            .generator.checkpointRequiredWitnesses == 1 and
+            .generator.digest == "9551ad7a3026964b57b366e39d6307510789cd83c750bf239098f9ba299354e5" and
+            .generator.byteExactRegeneration == true and
+            .snapshotRecovery == {
+              "format": "M09S1",
+              "genesisWalOracle": true,
+              "independentStorageLedger": true,
+              "independentLedgerUsesProductionWalParser": false,
+              "wholeSegmentExactInventory": true,
               "maxSuffixRecords": 64,
               "maxSuffixBytes": 1048576,
-              "exhaustionResult": "CHECKPOINT_REQUIRED_BEFORE_WAL"
+              "realPowerLossClaim": false,
+              "replication": false,
+              "aeron": false,
+              "externalTerminalSegmentDeletionDetection": false,
+              "retirementEvidenceScope": "RUNTIME_RETIREMENT_NON_TERMINAL_GAP_AND_ACTIVE_OR_CROSSING_RETENTION"
             } and
-            .snapshotContract.format == "M09S1" and
-            .snapshotContract.state == "COMPLETE_CORE_IDENTITY_ORIGINAL_RESULTS_AND_TRANSCRIPT" and
-            .snapshotContract.publication == "WRITE_TEMP_FORCE_ATOMIC_RENAME_DIRECTORY_FORCE" and
-            .snapshotContract.recovery == "VALID_SNAPSHOT_THEN_CONTIGUOUS_M08W1_SUFFIX" and
-            .snapshotContract.formatEvolution == false and
-            .snapshotContract.unknownVersion == "FAIL_CLOSED" and
-            .snapshotContract.realPowerLossClaim == false and
-            (.requiredMutants | length) == 12 and
-            (.tutorialPermalinks | length) == 5 and
-            (.fixedCorpus | has("resultDigest") | not) and
-            (.generator | has("resultDigest") | not) and
-            (has("mutants") | not) and
+            .coverage == {"required": 32, "observed": 32} and
+            .faultEvidence == {
+              "childRuntimeHalts": 7,
+              "operationFailureSeams": 8,
+              "systemHarnessFailuresAreSystemError": true,
+              "fixedStorageOperationProgramOrderObserved": true,
+              "childHaltAtDeclaredHookAndNamespaceObserved": true,
+              "childUnderlyingOperationOrderClaim": false,
+              "operationFailureAtDeclaredPreOperationHook": true,
+              "operationFailureUnderlyingOperationExecutionClaim": false,
+              "physicalDurabilityClaim": false,
+              "realPowerLossClaim": false
+            } and
+            .mutants.required == 12 and
+            .mutants.storageAndStateMutants == 9 and
+            .mutants.invalidLatestAcceptanceCandidates == 3 and
+            .mutants.executableCandidates == 12 and
+            .mutants.killedAsStudentFailure == 12 and
+            .mutants.throwingControl == "SYSTEM_ERROR" and
+            .mutants.systemErrorCountedAsKill == false and
+            .mutants.actualMutationActions >= 12 and
+            .architecture.violations == 0 and
+            .architecture.testkitProbeAbsentFromProduction == true and
+            .architecture.storageOperationsProductionWiringVerified == true and
+            .architecture.independentLedgerProductionParserFree == true and
             .releaseTarget.productRelease == null
           ' build/reports/m09/check.json
-          test ! -e build/lab-evidence/M09
+          jq -e '
+            .results[] |
+            select(.scenarioId == "RECOVERY_BUDGET_REJECTS_PRE_WAL") |
+            .status == "PASS" and
+            .assertion == "LIVE_RECORD_OVERRUN_REJECTED_PRE_WAL;LIVE_BYTE_OVERRUN_REJECTED_PRE_WAL;FRESH_RECOVERY_RECORD_OVERRUN_REJECTED_PRE_APPLY;FRESH_RECOVERY_BYTE_OVERRUN_REJECTED_PRE_APPLY" and
+            .recoveryRecordFirstRejectedWalSequence == 65 and
+            .recoveryByteFirstRejectedWalSequence == 29 and
+            .recoveryRecordFailure == "M09 recovery suffix exceeds the configured records-and-bytes budget before WAL 65" and
+            .recoveryByteFailure == "M09 recovery suffix exceeds the configured records-and-bytes budget before WAL 29" and
+            .budgetWitnesses == [
+              "LIVE_RECORD_OVERRUN_REJECTED_PRE_WAL",
+              "LIVE_BYTE_OVERRUN_REJECTED_PRE_WAL",
+              "FRESH_RECOVERY_RECORD_OVERRUN_REJECTED_PRE_APPLY",
+              "FRESH_RECOVERY_BYTE_OVERRUN_REJECTED_PRE_APPLY"
+            ]
+          ' build/reports/m09/fixed-scenarios.json
+          jq -e '
+            .histories == 96 and
+            .operations == 3840 and
+            .declaredGeneratedOperations == 3840 and
+            .setupBudgetOperations == 65 and
+            .comparisons == 3840 and
+            .ledgerChecks == 4225 and
+            .inventoryChecks == 1366 and
+            .restarts == 544 and
+            .snapshots == 822 and
+            .automaticCheckpoints == 1 and
+            .businessRejections == 480 and
+            .controlCommands == 480 and
+            .budgetPredictionScope == "FRESH_APPEND_CANDIDATES_PLUS_CHECKPOINT_RETRIES_AND_65_SETUP_OPERATIONS" and
+            .budgetPredictionChecks == 2703 and
+            .budgetPredictedAccepts == 2702 and
+            .budgetPredictedRejects == 1 and
+            .checkpointRequiredWitnesses == 1 and
+            .operationCounts == {
+              "SUBMIT": 2133,
+              "DUPLICATE": 166,
+              "CONFLICT": 143,
+              "SNAPSHOT": 413,
+              "RESTART": 385,
+              "ROLLOVER": 177,
+              "RETIRE": 264,
+              "CRASH": 159
+            } and
+            .forcedUnknownReopenOperations == 159 and
+            .generatedCrashClaim == false and
+            .digest == "9551ad7a3026964b57b366e39d6307510789cd83c750bf239098f9ba299354e5" and
+            .freshRegenerationDigest == .digest and
+            .byteExactRegeneration == true
+          ' build/reports/m09/generated-properties.json
+          jq -e '
+            .required == 12 and
+            .persisted == 12 and
+            .rawOperations == 88 and
+            .minimalOperations == 64 and
+            .shrinkTrials == 152 and
+            .actualMutationActions == 13 and
+            .candidateDriver == "NINE_STORAGE_STATE_MUTANTS_PLUS_THREE_INVALID_LATEST_CANDIDATES" and
+            .operationInterpreter == "SEQUENTIAL_TOKEN_INTERPRETER" and
+            .oneMinimalGlobalMinimumClaim == false and
+            .invalidHistoryCountedAsKill == false and
+            .singleDeletePasses == 0 and
+            .singleDeleteInvalidHistories == 64 and
+            .singleDeleteDifferentStudentFailures == 0 and
+            .singleDeleteSameFingerprintStudentFailures == 0 and
+            .digest == "0dd88e0ced4a35dab53f357a657c299484eabeeb6111cd70221603a971f0a3eb"
+          ' build/reports/m09/counterexamples.json
+          for artifact in \
+            inherited-m08.json fixed-scenarios.json fixed-history.canonical.utf8 \
+            generated-properties.json generated-history.canonical.utf8 recovery-ledger.json \
+            storage-inventory.json coverage.json crash-windows.json operation-failures.json \
+            counterexamples-v1.json counterexamples.json counterexamples.canonical.utf8 \
+            replay.json mutants.json architecture.json check.json; do
+            test -s "build/reports/m09/$artifact"
+          done
 
-      - name: Upload M08 inherited reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: matching-m08-inherited-reports
-          path: build/reports/m08/
-          if-no-files-found: error
+          evidence_generated=false
+          if test "$complete_commit" = "$(git rev-parse HEAD)"; then
+            ./gradlew m09Evidence -Pm09.unitTag=course/m09-complete --no-daemon --max-workers=1
+            jq -e '
+              .schemaVersion == "cex.lab-evidence.v1" and
+              .case == "high-availability-cex" and
+              .project == "matching" and
+              .unit == "M09" and
+              .unitTag == "course/m09-complete" and
+              .productRelease == null and
+              .planVersion == "0.11" and
+              .source.commit == env.GITHUB_SHA and
+              .source.dirty == false and
+              (.claims | length) == 6 and
+              (.limitations | length) == 13 and
+              ([.claims[].artifacts[].path] | length) == 19 and
+              ([.claims[].artifacts[].path] | unique | length) == 19
+            ' build/lab-evidence/M09/manifest.json
+            evidence_generated=true
+          else
+            echo "M09 evidence remains frozen at $complete_commit; validating descendant maintenance commit only."
+          fi
+          echo "evidence_generated=$evidence_generated" >> "$GITHUB_OUTPUT"
 
-      - name: Upload M09 RED report
+      - name: Upload M09 reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: matching-m09-reports
           path: build/reports/m09/
+          if-no-files-found: error
+
+      - name: Upload M09 clean-tree evidence
+        if: steps.boundary.outputs.evidence_generated == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: matching-m09-evidence
+          path: build/lab-evidence/M09/
           if-no-files-found: error

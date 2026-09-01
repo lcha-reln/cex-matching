@@ -42,11 +42,19 @@ public final class M08CheckMain {
       throw new IllegalStateException("cannot read course.properties", failure);
     }
     if ("M09".equals(properties.getProperty("unit"))
-        && "0.11".equals(properties.getProperty("planVersion"))
-        && "READY".equals(properties.getProperty("lifecycle"))
-        && "CONTRACT".equals(properties.getProperty("designDepth"))
-        && M09StartCheckRunner.STATUS.equals(properties.getProperty("m09Check.expectedStatus"))) {
-      return M08CheckRunner.PASS;
+        && "0.11".equals(properties.getProperty("planVersion"))) {
+      boolean startBoundary =
+          "READY".equals(properties.getProperty("lifecycle"))
+              && "CONTRACT".equals(properties.getProperty("designDepth"))
+              && M09StartCheckRunner.STATUS.equals(
+                  properties.getProperty("m09Check.expectedStatus"));
+      boolean completionBoundary =
+          "COMPLETE".equals(properties.getProperty("lifecycle"))
+              && "IMPLEMENTED".equals(properties.getProperty("designDepth"))
+              && M09CheckRunner.PASS.equals(properties.getProperty("m09Check.expectedStatus"));
+      if (startBoundary || completionBoundary) {
+        return M08CheckRunner.PASS;
+      }
     }
     String value = properties.getProperty("m08Check.expectedStatus");
     if (!M08StartCheckRunner.STATUS.equals(value) && !M08CheckRunner.PASS.equals(value)) {

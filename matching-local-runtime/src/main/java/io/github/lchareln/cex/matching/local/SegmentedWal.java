@@ -10,7 +10,6 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -28,6 +27,7 @@ final class SegmentedWal implements AutoCloseable {
 
   private final WalConfig config;
   private final FaultInjector faultInjector;
+  private final StorageOperations storageOperations;
   private final FileChannel lockChannel;
   private final FileLock directoryLock;
   private final List<RecoveredRecord> recoveredRecords;
@@ -42,9 +42,12 @@ final class SegmentedWal implements AutoCloseable {
   private long suffixBytes;
   private boolean closed;
 
-  private SegmentedWal(WalConfig config, FaultInjector faultInjector) throws IOException {
+  private SegmentedWal(
+      WalConfig config, FaultInjector faultInjector, StorageOperations storageOperations)
+      throws IOException {
     this.config = Objects.requireNonNull(config, "config");
     this.faultInjector = Objects.requireNonNull(faultInjector, "faultInjector");
+    this.storageOperations = Objects.requireNonNull(storageOperations, "storageOperations");
     if (!Files.isDirectory(config.directory(), LinkOption.NOFOLLOW_LINKS)) {
       throw new IOException(
           "M08W1 requires a pre-provisioned, non-symlink WAL directory: " + config.directory());
@@ -67,7 +70,8 @@ final class SegmentedWal implements AutoCloseable {
     }
     try {
       faultInjector.hit(FaultPoint.AFTER_DIRECTORY_LOCK);
-      snapshotStore = new SnapshotStore(config.directory(), config.shardId(), faultInjector);
+      snapshotStore =
+          new SnapshotStore(config.directory(), config.shardId(), faultInjector, storageOperations);
       recoveredSnapshot = snapshotStore.discover();
       removeOrphanTemps();
       recoveredRecords = recoverOrCreate(recoveredSnapshot.map(value -> value.anchor()));
@@ -80,8 +84,14 @@ final class SegmentedWal implements AutoCloseable {
     }
   }
 
+  static SegmentedWal open(
+      WalConfig config, FaultInjector faultInjector, StorageOperations storageOperations)
+      throws IOException {
+    return new SegmentedWal(config, faultInjector, storageOperations);
+  }
+
   static SegmentedWal open(WalConfig config, FaultInjector faultInjector) throws IOException {
-    return new SegmentedWal(config, faultInjector);
+    return open(config, faultInjector, JdkStorageOperations.INSTANCE);
   }
 
   List<RecoveredRecord> recoveredRecords() {
@@ -387,7 +397,7 @@ final class SegmentedWal implements AutoCloseable {
       long lastWal = lastWalSequence(segment);
       if (lastWal <= walSequence) {
         faultInjector.hit(FaultPoint.BEFORE_RETENTION_DELETE);
-        Files.delete(segment.path());
+        storageOperations.delete(segment.path());
         if (!firstSegmentDeleted) {
           firstSegmentDeleted = true;
           faultInjector.hit(FaultPoint.AFTER_FIRST_RETENTION_SEGMENT_DELETE);
@@ -466,12 +476,12 @@ final class SegmentedWal implements AutoCloseable {
       writeFully(channel, ByteBuffer.wrap(header));
       faultInjector.hit(FaultPoint.AFTER_SEGMENT_HEADER_WRITE);
       faultInjector.hit(FaultPoint.BEFORE_SEGMENT_HEADER_FORCE);
-      channel.force(true);
+      storageOperations.forceFile(temporary, channel);
       faultInjector.hit(FaultPoint.AFTER_SEGMENT_HEADER_FORCE);
     }
     try {
       faultInjector.hit(FaultPoint.BEFORE_SEGMENT_ATOMIC_RENAME);
-      Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE);
+      storageOperations.atomicMove(temporary, target);
     } catch (AtomicMoveNotSupportedException failure) {
       throw new IOException("M08W1 requires an atomic segment rename", failure);
     }
@@ -510,7 +520,7 @@ final class SegmentedWal implements AutoCloseable {
     try (DirectoryStream<Path> paths = Files.newDirectoryStream(config.directory())) {
       for (Path path : paths) {
         if (TEMP_NAME.matcher(path.getFileName().toString()).matches()) {
-          Files.delete(path);
+          storageOperations.delete(path);
           removed = true;
         }
       }
@@ -527,9 +537,7 @@ final class SegmentedWal implements AutoCloseable {
   }
 
   private void forceDirectory() throws IOException {
-    try (FileChannel directory = FileChannel.open(config.directory(), StandardOpenOption.READ)) {
-      directory.force(true);
-    }
+    storageOperations.forceDirectory(config.directory());
   }
 
   private void ensureOpen() {

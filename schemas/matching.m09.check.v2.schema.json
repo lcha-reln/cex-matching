@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m09.check.v2.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "unit", "status", "contractPlanVersion", "releaseTarget"],
+  "properties": {
+    "schemaVersion": {"const": "matching.m09.check.v2"},
+    "unit": {"const": "M09"},
+    "status": {"enum": ["PASS", "STUDENT_FAILURE", "SYSTEM_ERROR"]},
+    "contractPlanVersion": {"const": "0.11"},
+    "detail": {"type": "string", "minLength": 1},
+    "inheritedM08": {"$ref": "#/$defs/inherited"},
+    "inputs": {"$ref": "#/$defs/inputs"},
+    "fixed": {"$ref": "#/$defs/fixed"},
+    "generator": {"$ref": "#/$defs/generator"},
+    "snapshotRecovery": {"$ref": "#/$defs/snapshot"},
+    "coverage": {"$ref": "#/$defs/coverage"},
+    "faultEvidence": {"$ref": "#/$defs/faults"},
+    "mutants": {"$ref": "#/$defs/mutants"},
+    "architecture": {"$ref": "#/$defs/architecture"},
+    "releaseTarget": {"$ref": "#/$defs/release"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "PASS"}}},
+      "then": {
+        "required": ["inheritedM08", "inputs", "fixed", "generator", "snapshotRecovery", "coverage", "faultEvidence", "mutants", "architecture"],
+        "not": {"required": ["detail"]}
+      },
+      "else": {
+        "required": ["detail"],
+        "not": {
+          "anyOf": [
+            {"required": ["inheritedM08"]},
+            {"required": ["inputs"]},
+            {"required": ["fixed"]},
+            {"required": ["generator"]},
+            {"required": ["snapshotRecovery"]},
+            {"required": ["coverage"]},
+            {"required": ["faultEvidence"]},
+            {"required": ["mutants"]},
+            {"required": ["architecture"]}
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "inherited": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "status", "completeRef"],
+      "properties": {
+        "unit": {"const": "M08"},
+        "status": {"const": "PASS"},
+        "completeRef": {"const": "course/m08-complete"}
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fixedSha256", "generatorSha256"],
+      "properties": {
+        "fixedSha256": {"const": "b9fd2679d3c82c52875e2a756a26f9c17c19072534477139331426d38f5393cd"},
+        "generatorSha256": {"const": "794621a446f7896cd43b741809393025e063b0ffb190570d9057b90ce1dabda8"}
+      }
+    },
+    "fixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarios", "declaredOperations", "digest"],
+      "properties": {"scenarios": {"const": 22}, "declaredOperations": {"const": 88}, "digest": {"const": "8d7e20c4b19dd51b8ca8b20d7d511b32c64c73dc1763434b62865303a00b76d5"}}
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "baseSeed", "histories", "operationsPerHistory", "operations", "declaredGeneratedOperations", "setupBudgetOperations", "lanes", "historiesPerLane", "comparisons", "ledgerChecks", "budgetPredictionScope", "budgetPredictionChecks", "budgetPredictedAccepts", "budgetPredictedRejects", "checkpointRequiredWitnesses", "digest", "byteExactRegeneration"],
+      "properties": {
+        "algorithm": {"const": "splitmix64-v1"}, "baseSeed": {"const": "5909"}, "histories": {"const": 96}, "operationsPerHistory": {"const": 40}, "operations": {"const": 3840}, "declaredGeneratedOperations": {"const": 3840}, "setupBudgetOperations": {"const": 65}, "lanes": {"const": 4}, "historiesPerLane": {"const": 24}, "comparisons": {"const": 3840}, "ledgerChecks": {"const": 4225}, "budgetPredictionScope": {"const": "FRESH_APPEND_CANDIDATES_PLUS_CHECKPOINT_RETRIES_AND_65_SETUP_OPERATIONS"}, "budgetPredictionChecks": {"const": 2703}, "budgetPredictedAccepts": {"const": 2702}, "budgetPredictedRejects": {"const": 1}, "checkpointRequiredWitnesses": {"const": 1}, "digest": {"const": "9551ad7a3026964b57b366e39d6307510789cd83c750bf239098f9ba299354e5"}, "byteExactRegeneration": {"const": true}
+      }
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "genesisWalOracle", "independentStorageLedger", "independentLedgerUsesProductionWalParser", "wholeSegmentExactInventory", "maxSuffixRecords", "maxSuffixBytes", "realPowerLossClaim", "replication", "aeron", "externalTerminalSegmentDeletionDetection", "retirementEvidenceScope"],
+      "properties": {
+        "format": {"const": "M09S1"}, "genesisWalOracle": {"const": true}, "independentStorageLedger": {"const": true}, "independentLedgerUsesProductionWalParser": {"const": false}, "wholeSegmentExactInventory": {"const": true}, "maxSuffixRecords": {"const": 64}, "maxSuffixBytes": {"const": 1048576}, "realPowerLossClaim": {"const": false}, "replication": {"const": false}, "aeron": {"const": false}, "externalTerminalSegmentDeletionDetection": {"const": false}, "retirementEvidenceScope": {"const": "RUNTIME_RETIREMENT_NON_TERMINAL_GAP_AND_ACTIVE_OR_CROSSING_RETENTION"}
+      }
+    },
+    "coverage": {
+      "type": "object", "additionalProperties": false, "required": ["required", "observed"], "properties": {"required": {"const": 32}, "observed": {"const": 32}}
+    },
+    "faults": {
+      "type": "object", "additionalProperties": false, "required": ["childRuntimeHalts", "operationFailureSeams", "systemHarnessFailuresAreSystemError", "fixedStorageOperationProgramOrderObserved", "childHaltAtDeclaredHookAndNamespaceObserved", "childUnderlyingOperationOrderClaim", "operationFailureAtDeclaredPreOperationHook", "operationFailureUnderlyingOperationExecutionClaim", "physicalDurabilityClaim", "realPowerLossClaim"], "properties": {"childRuntimeHalts": {"const": 7}, "operationFailureSeams": {"const": 8}, "systemHarnessFailuresAreSystemError": {"const": true}, "fixedStorageOperationProgramOrderObserved": {"const": true}, "childHaltAtDeclaredHookAndNamespaceObserved": {"const": true}, "childUnderlyingOperationOrderClaim": {"const": false}, "operationFailureAtDeclaredPreOperationHook": {"const": true}, "operationFailureUnderlyingOperationExecutionClaim": {"const": false}, "physicalDurabilityClaim": {"const": false}, "realPowerLossClaim": {"const": false}}
+    },
+    "mutants": {
+      "type": "object", "additionalProperties": false, "required": ["required", "storageAndStateMutants", "invalidLatestAcceptanceCandidates", "executableCandidates", "killedAsStudentFailure", "throwingControl", "systemErrorCountedAsKill", "actualMutationActions"], "properties": {"required": {"const": 12}, "storageAndStateMutants": {"const": 9}, "invalidLatestAcceptanceCandidates": {"const": 3}, "executableCandidates": {"const": 12}, "killedAsStudentFailure": {"const": 12}, "throwingControl": {"const": "SYSTEM_ERROR"}, "systemErrorCountedAsKill": {"const": false}, "actualMutationActions": {"type": "integer", "minimum": 12}}
+    },
+    "architecture": {
+      "type": "object", "additionalProperties": false, "required": ["violations", "coreInfrastructureFree", "localRuntimeJdkAndCoreOnly", "testkitProbeAbsentFromProduction", "storageOperationsProductionWiringVerified", "independentLedgerProductionParserFree"], "properties": {"violations": {"const": 0}, "coreInfrastructureFree": {"const": true}, "localRuntimeJdkAndCoreOnly": {"const": true}, "testkitProbeAbsentFromProduction": {"const": true}, "storageOperationsProductionWiringVerified": {"const": true}, "independentLedgerProductionParserFree": {"const": true}}
+    },
+    "release": {
+      "type": "object", "additionalProperties": false, "required": ["unitTag", "productRelease", "verification"], "properties": {"unitTag": {"const": "course/m09-complete"}, "productRelease": {"type": "null"}, "verification": {"const": "M09_EVIDENCE_ONLY"}}
+    }
+  }
+}

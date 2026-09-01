@@ -34,6 +34,7 @@ tasks.withType<Test>().configureEach {
         "**/M06StartCheckRunnerTest.class",
         "**/M07StartCheckRunnerTest.class",
         "**/M08StartCheckRunnerTest.class",
+        "**/M09StartCheckRunnerTest.class",
     )
 }
 
@@ -66,6 +67,8 @@ val m08ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m08")
 val m08EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M08")
 val m08UnitTag = providers.gradleProperty("m08.unitTag").orElse("course/m08-complete")
 val m09ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m09")
+val m09EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M09")
+val m09UnitTag = providers.gradleProperty("m09.unitTag").orElse("course/m09-complete")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -319,13 +322,28 @@ tasks.register<JavaExec>("m08Evidence") {
 
 tasks.register<JavaExec>("m09Check") {
     group = "verification"
-    description = "Runs the frozen M09 snapshot and bounded-recovery structured RED."
-    dependsOn("m08Check", "classes")
+    description = "Runs the completed M09 snapshot and bounded-recovery judge."
+    dependsOn("test", ":matching-core:test", ":matching-local-runtime:test", ":matching-reference:check", "classes")
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("io.github.lchareln.cex.matching.testkit.M09CheckMain")
     args(
         rootProject.layout.projectDirectory.asFile.absolutePath,
         m09ReportDirectory.get().asFile.absolutePath,
     )
-    doNotTrackState("M09 must never reuse a stale structured RED report")
+    doNotTrackState("M09 must never reuse a stale snapshot-recovery report")
+}
+
+tasks.register<JavaExec>("m09Evidence") {
+    group = "verification"
+    description = "Generates and validates clean-tree annotated-tag M09 evidence."
+    dependsOn("m09Check")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M09EvidenceMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m09ReportDirectory.get().asFile.absolutePath,
+        m09EvidenceDirectory.get().asFile.absolutePath,
+        m09UnitTag.get(),
+    )
+    doNotTrackState("Evidence must re-check the M09 tag and working-tree cleanliness on every invocation")
 }

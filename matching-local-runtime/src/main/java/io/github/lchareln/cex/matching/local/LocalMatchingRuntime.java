@@ -23,13 +23,14 @@ public final class LocalMatchingRuntime implements AutoCloseable {
       WalConfig config,
       M08EnvelopeCodec envelopeCodec,
       CommandApplier commandApplier,
-      FaultInjector faultInjector)
+      FaultInjector faultInjector,
+      StorageOperations storageOperations)
       throws IOException {
     this.config = Objects.requireNonNull(config, "config");
     this.envelopeCodec = Objects.requireNonNull(envelopeCodec, "envelopeCodec");
     this.commandApplier = Objects.requireNonNull(commandApplier, "commandApplier");
     this.faultInjector = Objects.requireNonNull(faultInjector, "faultInjector");
-    wal = SegmentedWal.open(config, faultInjector);
+    wal = SegmentedWal.open(config, faultInjector, storageOperations);
     try {
       restoreSnapshot();
       recover();
@@ -50,13 +51,33 @@ public final class LocalMatchingRuntime implements AutoCloseable {
   public static LocalMatchingRuntime open(WalConfig config, FaultInjector faultInjector)
       throws IOException {
     return new LocalMatchingRuntime(
-        config, new M08EnvelopeCodec(), new MatchingCoreCommandApplier(), faultInjector);
+        config,
+        new M08EnvelopeCodec(),
+        new MatchingCoreCommandApplier(),
+        faultInjector,
+        JdkStorageOperations.INSTANCE);
   }
 
   static LocalMatchingRuntime openForTesting(
       WalConfig config, CommandApplier commandApplier, FaultInjector faultInjector)
       throws IOException {
-    return new LocalMatchingRuntime(config, new M08EnvelopeCodec(), commandApplier, faultInjector);
+    return new LocalMatchingRuntime(
+        config,
+        new M08EnvelopeCodec(),
+        commandApplier,
+        faultInjector,
+        JdkStorageOperations.INSTANCE);
+  }
+
+  static LocalMatchingRuntime openForStorageTesting(
+      WalConfig config, FaultInjector faultInjector, StorageOperations storageOperations)
+      throws IOException {
+    return new LocalMatchingRuntime(
+        config,
+        new M08EnvelopeCodec(),
+        new MatchingCoreCommandApplier(),
+        faultInjector,
+        storageOperations);
   }
 
   public synchronized SubmissionResult submit(byte[] canonicalEnvelope) {

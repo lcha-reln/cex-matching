@@ -108,7 +108,7 @@ class M09SnapshotRuntimeTest {
   }
 
   @Test
-  void hardRecordAndByteBudgetReturnsCheckpointRequiredBeforeWal() throws Exception {
+  void liveRecordBudgetReturnsCheckpointRequiredBeforeWal() throws Exception {
     Path directory = directory("budget");
     WalConfig budgeted =
         new WalConfig(
@@ -126,6 +126,52 @@ class M09SnapshotRuntimeTest {
           assertInstanceOf(SubmissionResult.CheckpointRequired.class, runtime.submit(second));
       assertEquals(1, required.suffixRecords());
       assertEquals(2, runtime.nextWalSequence());
+      runtime.checkpoint();
+      assertDurable(runtime.submit(second));
+      assertEquals(3, runtime.nextWalSequence());
+    }
+  }
+
+  @Test
+  void liveByteBudgetReturnsCheckpointRequiredBeforeWal() throws Exception {
+    Path directory = directory("live-byte-budget");
+    byte[] first = envelope(1, cancel(1));
+    String wide = "x".repeat(16 * 1024);
+    byte[] second =
+        envelope(
+            2,
+            new M08Command.Place(
+                wide,
+                BigInteger.valueOf(2),
+                wide,
+                BigInteger.ONE,
+                BigInteger.ONE,
+                wide,
+                0,
+                wide,
+                Optional.empty()));
+    long firstBytes = M08WalFormat.RECORD_OVERHEAD + first.length;
+    long secondBytes = M08WalFormat.RECORD_OVERHEAD + second.length;
+    long maxSuffixBytes = firstBytes + secondBytes - 1;
+    WalConfig budgeted =
+        new WalConfig(
+            directory,
+            SHARD,
+            WalConfig.DEFAULT_MAX_SEGMENT_BYTES,
+            WalConfig.DEFAULT_MAX_RECORD_BYTES,
+            new RecoveryBudget(64, maxSuffixBytes));
+
+    try (LocalMatchingRuntime runtime = LocalMatchingRuntime.open(budgeted)) {
+      assertDurable(runtime.submit(first));
+      byte[] before = Files.readAllBytes(segmentFiles(directory).getLast());
+      SubmissionResult.CheckpointRequired required =
+          assertInstanceOf(SubmissionResult.CheckpointRequired.class, runtime.submit(second));
+      assertEquals(1, required.suffixRecords());
+      assertEquals(firstBytes, required.suffixBytes());
+      assertEquals(64, required.maxSuffixRecords());
+      assertEquals(maxSuffixBytes, required.maxSuffixBytes());
+      assertEquals(2, runtime.nextWalSequence());
+      assertArrayEquals(before, Files.readAllBytes(segmentFiles(directory).getLast()));
       runtime.checkpoint();
       assertDurable(runtime.submit(second));
       assertEquals(3, runtime.nextWalSequence());
