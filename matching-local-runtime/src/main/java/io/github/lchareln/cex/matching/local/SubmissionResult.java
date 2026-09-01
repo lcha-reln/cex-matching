@@ -9,6 +9,7 @@ public sealed interface SubmissionResult
         SubmissionResult.DuplicateReplayed,
         SubmissionResult.StructuralRejected,
         SubmissionResult.PreflightRejected,
+        SubmissionResult.CheckpointRequired,
         SubmissionResult.DurabilityUnknown,
         SubmissionResult.FailedClosed {
 
@@ -39,6 +40,16 @@ public sealed interface SubmissionResult
   record PreflightRejected(PreflightRejectionCode code) implements SubmissionResult {
     public PreflightRejected {
       Objects.requireNonNull(code, "code");
+    }
+  }
+
+  record CheckpointRequired(
+      long suffixRecords, long suffixBytes, long maxSuffixRecords, long maxSuffixBytes)
+      implements SubmissionResult {
+    public CheckpointRequired {
+      if (suffixRecords < 0 || suffixBytes < 0 || maxSuffixRecords <= 0 || maxSuffixBytes <= 0) {
+        throw new IllegalArgumentException("invalid checkpoint-required usage");
+      }
     }
   }
 

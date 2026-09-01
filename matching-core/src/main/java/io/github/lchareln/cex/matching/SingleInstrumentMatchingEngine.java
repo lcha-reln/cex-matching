@@ -572,6 +572,26 @@ public final class SingleInstrumentMatchingEngine {
     return detachedMarketControlSnapshot(nextApplicationSequence);
   }
 
+  /** Returns the complete infrastructure-free state required by a durable checkpoint. */
+  public MatchingStateImage stateImage() {
+    assertConsistentState();
+    List<MatchingStateImage.OrderImage> orders =
+        ordersById.values().stream()
+            .sorted(Comparator.comparingLong(order -> order.sequence.value()))
+            .map(SingleInstrumentMatchingEngine::orderImage)
+            .toList();
+    return new MatchingStateImage(detachedMarketControlSnapshot(nextApplicationSequence), orders);
+  }
+
+  /** Restores a fresh matcher only after the supplied image passes all core invariants. */
+  public static SingleInstrumentMatchingEngine restore(MatchingStateImage image) {
+    Objects.requireNonNull(image, "image");
+    SingleInstrumentMatchingEngine restored = new SingleInstrumentMatchingEngine();
+    restored.restoreState(image);
+    restored.assertConsistentState();
+    return restored;
+  }
+
   /** Package-local correctness hook; it exposes no order lifecycle data. */
   void assertConsistentState() {
     if (nextAcceptanceSequence <= 0) {
@@ -922,6 +942,81 @@ public final class SingleInstrumentMatchingEngine {
 
   private OrderBookSnapshot detachedSnapshot() {
     return new OrderBookSnapshot(snapshotSide(bids, Side.BUY), snapshotSide(asks, Side.SELL));
+  }
+
+  private static MatchingStateImage.OrderImage orderImage(OrderState order) {
+    Optional<MatchingStateImage.Cancellation> cancellation =
+        order.cancellationOrigin == null
+            ? Optional.empty()
+            : Optional.of(
+                new MatchingStateImage.Cancellation(
+                    MatchingStateImage.CancellationOrigin.valueOf(order.cancellationOrigin.name()),
+                    order.cancellationApplicationSequence));
+    return new MatchingStateImage.OrderImage(
+        order.sequence,
+        order.orderId,
+        order.side,
+        order.priceTicks,
+        order.executionPolicy,
+        order.admissionRuleSet,
+        order.stpInstruction.participantGroupId(),
+        order.stpInstruction.policy(),
+        order.originalQuantityLots,
+        order.remainingQuantityLots,
+        order.filledQuantityLots,
+        order.canceledQuantityLots,
+        MatchingStateImage.Lifecycle.valueOf(order.lifecycle.name()),
+        cancellation);
+  }
+
+  private void restoreState(MatchingStateImage image) {
+    MarketControlSnapshot control = image.control();
+    nextApplicationSequence = control.nextApplicationSequence().value();
+    nextAcceptanceSequence = control.nextAcceptanceSequence().value();
+    activeRuleSet = control.activeRuleSet();
+    preparedRuleSet = control.preparedRuleSet().orElse(null);
+    controlRevision = control.controlRevision();
+    lastActivationFence = control.lastActivationFence().orElse(null);
+    marketMode = control.marketMode();
+    modeRevision = control.modeRevision();
+    lastModeTransitionFence = control.lastModeTransitionFence().orElse(null);
+    lastMassCancelFence = control.lastMassCancelFence().orElse(null);
+
+    for (MatchingStateImage.OrderImage orderImage : image.orders()) {
+      PlaceLimitOrder command =
+          new PlaceLimitOrder(
+              PlaceLimitOrderValidator.INSTRUMENT_ID,
+              orderImage.orderId(),
+              orderImage.side(),
+              orderImage.priceTicks(),
+              new QuantityLots(orderImage.originalQuantityLots()));
+      OrderState order =
+          new OrderState(
+              orderImage.sequence(),
+              command,
+              orderImage.executionPolicy(),
+              orderImage.admissionRuleSet(),
+              new SelfTradePreventionInstruction(
+                  orderImage.participantGroupId(), orderImage.selfTradePreventionPolicy()));
+      order.remainingQuantityLots = orderImage.remainingQuantityLots();
+      order.filledQuantityLots = orderImage.filledQuantityLots();
+      order.canceledQuantityLots = orderImage.canceledQuantityLots();
+      order.lifecycle = Lifecycle.valueOf(orderImage.lifecycle().name());
+      orderImage
+          .cancellation()
+          .ifPresent(
+              cancellation -> {
+                order.cancellationOrigin = CancellationOrigin.valueOf(cancellation.origin().name());
+                order.cancellationApplicationSequence = cancellation.applicationSequence();
+              });
+      if (ordersById.putIfAbsent(order.orderId, order) != null) {
+        throw new IllegalArgumentException("state image contains duplicate order identity");
+      }
+      if (order.lifecycle == Lifecycle.RESTING) {
+        NavigableMap<Long, PriceLevelState> side = order.side == Side.BUY ? bids : asks;
+        side.computeIfAbsent(order.priceTicks.value(), ignored -> new PriceLevelState()).add(order);
+      }
+    }
   }
 
   private MarketControlSnapshot detachedMarketControlSnapshot(long nextApplication) {

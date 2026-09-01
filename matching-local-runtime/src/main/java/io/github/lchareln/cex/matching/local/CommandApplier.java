@@ -9,4 +9,12 @@ interface CommandApplier {
   CanonicalResult apply(M08Command command);
 
   String semanticStateDigest();
+
+  default CommandApplierState stateImage() {
+    throw new UnsupportedOperationException("this command applier cannot create M09 snapshots");
+  }
+
+  default CommandApplier restore(CommandApplierState state) {
+    throw new UnsupportedOperationException("this command applier cannot restore M09 snapshots");
+  }
 }

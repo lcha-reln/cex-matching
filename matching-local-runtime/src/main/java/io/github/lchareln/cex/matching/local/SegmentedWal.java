@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,11 +31,15 @@ final class SegmentedWal implements AutoCloseable {
   private final FileChannel lockChannel;
   private final FileLock directoryLock;
   private final List<RecoveredRecord> recoveredRecords;
+  private final SnapshotStore snapshotStore;
+  private final Optional<M09SnapshotCodec.DecodedSnapshot> recoveredSnapshot;
 
   private FileChannel activeChannel;
   private long activeSegmentId;
   private long activeSize;
   private long nextWalSequence;
+  private long suffixRecordCount;
+  private long suffixBytes;
   private boolean closed;
 
   private SegmentedWal(WalConfig config, FaultInjector faultInjector) throws IOException {
@@ -62,8 +67,13 @@ final class SegmentedWal implements AutoCloseable {
     }
     try {
       faultInjector.hit(FaultPoint.AFTER_DIRECTORY_LOCK);
+      snapshotStore = new SnapshotStore(config.directory(), config.shardId(), faultInjector);
+      recoveredSnapshot = snapshotStore.discover();
       removeOrphanTemps();
-      recoveredRecords = recoverOrCreate();
+      recoveredRecords = recoverOrCreate(recoveredSnapshot.map(value -> value.anchor()));
+      suffixRecordCount = recoveredRecords.size();
+      suffixBytes =
+          recoveredRecords.stream().mapToLong(record -> record.position().recordLength()).sum();
     } catch (Throwable failure) {
       closeResourcesAfterFailedOpen(failure);
       throw failure;
@@ -76,6 +86,10 @@ final class SegmentedWal implements AutoCloseable {
 
   List<RecoveredRecord> recoveredRecords() {
     return List.copyOf(recoveredRecords);
+  }
+
+  Optional<M09SnapshotCodec.DecodedSnapshot> recoveredSnapshot() {
+    return recoveredSnapshot;
   }
 
   boolean acceptsEnvelope(int envelopeBytes) {
@@ -128,7 +142,41 @@ final class SegmentedWal implements AutoCloseable {
     }
     activeSize += recordLength;
     nextWalSequence = Math.incrementExact(nextWalSequence);
+    suffixRecordCount = Math.incrementExact(suffixRecordCount);
+    suffixBytes = Math.addExact(suffixBytes, recordLength);
     return position;
+  }
+
+  boolean hasRecoveryBudgetFor(int envelopeBytes) {
+    if (!acceptsEnvelope(envelopeBytes)) {
+      return false;
+    }
+    int recordLength = Math.addExact(M08WalFormat.RECORD_OVERHEAD, envelopeBytes);
+    return config.recoveryBudget().accepts(suffixRecordCount, suffixBytes, recordLength);
+  }
+
+  SubmissionResult.CheckpointRequired checkpointRequired() {
+    RecoveryBudget budget = config.recoveryBudget();
+    return new SubmissionResult.CheckpointRequired(
+        suffixRecordCount, suffixBytes, budget.maxSuffixRecords(), budget.maxSuffixBytes());
+  }
+
+  CheckpointResult checkpoint(LocalRuntimeStateImage stateImage) throws IOException {
+    ensureOpen();
+    if (stateImage.lastWalSequence() != nextWalSequence - 1) {
+      throw new IllegalArgumentException("checkpoint state is not at the current WAL boundary");
+    }
+    SnapshotAnchor anchor = snapshotStore.publish(stateImage);
+    // A published snapshot remains recoverable with the old WAL if the process stops here. Before
+    // any prefix retirement, make cut+1 durable as the active header.
+    if (activeSize > M08WalFormat.HEADER_BYTES) {
+      rollover();
+    }
+    long protectedPrefix = snapshotStore.retainLatestTwo();
+    long prunedThrough = pruneClosedSegmentsThrough(protectedPrefix);
+    suffixRecordCount = 0;
+    suffixBytes = 0;
+    return new CheckpointResult(anchor, prunedThrough);
   }
 
   long nextWalSequence() {
@@ -164,31 +212,45 @@ final class SegmentedWal implements AutoCloseable {
     }
   }
 
-  private List<RecoveredRecord> recoverOrCreate() throws IOException {
+  private List<RecoveredRecord> recoverOrCreate(Optional<SnapshotAnchor> snapshot)
+      throws IOException {
     List<SegmentFile> segments = discoverFinalSegments();
     if (segments.isEmpty()) {
+      if (snapshot.isPresent()) {
+        throw new WalCorruptionException("published M09S1 has no WAL cut+1 segment");
+      }
       createSegment(1, 1);
       return List.of();
     }
-    if (segments.getFirst().segmentId() != 1) {
+    if (snapshot.isEmpty() && segments.getFirst().segmentId() != 1) {
       throw new WalCorruptionException("M08W1 genesis segment must have id 1");
     }
 
     List<RecoveredRecord> records = new ArrayList<>();
-    long expectedSegmentId = 1;
-    long expectedWalSequence = 1;
+    long expectedSegmentId = segments.getFirst().segmentId();
+    long expectedWalSequence = snapshot.isPresent() ? 0 : 1;
+    long minimumWalExclusive = snapshot.map(SnapshotAnchor::lastWalSequence).orElse(0L);
     for (int index = 0; index < segments.size(); index++) {
       SegmentFile segment = segments.get(index);
       boolean isFinal = index == segments.size() - 1;
       if (segment.segmentId() != expectedSegmentId) {
         throw new WalCorruptionException("M08W1 segment ids contain a gap");
       }
-      RecoveryCursor cursor = recoverSegment(segment, isFinal, expectedWalSequence, records);
+      RecoveryCursor cursor =
+          recoverSegment(segment, isFinal, expectedWalSequence, minimumWalExclusive, records);
+      if (index == 0
+          && snapshot.isPresent()
+          && cursor.firstWalSequence() > Math.incrementExact(minimumWalExclusive)) {
+        throw new WalCorruptionException("M08W1 suffix begins after the M09S1 recovery anchor");
+      }
       expectedWalSequence = cursor.nextWalSequence();
       if (!isFinal && cursor.size() == M08WalFormat.HEADER_BYTES) {
         throw new WalCorruptionException("a non-final M08W1 segment contains no record");
       }
       expectedSegmentId = Math.incrementExact(expectedSegmentId);
+    }
+    if (snapshot.isPresent() && expectedWalSequence <= minimumWalExclusive) {
+      throw new WalCorruptionException("M08W1 does not reach the M09S1 recovery anchor");
     }
 
     SegmentFile last = segments.getLast();
@@ -215,6 +277,7 @@ final class SegmentedWal implements AutoCloseable {
       SegmentFile segment,
       boolean isFinal,
       long expectedFirstWalSequence,
+      long minimumWalExclusive,
       List<RecoveredRecord> records)
       throws IOException {
     try (FileChannel channel =
@@ -230,12 +293,14 @@ final class SegmentedWal implements AutoCloseable {
       M08WalFormat.SegmentHeader header = M08WalFormat.decodeHeader(headerBytes);
       if (header.shardId() != config.shardId()
           || header.segmentId() != segment.segmentId()
-          || header.firstWalSequence() != expectedFirstWalSequence) {
+          || (expectedFirstWalSequence != 0
+              && header.firstWalSequence() != expectedFirstWalSequence)) {
         throw new WalCorruptionException("M08W1 segment header identity is inconsistent");
       }
 
       long offset = M08WalFormat.HEADER_BYTES;
-      long expectedWalSequence = expectedFirstWalSequence;
+      long expectedWalSequence =
+          expectedFirstWalSequence == 0 ? header.firstWalSequence() : expectedFirstWalSequence;
       while (offset < size) {
         long remaining = size - offset;
         if (remaining < Integer.BYTES) {
@@ -251,10 +316,19 @@ final class SegmentedWal implements AutoCloseable {
           size = repairFinalTail(channel, isFinal, offset);
           break;
         }
+        if (minimumWalExclusive > 0 && expectedWalSequence > minimumWalExclusive) {
+          faultInjector.hit(FaultPoint.BEFORE_SNAPSHOT_SUFFIX_READ);
+        }
         byte[] encoded = readExactly(channel, offset, recordLength);
         M08WalFormat.DecodedRecord decoded = M08WalFormat.decodeRecord(encoded);
         if (decoded.walSequence() != expectedWalSequence) {
           throw new WalCorruptionException("M08W1 WAL sequence is not contiguous");
+        }
+        if (minimumWalExclusive > 0 && decoded.walSequence() <= minimumWalExclusive) {
+          if (decoded.applicationSequence() != decoded.walSequence()) {
+            throw new WalCorruptionException("M08W1 application sequence is not contiguous");
+          }
+          requireCanonicalEnvelope(decoded.envelopeBytes());
         }
         WalPosition position =
             new WalPosition(
@@ -263,11 +337,13 @@ final class SegmentedWal implements AutoCloseable {
                 decoded.applicationSequence(),
                 offset,
                 recordLength);
-        records.add(new RecoveredRecord(position, decoded.envelopeBytes()));
+        if (decoded.walSequence() > minimumWalExclusive) {
+          records.add(new RecoveredRecord(position, decoded.envelopeBytes()));
+        }
         expectedWalSequence = Math.incrementExact(expectedWalSequence);
         offset += recordLength;
       }
-      return new RecoveryCursor(expectedWalSequence, size);
+      return new RecoveryCursor(header.firstWalSequence(), expectedWalSequence, size);
     }
   }
 
@@ -288,6 +364,84 @@ final class SegmentedWal implements AutoCloseable {
   private void rollover() throws IOException {
     long newSegment = Math.incrementExact(activeSegmentId);
     createSegment(newSegment, nextWalSequence);
+  }
+
+  private long pruneClosedSegmentsThrough(long walSequence) throws IOException {
+    if (walSequence <= 0) {
+      return 0;
+    }
+    long prunedThrough = 0;
+    boolean removed = false;
+    boolean firstSegmentDeleted = false;
+    for (SegmentFile segment : discoverFinalSegments()) {
+      if (segment.segmentId() == activeSegmentId) {
+        continue;
+      }
+      long lastWal = lastWalSequence(segment);
+      if (lastWal <= walSequence) {
+        faultInjector.hit(FaultPoint.BEFORE_RETENTION_DELETE);
+        Files.delete(segment.path());
+        if (!firstSegmentDeleted) {
+          firstSegmentDeleted = true;
+          faultInjector.hit(FaultPoint.AFTER_FIRST_RETENTION_SEGMENT_DELETE);
+        }
+        removed = true;
+        prunedThrough = Math.max(prunedThrough, lastWal);
+      }
+    }
+    if (removed) {
+      faultInjector.hit(FaultPoint.BEFORE_RETENTION_DIRECTORY_FORCE);
+      forceDirectoryWithHooks();
+      faultInjector.hit(FaultPoint.AFTER_RETENTION_DIRECTORY_FORCE_BEFORE_RETURN);
+    }
+    return prunedThrough;
+  }
+
+  private long lastWalSequence(SegmentFile segment) throws IOException {
+    try (FileChannel channel = FileChannel.open(segment.path(), StandardOpenOption.READ)) {
+      long size = channel.size();
+      if (size <= M08WalFormat.HEADER_BYTES) {
+        throw new WalCorruptionException("closed M08W1 segment contains no record");
+      }
+      M08WalFormat.SegmentHeader header =
+          M08WalFormat.decodeHeader(readExactly(channel, 0, M08WalFormat.HEADER_BYTES));
+      if (header.shardId() != config.shardId() || header.segmentId() != segment.segmentId()) {
+        throw new WalCorruptionException("closed M08W1 segment header identity is inconsistent");
+      }
+      long offset = M08WalFormat.HEADER_BYTES;
+      long expected = header.firstWalSequence();
+      while (offset < size) {
+        if (size - offset < Integer.BYTES) {
+          throw new WalCorruptionException("closed M08W1 segment has an incomplete length");
+        }
+        int recordLength = ByteBuffer.wrap(readExactly(channel, offset, Integer.BYTES)).getInt();
+        if (recordLength < M08WalFormat.MIN_RECORD_BYTES
+            || recordLength > config.maxRecordBytes()
+            || size - offset < recordLength) {
+          throw new WalCorruptionException("closed M08W1 segment has an invalid record boundary");
+        }
+        M08WalFormat.DecodedRecord record =
+            M08WalFormat.decodeRecord(readExactly(channel, offset, recordLength));
+        if (record.walSequence() != expected) {
+          throw new WalCorruptionException("closed M08W1 WAL sequence is not contiguous");
+        }
+        if (record.applicationSequence() != record.walSequence()) {
+          throw new WalCorruptionException("closed M08W1 application sequence is not contiguous");
+        }
+        requireCanonicalEnvelope(record.envelopeBytes());
+        expected = Math.incrementExact(expected);
+        offset += recordLength;
+      }
+      return expected - 1;
+    }
+  }
+
+  private void requireCanonicalEnvelope(byte[] envelopeBytes) throws WalCorruptionException {
+    try {
+      new M08EnvelopeCodec().decodeCanonical(envelopeBytes, config.shardId());
+    } catch (StructuralRejectionException failure) {
+      throw new WalCorruptionException("M08W1 contains a non-canonical M08C1 envelope", failure);
+    }
   }
 
   private void createSegment(long segmentId, long firstWalSequence) throws IOException {
@@ -453,5 +607,5 @@ final class SegmentedWal implements AutoCloseable {
 
   private record SegmentFile(long segmentId, Path path) {}
 
-  private record RecoveryCursor(long nextWalSequence, long size) {}
+  private record RecoveryCursor(long firstWalSequence, long nextWalSequence, long size) {}
 }

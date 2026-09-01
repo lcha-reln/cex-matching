@@ -1,6 +1,7 @@
 package io.github.lchareln.cex.matching.local;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -70,6 +71,86 @@ final class IdentityIndex {
     long nextSequence = Math.incrementExact(binding.slot().producerSequence());
     producers.put(key, new ProducerCursor(binding.slot().producerEpoch(), nextSequence));
     return binding;
+  }
+
+  List<IdentityBindingImage> stateImage() {
+    return byCommandId.values().stream()
+        .sorted(java.util.Comparator.comparingLong(binding -> binding.position().walSequence()))
+        .map(
+            binding ->
+                new IdentityBindingImage(
+                    binding.commandId(),
+                    binding.slot(),
+                    binding.payloadHash(),
+                    binding.position(),
+                    binding.result()))
+        .toList();
+  }
+
+  static IdentityIndex restore(List<IdentityBindingImage> images) {
+    IdentityIndex restored = new IdentityIndex();
+    long expectedWal = 1;
+    long expectedApplication = 1;
+    long previousSegment = 0;
+    long previousEndOffset = 0;
+    for (IdentityBindingImage image : List.copyOf(images)) {
+      Objects.requireNonNull(image, "identity image");
+      if (image.position().walSequence() != expectedWal
+          || image.position().applicationSequence() != expectedApplication) {
+        throw new IllegalArgumentException(
+            "identity bindings are not a contiguous durable history");
+      }
+      if (restored.byCommandId.containsKey(image.commandId())
+          || restored.bySlot.containsKey(image.slot())) {
+        throw new IllegalArgumentException("identity image contains a duplicate binding");
+      }
+      WalPosition position = image.position();
+      if (position.segmentId() < previousSegment
+          || position.segmentId() > previousSegment + 1
+          || (position.segmentId() == previousSegment && position.offset() != previousEndOffset)
+          || (position.segmentId() > previousSegment
+              && position.offset() != M08WalFormat.HEADER_BYTES)) {
+        throw new IllegalArgumentException(
+            "identity WAL positions are not a canonical segment chain");
+      }
+      restored.requireNextProducerSlot(image.slot());
+      Binding binding =
+          new Binding(
+              image.commandId(),
+              image.slot(),
+              image.payloadHash(),
+              image.position(),
+              image.result());
+      restored.byCommandId.put(binding.commandId(), binding);
+      restored.bySlot.put(binding.slot(), binding);
+      ProducerKey key = ProducerKey.from(binding.slot());
+      restored.producers.put(
+          key,
+          new ProducerCursor(
+              binding.slot().producerEpoch(),
+              Math.incrementExact(binding.slot().producerSequence())));
+      expectedWal = Math.incrementExact(expectedWal);
+      expectedApplication = Math.incrementExact(expectedApplication);
+      previousSegment = position.segmentId();
+      previousEndOffset = Math.addExact(position.offset(), position.recordLength());
+    }
+    return restored;
+  }
+
+  private void requireNextProducerSlot(Slot slot) {
+    ProducerCursor cursor = producers.get(ProducerKey.from(slot));
+    if (cursor == null) {
+      if (slot.producerSequence() != 1) {
+        throw new IllegalArgumentException("producer epoch does not start at sequence one");
+      }
+      return;
+    }
+    if (slot.producerEpoch() < cursor.currentEpoch()
+        || (slot.producerEpoch() == cursor.currentEpoch()
+            && slot.producerSequence() != cursor.nextSequence())
+        || (slot.producerEpoch() > cursor.currentEpoch() && slot.producerSequence() != 1)) {
+      throw new IllegalArgumentException("producer slots are not a contiguous fenced history");
+    }
   }
 
   sealed interface Decision permits New, Duplicate, Rejected {}

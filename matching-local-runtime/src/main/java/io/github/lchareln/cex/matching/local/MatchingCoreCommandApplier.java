@@ -32,7 +32,13 @@ final class MatchingCoreCommandApplier implements CommandApplier {
   }
 
   MatchingCoreCommandApplier(SingleInstrumentMatchingEngine engine) {
+    this(engine, genesisTranscriptDigest());
+  }
+
+  private MatchingCoreCommandApplier(
+      SingleInstrumentMatchingEngine engine, String transcriptDigest) {
     this.engine = Objects.requireNonNull(engine, "engine");
+    this.transcriptDigest = Objects.requireNonNull(transcriptDigest, "transcriptDigest");
   }
 
   @Override
@@ -97,6 +103,23 @@ final class MatchingCoreCommandApplier implements CommandApplier {
   @Override
   public String semanticStateDigest() {
     return combinedSemanticDigest(publicCoreStateDigest());
+  }
+
+  @Override
+  public CommandApplierState stateImage() {
+    return new CommandApplierState(engine.stateImage(), transcriptDigest, semanticStateDigest());
+  }
+
+  @Override
+  public CommandApplier restore(CommandApplierState state) {
+    MatchingCoreCommandApplier restored =
+        new MatchingCoreCommandApplier(
+            SingleInstrumentMatchingEngine.restore(state.matchingState()),
+            state.transcriptDigest());
+    if (!restored.semanticStateDigest().equals(state.semanticStateDigest())) {
+      throw new IllegalArgumentException("restored matching state semantic digest disagrees");
+    }
+    return restored;
   }
 
   private ExecutionBatch applyPlace(M08Command.Place place) {

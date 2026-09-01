@@ -10,14 +10,14 @@ import java.util.Optional;
 public final class LocalMatchingRuntime implements AutoCloseable {
   private final WalConfig config;
   private final M08EnvelopeCodec envelopeCodec;
-  private final CommandApplier commandApplier;
+  private CommandApplier commandApplier;
   private final FaultInjector faultInjector;
   private final SegmentedWal wal;
-  private final IdentityIndex identities = new IdentityIndex();
+  private IdentityIndex identities = new IdentityIndex();
 
   private RuntimeState state = RuntimeState.OPEN;
   private String failureDetail = "";
-  private boolean submitInProgress;
+  private boolean operationInProgress;
 
   private LocalMatchingRuntime(
       WalConfig config,
@@ -31,6 +31,7 @@ public final class LocalMatchingRuntime implements AutoCloseable {
     this.faultInjector = Objects.requireNonNull(faultInjector, "faultInjector");
     wal = SegmentedWal.open(config, faultInjector);
     try {
+      restoreSnapshot();
       recover();
     } catch (Throwable failure) {
       try {
@@ -60,7 +61,7 @@ public final class LocalMatchingRuntime implements AutoCloseable {
 
   public synchronized SubmissionResult submit(byte[] canonicalEnvelope) {
     Objects.requireNonNull(canonicalEnvelope, "canonicalEnvelope");
-    if (submitInProgress) {
+    if (operationInProgress) {
       state = RuntimeState.FAILED_CLOSED;
       failureDetail = "REENTRANT_SUBMIT: a fault callback attempted nested ingress";
       return new SubmissionResult.FailedClosed(failureDetail);
@@ -68,11 +69,11 @@ public final class LocalMatchingRuntime implements AutoCloseable {
     if (state != RuntimeState.OPEN) {
       return new SubmissionResult.FailedClosed(failureDetail);
     }
-    submitInProgress = true;
+    operationInProgress = true;
     try {
       return submitOnce(canonicalEnvelope);
     } finally {
-      submitInProgress = false;
+      operationInProgress = false;
     }
   }
 
@@ -105,6 +106,9 @@ public final class LocalMatchingRuntime implements AutoCloseable {
     }
     if (decision instanceof IdentityIndex.Rejected rejected) {
       return new SubmissionResult.PreflightRejected(rejected.code());
+    }
+    if (!wal.hasRecoveryBudgetFor(ownedEnvelope.length)) {
+      return wal.checkpointRequired();
     }
 
     long applicationSequence = commandApplier.nextApplicationSequence();
@@ -153,6 +157,45 @@ public final class LocalMatchingRuntime implements AutoCloseable {
     return commandApplier.semanticStateDigest();
   }
 
+  /**
+   * Publishes one synchronous M09S1 checkpoint at the current applied command boundary.
+   *
+   * <p>Any ambiguous publication, rollover, or retention failure leaves this instance failed
+   * closed. A fresh open resolves the durable directory state.
+   */
+  public synchronized CheckpointResult checkpoint() throws IOException {
+    if (operationInProgress) {
+      state = RuntimeState.FAILED_CLOSED;
+      failureDetail = "REENTRANT_OPERATION: a callback attempted nested runtime work";
+      throw new IOException(failureDetail);
+    }
+    if (state != RuntimeState.OPEN) {
+      throw new IOException("runtime is not open: " + failureDetail);
+    }
+    operationInProgress = true;
+    try {
+      long lastWal = wal.nextWalSequence() - 1;
+      long lastApplication = commandApplier.nextApplicationSequence() - 1;
+      LocalRuntimeStateImage image =
+          new LocalRuntimeStateImage(
+              commandApplier.stateImage(), identities.stateImage(), lastWal, lastApplication);
+      CheckpointResult result = wal.checkpoint(image);
+      if (state != RuntimeState.OPEN) {
+        throw new IOException(failureDetail);
+      }
+      return result;
+    } catch (IOException | RuntimeException failure) {
+      state = RuntimeState.FAILED_CLOSED;
+      failureDetail = "CHECKPOINT_OR_RETENTION: " + describeFailure(failure);
+      if (failure instanceof IOException ioFailure) {
+        throw ioFailure;
+      }
+      throw new IOException(failureDetail, failure);
+    } finally {
+      operationInProgress = false;
+    }
+  }
+
   @Override
   public synchronized void close() throws IOException {
     if (state == RuntimeState.CLOSED) {
@@ -187,6 +230,29 @@ public final class LocalMatchingRuntime implements AutoCloseable {
       } catch (IOException | RuntimeException failure) {
         throw new RecoveryException("deterministic recovery apply failed", failure);
       }
+    }
+  }
+
+  private void restoreSnapshot() throws IOException {
+    Optional<M09SnapshotCodec.DecodedSnapshot> snapshot = wal.recoveredSnapshot();
+    if (snapshot.isEmpty()) {
+      return;
+    }
+    LocalRuntimeStateImage image = snapshot.orElseThrow().state();
+    try {
+      commandApplier = commandApplier.restore(image.applierState());
+      if (image.identityBindings().stream()
+          .anyMatch(binding -> binding.slot().shardId() != config.shardId())) {
+        throw new IllegalArgumentException("M09S1 identity binding targets another shard");
+      }
+      identities = IdentityIndex.restore(image.identityBindings());
+      if (!commandApplier
+          .semanticStateDigest()
+          .equals(image.applierState().semanticStateDigest())) {
+        throw new IllegalArgumentException("restored semantic digest disagrees with M09S1");
+      }
+    } catch (RuntimeException failure) {
+      throw new RecoveryException("M09S1 state restore failed", failure);
     }
   }
 
