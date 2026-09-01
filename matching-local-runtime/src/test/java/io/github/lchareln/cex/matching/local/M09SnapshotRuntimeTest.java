@@ -12,6 +12,7 @@ import io.github.lchareln.cex.matching.MatchingStateImage;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -309,6 +310,57 @@ class M09SnapshotRuntimeTest {
     }
   }
 
+  /**
+   * NON_CLAIM: without a separate durable tail anchor, an externally deleted terminal segment is
+   * indistinguishable from a valid halt before rollover and therefore cannot be detected reliably.
+   */
+  @Test
+  void nonClaimExternalTerminalSegmentDeletionIsObservationallyIndistinguishable()
+      throws Exception {
+    Path haltedBeforeRollover = directory("non-claim-halt-before-rollover");
+    Path externallyDeletedTail = directory("non-claim-external-tail-delete");
+    byte[] prefix = envelope(1, cancel(1));
+    byte[] suffix = envelope(2, cancel(2));
+
+    try (LocalMatchingRuntime runtime =
+        LocalMatchingRuntime.open(
+            config(haltedBeforeRollover),
+            new OneShotFault(FaultPoint.AFTER_SNAPSHOT_DIRECTORY_FORCE_BEFORE_RETENTION))) {
+      assertDurable(runtime.submit(prefix));
+      assertThrows(IOException.class, runtime::checkpoint);
+    }
+
+    CanonicalResult acknowledgedSuffix;
+    try (LocalMatchingRuntime runtime = LocalMatchingRuntime.open(config(externallyDeletedTail))) {
+      assertDurable(runtime.submit(prefix));
+      runtime.checkpoint();
+      acknowledgedSuffix =
+          assertInstanceOf(SubmissionResult.NewDurablyApplied.class, runtime.submit(suffix))
+              .result();
+    }
+    Path deleted = externallyDeletedTail.resolve("segment-00000000000000000002.m08w1");
+    assertTrue(Files.deleteIfExists(deleted));
+    forceDirectory(externallyDeletedTail);
+
+    List<Path> haltedFiles = observableDurableFiles(haltedBeforeRollover);
+    List<Path> deletedTailFiles = observableDurableFiles(externallyDeletedTail);
+    assertEquals(
+        haltedFiles.stream().map(path -> path.getFileName().toString()).toList(),
+        deletedTailFiles.stream().map(path -> path.getFileName().toString()).toList());
+    for (int index = 0; index < haltedFiles.size(); index++) {
+      assertArrayEquals(
+          Files.readAllBytes(haltedFiles.get(index)),
+          Files.readAllBytes(deletedTailFiles.get(index)));
+    }
+
+    try (LocalMatchingRuntime reopened = LocalMatchingRuntime.open(config(externallyDeletedTail))) {
+      assertEquals(2, reopened.nextWalSequence());
+      SubmissionResult.NewDurablyApplied replayedAsNew =
+          assertInstanceOf(SubmissionResult.NewDurablyApplied.class, reopened.submit(suffix));
+      assertArrayEquals(acknowledgedSuffix.auditBytes(), replayedAsNew.result().auditBytes());
+    }
+  }
+
   private List<byte[]> statefulCommands() {
     MarketRuleSetArtifact bootstrap = MarketRuleSetArtifact.bootstrap();
     MarketRuleSetArtifact unhashed =
@@ -417,6 +469,21 @@ class M09SnapshotRuntimeTest {
           .filter(path -> path.getFileName().toString().endsWith(".m09s1.tmp"))
           .sorted(Comparator.comparing(path -> path.getFileName().toString()))
           .toList();
+    }
+  }
+
+  private static List<Path> observableDurableFiles(Path directory) throws IOException {
+    try (var paths = Files.list(directory)) {
+      return paths
+          .filter(path -> !path.getFileName().toString().equals(".m08w1.lock"))
+          .sorted(Comparator.comparing(path -> path.getFileName().toString()))
+          .toList();
+    }
+  }
+
+  private static void forceDirectory(Path directory) throws IOException {
+    try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) {
+      channel.force(true);
     }
   }
 
