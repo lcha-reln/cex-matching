@@ -24,7 +24,7 @@
     "schemaVersion": {"const": "matching.m10.check.v1"},
     "unit": {"const": "M10"},
     "status": {"const": "GOAL_NOT_IMPLEMENTED"},
-    "contractPlanVersion": {"const": "0.12"},
+    "contractPlanVersion": {"const": "0.13"},
     "objective": {"const": "Add bounded local admission and honest open-loop performance qualification without changing durable matching semantics."},
     "courseDeclaration": {"$ref": "#/$defs/course"},
     "inheritedBaseline": {"$ref": "#/$defs/inherited"},
@@ -105,7 +105,7 @@
       "properties": {
         "case": {"const": "high-availability-cex"},
         "profile": {"const": "SPOT-CEX-1.0"},
-        "planVersion": {"const": "0.12"},
+        "planVersion": {"const": "0.13"},
         "project": {"const": "matching"},
         "unit": {"const": "M10"},
         "lifecycle": {"const": "READY"},

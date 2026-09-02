@@ -42,7 +42,7 @@ public final class M09CheckMain {
       throw new IllegalStateException("cannot read course.properties", failure);
     }
     if ("M10".equals(properties.getProperty("unit"))
-        && "0.12".equals(properties.getProperty("planVersion"))) {
+        && "0.13".equals(properties.getProperty("planVersion"))) {
       boolean startBoundary =
           "READY".equals(properties.getProperty("lifecycle"))
               && "CONTRACT".equals(properties.getProperty("designDepth"))

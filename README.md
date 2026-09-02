@@ -26,7 +26,7 @@ exists at this start boundary.
 ## Current course boundary
 
 - Profile: `SPOT-CEX-1.0`
-- Plan version: `0.12`
+- Plan version: `0.13`
 - Unit: `M10`
 - Declared start ref: `course/m10-start`
 - Declared future complete ref: `course/m10-complete`

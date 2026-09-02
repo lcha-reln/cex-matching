@@ -130,7 +130,7 @@ public final class M10StartCheckRunner {
     report.put("schemaVersion", "matching.m10.check.v1");
     report.put("unit", "M10");
     report.put("status", STATUS);
-    report.put("contractPlanVersion", "0.12");
+    report.put("contractPlanVersion", "0.13");
     report.put(
         "objective",
         "Add bounded local admission and honest open-loop performance qualification without changing durable matching semantics.");
@@ -291,7 +291,7 @@ public final class M10StartCheckRunner {
         Map.ofEntries(
             Map.entry("case", "high-availability-cex"),
             Map.entry("profile", "SPOT-CEX-1.0"),
-            Map.entry("planVersion", "0.12"),
+            Map.entry("planVersion", "0.13"),
             Map.entry("project", "matching"),
             Map.entry("unit", "M10"),
             Map.entry("lifecycle", "READY"),
