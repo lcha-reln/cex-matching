@@ -15,7 +15,7 @@ final class M10CheckSchemaTest {
     failure.put("schemaVersion", "matching.m10.check.v2");
     failure.put("unit", "M10");
     failure.put("status", "SYSTEM_ERROR");
-    failure.put("contractPlanVersion", "0.12");
+    failure.put("contractPlanVersion", "0.13");
     failure.put("failure", "collector unavailable");
     var release = failure.putObject("releaseTarget");
     release.put("unitTag", "course/m10-complete");

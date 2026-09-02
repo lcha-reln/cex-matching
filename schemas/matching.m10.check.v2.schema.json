@@ -13,7 +13,7 @@
         "schemaVersion": {"const": "matching.m10.check.v2"},
         "unit": {"const": "M10"},
         "status": {"enum": ["PASS", "STUDENT_FAILURE", "SYSTEM_ERROR"]},
-        "contractPlanVersion": {"const": "0.12"},
+        "contractPlanVersion": {"const": "0.13"},
         "releaseTarget": {"$ref": "#/$defs/releaseTarget"}
       }
     },
@@ -34,7 +34,7 @@
             "schemaVersion": {"const": "matching.m10.check.v2"},
             "unit": {"const": "M10"},
             "status": {"const": "PASS"},
-            "contractPlanVersion": {"const": "0.12"},
+            "contractPlanVersion": {"const": "0.13"},
             "objective": {"const": "Add bounded local admission and honest open-loop performance qualification without changing durable matching semantics."},
             "source": {"$ref": "#/$defs/source"},
             "courseDeclaration": {"$ref": "#/$defs/course"},
@@ -74,7 +74,7 @@
             "schemaVersion": {"const": "matching.m10.check.v2"},
             "unit": {"const": "M10"},
             "status": {"enum": ["STUDENT_FAILURE", "SYSTEM_ERROR"]},
-            "contractPlanVersion": {"const": "0.12"},
+            "contractPlanVersion": {"const": "0.13"},
             "failure": {"type": "string", "minLength": 1},
             "releaseTarget": {"$ref": "#/$defs/releaseTarget"}
           }
@@ -97,7 +97,7 @@
       "properties": {
         "case": {"const": "high-availability-cex"},
         "profile": {"const": "SPOT-CEX-1.0"},
-        "planVersion": {"const": "0.12"},
+        "planVersion": {"const": "0.13"},
         "project": {"const": "matching"},
         "unit": {"const": "M10"},
         "lifecycle": {"const": "COMPLETE"},
@@ -187,7 +187,7 @@
     "smoke": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["profileId", "resultScope", "eligibleForReleaseEvidence", "evidenceMode", "methodIsomorphic", "latencyOrigin", "rawArrivals", "rawCompletions", "verifiedRawRecords", "verifiedBundleFiles", "qualificationSha256", "percentileRankRule", "percentilesRecomputed", "resourceDimensionsPresent", "aboveKneeRetained", "sweepKnee", "qopCandidate", "qop", "deterministicDiagnosticEvidenceMode", "deterministicDiagnosticMethodIsomorphic", "releaseThroughputClaim"],
+      "required": ["profileId", "resultScope", "eligibleForReleaseEvidence", "evidenceMode", "methodIsomorphic", "latencyOrigin", "rawArrivals", "rawCompletions", "verifiedRawRecords", "verifiedBundleFiles", "qualificationSha256", "percentileRankRule", "percentilesRecomputed", "resourceDimensionsPresent", "aboveKneeRetained", "sweepKnee", "qopCandidate", "provisionalSoakCandidates", "soakAttemptCount", "retainedSaturatedSoakAttempts", "qualifiedAttemptNumber", "qualifiedPointId", "qop", "deterministicDiagnosticEvidenceMode", "deterministicDiagnosticMethodIsomorphic", "releaseThroughputClaim"],
       "properties": {
         "profileId": {"const": "CI_SMOKE"},
         "resultScope": {"const": "METHOD_SMOKE_ONLY"},
@@ -206,6 +206,16 @@
         "aboveKneeRetained": {"const": true},
         "sweepKnee": {"type": "integer", "minimum": 1},
         "qopCandidate": {"type": "integer", "minimum": 1},
+        "provisionalSoakCandidates": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 1}
+        },
+        "soakAttemptCount": {"type": "integer", "minimum": 1},
+        "retainedSaturatedSoakAttempts": {"type": "integer", "minimum": 0},
+        "qualifiedAttemptNumber": {"type": "integer", "minimum": 1},
+        "qualifiedPointId": {"type": "string", "minLength": 1},
         "qop": {"type": "integer", "minimum": 1},
         "deterministicDiagnosticEvidenceMode": {"const": "MODEL_ONLY"},
         "deterministicDiagnosticMethodIsomorphic": {"const": false},

@@ -119,7 +119,7 @@ jobs:
         shell: bash
         run: |
           jq -e --arg commit "$(git rev-parse HEAD)" '
-            .schemaVersion == "matching.m10.qualification.v1" and
+            .schemaVersion == "matching.m10.qualification.v2" and
             .status == "PASS" and
             .profileId == "CI_SMOKE" and
             .resultScope == "METHOD_SMOKE_ONLY" and
@@ -129,7 +129,7 @@ jobs:
             .profile.id == "CI_SMOKE" and
             .profile.sweeps == 1 and
             .profile.soakSeconds == 3 and
-            .qualificationRuntime.policyId == "M10Q1" and
+            .qualificationRuntime.policyId == "M10Q2" and
             .qualificationRuntime.scope == "M10_DEDICATED_NOT_M09_DEFAULT" and
             .qualificationRuntime.m09Default == {"maxSuffixRecords": 64, "maxSuffixBytes": 1048576} and
             .qualificationRuntime.finiteRecoveryBudget == {"maxSuffixRecords": 1000000, "maxSuffixBytes": 1073741824} and
@@ -152,8 +152,14 @@ jobs:
             .rawRecomputation.recoverySuffixRecordsAndBytesExact == true and
             .rawRecomputation.allNewWalRecordsWithinPlanningCeiling == true and
             .soak.durationSeconds == 3 and
-            .soak.point.saturated == false and
-            .soak.point.terminalDrain.attemptAccounting.pending == 0
+            .soak.promotionPolicyId == "M10Q2_DESCENDING_FULL_DURATION_FIRST_PASS" and
+            (.soak.attempts | length) >= 1 and
+            .soak.attempts[-1].outcome == "QUALIFIED" and
+            .soak.attempts[-1].point.saturated == false and
+            .soak.attempts[-1].point.terminalDrain.attemptAccounting.pending == 0 and
+            .soak.qualifiedAttemptNumber == (.soak.attempts | length) and
+            .soak.qualifiedPointId == .soak.attempts[-1].point.pointId and
+            .capacity.qualifiedOperatingPoint == .soak.attempts[-1].point.offeredRate
           ' build/reports/m10-ci-smoke/qualification.json
 
       - name: Upload M10 completion reports

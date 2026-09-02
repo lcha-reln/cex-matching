@@ -23,7 +23,8 @@ public final class M10LoadMain {
         };
     String workloadHash = options.getOrDefault("workload-sha256", WORKLOAD_SHA256);
     if (!WORKLOAD_SHA256.equals(workloadHash)) {
-      throw new IllegalArgumentException("--workload-sha256 must equal the frozen M10Q1 hash");
+      throw new IllegalArgumentException(
+          "--workload-sha256 must equal the frozen M10 workload hash");
     }
     ArtifactContext context =
         new ArtifactContext(

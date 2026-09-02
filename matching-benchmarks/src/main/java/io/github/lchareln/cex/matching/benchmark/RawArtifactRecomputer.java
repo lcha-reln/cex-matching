@@ -201,7 +201,7 @@ final class RawArtifactRecomputer {
     require(context.sourceCommit().equals(text(node, "sourceCommit")), "raw source changed");
     require(
         context.workloadSha256().equals(text(node, "workloadSha256")), "raw workload hash changed");
-    require("M10Q1".equals(text(node, "qualificationRuntimePolicyId")), "runtime policy changed");
+    require("M10Q2".equals(text(node, "qualificationRuntimePolicyId")), "runtime policy changed");
     require(
         "M10_DEDICATED_NOT_M09_DEFAULT".equals(text(node, "qualificationRecoveryBudgetPolicy")),
         "qualification budget scope changed");
@@ -337,7 +337,7 @@ final class RawArtifactRecomputer {
         require(
             newWalRecordLength > 0
                 && newWalRecordLength <= QualificationProfile.PLANNED_WAL_RECORD_CEILING_BYTES,
-            "actual WAL record exceeds M10Q1 planning ceiling");
+            "actual WAL record exceeds M10Q2 planning ceiling");
       } else {
         require(node.path("walRecordLength").isNull(), "non-new result carried WAL length");
       }
@@ -579,7 +579,7 @@ final class RawArtifactRecomputer {
     require(context.profileId().name().equals(text(node, "profileId")), "recovery profile changed");
     require(context.resultScope().equals(text(node, "resultScope")), "recovery scope changed");
     require(context.sourceCommit().equals(text(node, "sourceCommit")), "recovery source changed");
-    require("M10Q1".equals(text(node, "qualificationRuntimePolicyId")), "recovery policy changed");
+    require("M10Q2".equals(text(node, "qualificationRuntimePolicyId")), "recovery policy changed");
     require(
         node.path("qualificationMaxSuffixRecords").longValue()
             == profile.recoveryBudgetMaxSuffixRecords(),

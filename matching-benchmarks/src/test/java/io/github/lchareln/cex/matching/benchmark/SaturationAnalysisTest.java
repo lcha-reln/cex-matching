@@ -40,11 +40,11 @@ class SaturationAnalysisTest {
     assertEquals(List.of(40L, 30L, 40L), published.sweepKnees());
     assertEquals(30, published.publishedKnee());
     assertEquals(21, published.qopCandidate());
-    assertEquals(20, published.qop());
+    assertEquals(List.of(20L, 10L), published.provisionalSoakCandidates());
   }
 
   @Test
-  void neverSelectsARateThatWasSaturatedInAnySweep() {
+  void excludesARateSaturatedInAnySweep() {
     List<RateMeasurement> noisyFirstSweep =
         List.of(
             point(10, 100, 100, 0, 0, 0, 1),
@@ -53,11 +53,63 @@ class SaturationAnalysisTest {
             point(40, 100, 90, 1, 0, 11, 90),
             point(50, 100, 90, 1, 0, 11, 90));
 
-    var published = SaturationAnalysis.publishSmoke(List.of(noisyFirstSweep));
+    var published = SaturationAnalysis.publish(List.of(sweep(40), noisyFirstSweep, sweep(40)));
 
     assertEquals(40, published.publishedKnee());
     assertEquals(28, published.qopCandidate());
-    assertEquals(10, published.qop());
+    assertEquals(List.of(10L), published.provisionalSoakCandidates());
+  }
+
+  @Test
+  void rejectsSweepLaddersWithDifferentOfferedRates() {
+    List<RateMeasurement> differentLadder =
+        List.of(
+            point(10, 100, 100, 0, 0, 0, 1),
+            point(25, 100, 100, 0, 0, 0, 1),
+            point(30, 100, 100, 0, 0, 0, 1),
+            point(40, 100, 90, 1, 0, 11, 90),
+            point(50, 100, 90, 1, 0, 11, 90));
+
+    IllegalStateException failure =
+        assertThrows(
+            IllegalStateException.class,
+            () -> SaturationAnalysis.publish(List.of(sweep(40), differentLadder, sweep(40))));
+
+    assertTrue(failure.getMessage().contains("offered rates differ"));
+  }
+
+  @Test
+  void rejectsAnEnvelopeWithNoAllSweepUnsaturatedCandidate() {
+    List<RateMeasurement> rateTenSaturated =
+        List.of(
+            point(10, 100, 90, 1, 0, 11, 90),
+            point(20, 100, 100, 0, 0, 0, 1),
+            point(30, 100, 100, 0, 0, 0, 1),
+            point(40, 100, 90, 1, 0, 11, 90),
+            point(50, 100, 90, 1, 0, 11, 90));
+    List<RateMeasurement> rateTwentySaturated =
+        List.of(
+            point(10, 100, 100, 0, 0, 0, 1),
+            point(20, 100, 90, 1, 0, 11, 90),
+            point(30, 100, 100, 0, 0, 0, 1),
+            point(40, 100, 90, 1, 0, 11, 90),
+            point(50, 100, 90, 1, 0, 11, 90));
+
+    IllegalStateException failure =
+        assertThrows(
+            IllegalStateException.class,
+            () ->
+                SaturationAnalysis.publish(
+                    List.of(rateTenSaturated, rateTwentySaturated, sweep(40))));
+
+    assertTrue(failure.getMessage().contains("no all-sweep unsaturated measured rate"));
+  }
+
+  @Test
+  void publishedEnvelopeRejectsCandidatesThatAreNotStrictlyDescending() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new SaturationAnalysis.PublishedEnvelope(List.of(40L), 40, 28, List.of(10L, 20L)));
   }
 
   @Test

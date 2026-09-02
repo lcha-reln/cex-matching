@@ -18,7 +18,7 @@ import java.util.Optional;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Runs calibration, every frozen open-loop point, QOP soak, and exact local recovery. */
+/** Runs calibration, every frozen open-loop point, M10Q2 soak promotion, and exact recovery. */
 public final class M10QualificationRunner {
   private final Config config;
 
@@ -68,13 +68,57 @@ public final class M10QualificationRunner {
               ? SaturationAnalysis.publishSmoke(measured)
               : SaturationAnalysis.publish(measured);
 
-      PointExecution soak = runSoakPoint(sink, runOriginNanos, globalOperation, capacity.qop());
-      SaturationAnalysis.SaturationDecision soakDecision =
-          SaturationAnalysis.classify(soak.measurement().rateMeasurement());
-      if (soakDecision.saturated()) {
+      LongHorizonPromotion promotion =
+          new LongHorizonPromotion(capacity.provisionalSoakCandidates());
+      List<MeasuredPoint> soakAttempts = new ArrayList<>();
+      Map<String, LoadPointResult> expectedPoints = new java.util.LinkedHashMap<>();
+      sweeps.forEach(
+          sweep ->
+              sweep.forEach(
+                  point -> expectedPoints.put(point.load().point().pointId(), point.load())));
+      long expectedAcceptedTraceRecords =
+          sweeps.stream()
+              .flatMap(List::stream)
+              .mapToLong(point -> point.recovery().durableOperations())
+              .sum();
+      QualificationArtifactSink.Inventory auditedInventory = null;
+      RawArtifactRecomputer.RawRecomputation auditedRawRecomputation = null;
+      while (promotion.hasNextCandidate()) {
+        long rate = promotion.beginNextAttempt();
+        int attemptNumber = promotion.currentAttemptNumber();
+        try {
+          PointExecution execution =
+              runSoakPoint(sink, runOriginNanos, globalOperation, attemptNumber, rate);
+          globalOperation = execution.nextGlobalOperation();
+          MeasuredPoint measuredAttempt =
+              new MeasuredPoint(execution.measurement(), execution.recovery());
+          soakAttempts.add(measuredAttempt);
+          expectedPoints.put(measuredAttempt.load().point().pointId(), measuredAttempt.load());
+          expectedAcceptedTraceRecords =
+              Math.addExact(
+                  expectedAcceptedTraceRecords, measuredAttempt.recovery().durableOperations());
+          auditedInventory = sink.snapshotRawArtifacts();
+          auditedRawRecomputation =
+              new RawArtifactRecomputer()
+                  .recompute(
+                      config.output(),
+                      config.artifactContext(),
+                      config.profile(),
+                      auditedInventory,
+                      expectedPoints,
+                      expectedAcceptedTraceRecords,
+                      sink.mapper());
+          promotion.recordDecision(
+              rate, SaturationAnalysis.classify(execution.measurement().rateMeasurement()));
+        } catch (IOException | RuntimeException failure) {
+          promotion.recordSystemError(rate);
+          throw failure;
+        }
+      }
+      if (!promotion.qualified()) {
         throw new IllegalStateException(
-            "QOP soak observation cut saturated after terminal drain and recovery verification: "
-                + String.join(",", soakDecision.reasons()));
+            "every M10Q2 full-duration soak candidate saturated after terminal drain and recovery"
+                + " verification");
       }
       Instant finishedAt = Instant.now();
       EnvironmentFingerprint environment =
@@ -86,28 +130,10 @@ public final class M10QualificationRunner {
               startedAt,
               finishedAt);
       QualificationArtifactSink.Inventory inventory = sink.finishRawArtifacts();
-      Map<String, LoadPointResult> expectedPoints = new java.util.LinkedHashMap<>();
-      sweeps.forEach(
-          sweep ->
-              sweep.forEach(
-                  point -> expectedPoints.put(point.load().point().pointId(), point.load())));
-      expectedPoints.put(soak.measurement().point().pointId(), soak.measurement());
-      long expectedAcceptedTraceRecords =
-          sweeps.stream()
-                  .flatMap(List::stream)
-                  .mapToLong(point -> point.recovery().durableOperations())
-                  .sum()
-              + soak.recovery().durableOperations();
-      RawArtifactRecomputer.RawRecomputation rawRecomputation =
-          new RawArtifactRecomputer()
-              .recompute(
-                  config.output(),
-                  config.artifactContext(),
-                  config.profile(),
-                  inventory,
-                  expectedPoints,
-                  expectedAcceptedTraceRecords,
-                  sink.mapper());
+      if (!inventory.equals(auditedInventory) || auditedRawRecomputation == null) {
+        throw new IllegalStateException(
+            "final raw inventory differs from the qualified attempt audit");
+      }
       Optional<DiagnosticJmh> diagnosticJmh = publishDiagnosticJmh();
       ObjectNode qualification =
           summary(
@@ -115,17 +141,20 @@ public final class M10QualificationRunner {
               calibration,
               sweeps,
               capacity,
-              new MeasuredPoint(soak.measurement(), soak.recovery()),
+              promotion,
+              soakAttempts,
               environment,
               inventory,
-              rawRecomputation,
+              auditedRawRecomputation,
               diagnosticJmh);
       sink.writeQualification(qualification);
       return new RunResult(
           calibration,
           sweeps,
           capacity,
-          new MeasuredPoint(soak.measurement(), soak.recovery()),
+          soakAttempts,
+          promotion.qualifiedOperatingPoint(),
+          promotion.qualifiedAttemptNumber(),
           environment,
           inventory,
           config.output().resolve("qualification.json"));
@@ -194,9 +223,11 @@ public final class M10QualificationRunner {
       QualificationArtifactSink sink,
       long runOriginNanos,
       long firstGlobalOperation,
-      long qualifiedOperatingPoint)
+      int attemptNumber,
+      long provisionalOperatingPoint)
       throws IOException {
-    String stem = "qop-soak";
+    String stem =
+        "qop-soak-attempt-%02d-rate-%08d".formatted(attemptNumber, provisionalOperatingPoint);
     Path directory = config.walRoot().resolve(stem);
     Files.createDirectory(directory);
     RecoveryTrace trace = new RecoveryTrace(directory.resolve("recovery-trace.m10r"), stem);
@@ -213,7 +244,7 @@ public final class M10QualificationRunner {
       soak =
           runner.execute(
               new QualificationArtifactSink.PointIdentity(
-                  stem, "SOAK", 0, 0, qualifiedOperatingPoint),
+                  stem, "SOAK", 0, 0, provisionalOperatingPoint),
               config.profile().soak(),
               false);
       nextGlobal = runner.nextGlobalOperation();
@@ -243,7 +274,8 @@ public final class M10QualificationRunner {
       CalibrationResult calibration,
       List<List<MeasuredPoint>> sweeps,
       SaturationAnalysis.PublishedEnvelope capacity,
-      MeasuredPoint soak,
+      LongHorizonPromotion promotion,
+      List<MeasuredPoint> soakAttempts,
       EnvironmentFingerprint environment,
       QualificationArtifactSink.Inventory inventory,
       RawArtifactRecomputer.RawRecomputation rawRecomputation,
@@ -255,7 +287,7 @@ public final class M10QualificationRunner {
     root.put("profileId", config.profile().id().name());
     root.put("resultScope", config.profile().resultScope());
     root.put("eligibleForReleaseEvidence", config.profile().eligibleForReleaseEvidence());
-    root.put("qualificationRuntimePolicyId", "M10Q1");
+    root.put("qualificationRuntimePolicyId", "M10Q2");
     ObjectNode source = root.putObject("source");
     source.put("commit", config.artifactContext().sourceCommit());
     source.put("workloadSha256", config.artifactContext().workloadSha256());
@@ -274,10 +306,33 @@ public final class M10QualificationRunner {
     capacity.sweepKnees().forEach(capacityNode.putArray("sweepKnees")::add);
     capacityNode.put("publishedKnee", capacity.publishedKnee());
     capacityNode.put("qualifiedOperatingPointCandidate", capacity.qopCandidate());
-    capacityNode.put("qualifiedOperatingPoint", capacity.qop());
+    capacity
+        .provisionalSoakCandidates()
+        .forEach(capacityNode.putArray("provisionalSoakCandidates")::add);
+    capacityNode.put("qualifiedOperatingPoint", promotion.qualifiedOperatingPoint());
     ObjectNode soakNode = root.putObject("soak");
     soakNode.put("durationSeconds", config.profile().soak().toSeconds());
-    soakNode.set("point", pointNode(sink, soak));
+    soakNode.put("promotionPolicyId", LongHorizonPromotion.POLICY_ID);
+    ArrayNode attemptArray = soakNode.putArray("attempts");
+    List<LongHorizonPromotion.Attempt> decisions = promotion.attempts();
+    if (decisions.size() != soakAttempts.size()) {
+      throw new IllegalStateException("promotion decisions and measured attempts differ");
+    }
+    for (int index = 0; index < decisions.size(); index++) {
+      LongHorizonPromotion.Attempt decision = decisions.get(index);
+      MeasuredPoint measured = soakAttempts.get(index);
+      if (decision.offeredRate() != measured.load().point().offeredRate()) {
+        throw new IllegalStateException("promotion decision rate differs from measured attempt");
+      }
+      ObjectNode attemptNode = attemptArray.addObject();
+      attemptNode.put("attemptNumber", decision.attemptNumber());
+      attemptNode.put("outcome", decision.outcome().name());
+      attemptNode.set("point", pointNode(sink, measured));
+    }
+    soakNode.put("qualifiedAttemptNumber", promotion.qualifiedAttemptNumber());
+    soakNode.put(
+        "qualifiedPointId",
+        soakAttempts.get(promotion.qualifiedAttemptNumber() - 1).load().point().pointId());
     ObjectNode raw = root.putObject("rawRecomputation");
     raw.put("status", "PASS");
     raw.put("fromDecompressedRaw", true);
@@ -402,7 +457,7 @@ public final class M10QualificationRunner {
     FrozenPercentiles.QUANTILES.forEach(node.putArray("percentiles")::add);
     node.put("rankRule", FrozenPercentiles.RANK_RULE);
     node.put("soakSeconds", config.profile().soak().toSeconds());
-    node.put("qualificationRuntimePolicyId", "M10Q1");
+    node.put("qualificationRuntimePolicyId", "M10Q2");
     node.put("recoveryBudgetMaxSuffixRecords", config.profile().recoveryBudgetMaxSuffixRecords());
     node.put("recoveryBudgetMaxSuffixBytes", config.profile().recoveryBudgetMaxSuffixBytes());
     node.put("proactiveCheckpointOffsetNanos", config.profile().proactiveCheckpointOffsetNanos());
@@ -410,7 +465,7 @@ public final class M10QualificationRunner {
   }
 
   private void writeQualificationRuntime(ObjectNode node) {
-    node.put("policyId", "M10Q1");
+    node.put("policyId", "M10Q2");
     node.put("scope", "M10_DEDICATED_NOT_M09_DEFAULT");
     ObjectNode m09 = node.putObject("m09Default");
     m09.put(
@@ -704,12 +759,20 @@ public final class M10QualificationRunner {
       CalibrationResult calibration,
       List<List<MeasuredPoint>> sweeps,
       SaturationAnalysis.PublishedEnvelope capacity,
-      MeasuredPoint soak,
+      List<MeasuredPoint> soakAttempts,
+      long qualifiedOperatingPoint,
+      int qualifiedAttemptNumber,
       EnvironmentFingerprint environment,
       QualificationArtifactSink.Inventory inventory,
       Path qualificationJson) {
     public RunResult {
       sweeps = sweeps.stream().map(List::copyOf).toList();
+      soakAttempts = List.copyOf(soakAttempts);
+      if (qualifiedOperatingPoint <= 0
+          || qualifiedAttemptNumber <= 0
+          || qualifiedAttemptNumber > soakAttempts.size()) {
+        throw new IllegalArgumentException("invalid qualified soak promotion result");
+      }
     }
   }
 

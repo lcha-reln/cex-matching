@@ -49,7 +49,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 /** Independently hashes, decompresses, reconciles, and re-derives a full M10 release bundle. */
 final class M10ReleaseBundleVerifier {
-  static final String SCHEMA_PATH = "schemas/matching.m10.qualification.v1.schema.json";
+  static final String SCHEMA_PATH = "schemas/matching.m10.qualification.v2.schema.json";
   private static final String WORKLOAD_SHA256 = M10CheckRunner.WORKLOAD_SHA256;
   private static final List<String> STREAMS =
       List.of(
@@ -214,9 +214,8 @@ final class M10ReleaseBundleVerifier {
           "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.canonicalEnvelopeDecode");
 
   private enum BundleProfile {
-    RELEASE(
-        "RELEASE_QUALIFICATION", "RELEASE_QUALIFICATION", true, 20, 3, 10, 30, 1_800, 24, 25, 49),
-    SMOKE("CI_SMOKE", "METHOD_SMOKE_ONLY", false, 1, 1, 1, 2, 3, 8, 9, 17);
+    RELEASE("RELEASE_QUALIFICATION", "RELEASE_QUALIFICATION", true, 20, 3, 10, 30, 1_800, 24),
+    SMOKE("CI_SMOKE", "METHOD_SMOKE_ONLY", false, 1, 1, 1, 2, 3, 8);
 
     final String id;
     final String scope;
@@ -227,8 +226,6 @@ final class M10ReleaseBundleVerifier {
     final int measurementSeconds;
     final int soakSeconds;
     final int warmupPoints;
-    final int publishedPoints;
-    final int rawPoints;
 
     BundleProfile(
         String id,
@@ -239,9 +236,7 @@ final class M10ReleaseBundleVerifier {
         int warmupSeconds,
         int measurementSeconds,
         int soakSeconds,
-        int warmupPoints,
-        int publishedPoints,
-        int rawPoints) {
+        int warmupPoints) {
       this.id = id;
       this.scope = scope;
       this.eligible = eligible;
@@ -251,8 +246,14 @@ final class M10ReleaseBundleVerifier {
       this.measurementSeconds = measurementSeconds;
       this.soakSeconds = soakSeconds;
       this.warmupPoints = warmupPoints;
-      this.publishedPoints = publishedPoints;
-      this.rawPoints = rawPoints;
+    }
+
+    int publishedPoints(int soakAttempts) {
+      return Math.addExact(Math.multiplyExact(sweeps, 8), soakAttempts);
+    }
+
+    int rawPoints(int soakAttempts) {
+      return Math.addExact(warmupPoints, publishedPoints(soakAttempts));
     }
   }
 
@@ -294,6 +295,7 @@ final class M10ReleaseBundleVerifier {
     JsonSupport.validate(qualification, readString(root.resolve(SCHEMA_PATH)), true);
     verifyFrozenIdentity(root, qualification, sourceCommit, expectedProfile);
     String runId = text(qualification, "runId");
+    int soakAttemptCount = qualification.path("soak").path("attempts").size();
 
     Map<String, JsonNode> summaries = summaryPoints(qualification);
     Path temporary;
@@ -349,7 +351,7 @@ final class M10ReleaseBundleVerifier {
         rawRecords = Math.addExact(rawRecords, streamRecords);
       }
       closeSpools(points);
-      verifyRawPoints(points, summaries, expectedProfile);
+      verifyRawPoints(points, summaries, expectedProfile, soakAttemptCount);
       verifyRecovery(
           root,
           release,
@@ -371,7 +373,7 @@ final class M10ReleaseBundleVerifier {
       verifyCapacity(qualification, summaries, expectedProfile);
       verifyRawRecomputation(qualification, streamRecordCounts, summaries.size(), traces.size());
       require(
-          points.size() == expectedProfile.rawPoints,
+          points.size() == expectedProfile.rawPoints(soakAttemptCount),
           "raw point count differs from frozen profile");
 
       ObjectNode verified = (ObjectNode) qualification.deepCopy();
@@ -458,7 +460,7 @@ final class M10ReleaseBundleVerifier {
     require(WORKLOAD_SHA256.equals(text(record, "workloadSha256")), "raw workload hash changed");
     require(runId.equals(text(record, "runId")), "raw run ID changed");
     require(
-        "M10Q1".equals(text(record, "qualificationRuntimePolicyId")), "raw runtime policy changed");
+        "M10Q2".equals(text(record, "qualificationRuntimePolicyId")), "raw runtime policy changed");
     require(
         "M10_DEDICATED_NOT_M09_DEFAULT".equals(text(record, "qualificationRecoveryBudgetPolicy")),
         "raw recovery budget policy changed");
@@ -469,7 +471,7 @@ final class M10ReleaseBundleVerifier {
             && record.path("m09DefaultMaxSuffixBytes").longValue() == 1_048_576L
             && record.path("plannedWalRecordCeilingBytes").intValue() == 1_024
             && record.path("proactiveCheckpointOffsetNanos").longValue() == 100_000_000L,
-        "raw M10Q1 finite runtime boundary changed");
+        "raw M10Q2 finite runtime boundary changed");
   }
 
   static void verifyExactRawFields(JsonNode record, String stream) {
@@ -509,7 +511,10 @@ final class M10ReleaseBundleVerifier {
   }
 
   private static void verifyRawPoints(
-      Map<String, PointRaw> points, Map<String, JsonNode> summaries, BundleProfile expectedProfile)
+      Map<String, PointRaw> points,
+      Map<String, JsonNode> summaries,
+      BundleProfile expectedProfile,
+      int soakAttemptCount)
       throws IOException {
     int warmups = 0;
     for (PointRaw raw : points.values()) {
@@ -643,7 +648,9 @@ final class M10ReleaseBundleVerifier {
       verifyPhaseBudget(raw, summary, points);
     }
     require(warmups == expectedProfile.warmupPoints, "raw warmup point count changed");
-    require(summaries.size() == expectedProfile.publishedPoints, "published point count changed");
+    require(
+        summaries.size() == expectedProfile.publishedPoints(soakAttemptCount),
+        "published point count changed");
   }
 
   private static void verifyPhaseBudget(
@@ -702,7 +709,7 @@ final class M10ReleaseBundleVerifier {
             && worstPrefixBytes <= 1_073_741_824L
             && worstPostRecords <= 1_000_000L
             && worstPostBytes <= 1_073_741_824L,
-        "phase preflight exceeds M10Q1 finite recovery budget");
+        "phase preflight exceeds M10Q2 finite recovery budget");
     require(
         nonNegative(plan, "actualSuffixRecordsAtTerminalDrain") == raw.actualSuffixRecords
             && nonNegative(plan, "actualSuffixBytesAtTerminalDrain") == raw.actualSuffixBytes
@@ -744,27 +751,99 @@ final class M10ReleaseBundleVerifier {
         recomputed.qopCandidate() == capacity.path("qualifiedOperatingPointCandidate").longValue(),
         "published QOP candidate changed");
     require(
-        recomputed.qop() == capacity.path("qualifiedOperatingPoint").longValue(),
+        recomputed
+            .provisionalSoakCandidates()
+            .equals(longs(capacity.path("provisionalSoakCandidates"))),
+        "provisional soak candidates changed");
+
+    JsonNode soak = qualification.path("soak");
+    require(
+        "M10Q2_DESCENDING_FULL_DURATION_FIRST_PASS".equals(text(soak, "promotionPolicyId")),
+        "soak promotion policy changed");
+    JsonNode attempts = soak.path("attempts");
+    require(attempts.isArray() && !attempts.isEmpty(), "soak promotion has no attempts");
+    require(
+        attempts.size() <= recomputed.provisionalSoakCandidates().size(),
+        "soak attempts exceed provisional candidates");
+
+    for (int index = 0; index < attempts.size(); index++) {
+      JsonNode attempt = attempts.path(index);
+      JsonNode point = attempt.path("point");
+      int expectedAttemptNumber = index + 1;
+      long expectedRate = recomputed.provisionalSoakCandidates().get(index);
+      String expectedPointId =
+          "qop-soak-attempt-%02d-rate-%08d".formatted(expectedAttemptNumber, expectedRate);
+      require(
+          attempt.path("attemptNumber").intValue() == expectedAttemptNumber,
+          "soak attempt numbers are not contiguous");
+      require(
+          point.path("offeredRate").longValue() == expectedRate,
+          "soak attempts are not a continuous provisional-candidate prefix");
+      require(
+          expectedPointId.equals(text(point, "pointId")), "soak attempt point identity changed");
+      require(
+          "SOAK".equals(text(point, "phase"))
+              && point.path("sweep").intValue() == 0
+              && point.path("ladderPermille").intValue() == 0,
+          "soak attempt phase identity changed");
+      require(summaries.containsKey(expectedPointId), "soak attempt raw point is missing");
+
+      List<String> reasons = independentSaturationReasons(rateMeasurement(point));
+      boolean saturated = !reasons.isEmpty();
+      require(
+          point.path("saturated").booleanValue() == saturated,
+          "soak saturation classification changed");
+      require(
+          reasons.equals(strings(point.path("saturationReasons"))),
+          "soak saturation reasons changed");
+      boolean qualifiedAttempt = index == attempts.size() - 1;
+      String expectedOutcome = qualifiedAttempt ? "QUALIFIED" : "SATURATED";
+      require(
+          expectedOutcome.equals(text(attempt, "outcome")),
+          "soak attempt outcome violates first-pass promotion");
+      require(
+          qualifiedAttempt != saturated,
+          qualifiedAttempt
+              ? "qualified soak attempt is saturated"
+              : "preceding soak attempt is not saturated");
+      verifySoakAttemptGuards(point);
+    }
+
+    JsonNode qualifiedAttempt = attempts.path(attempts.size() - 1);
+    JsonNode qualifiedPoint = qualifiedAttempt.path("point");
+    require(
+        soak.path("qualifiedAttemptNumber").intValue() == attempts.size(),
+        "qualified attempt pointer changed");
+    require(
+        text(soak, "qualifiedPointId").equals(text(qualifiedPoint, "pointId")),
+        "qualified point pointer changed");
+    require(
+        capacity.path("qualifiedOperatingPoint").longValue()
+            == qualifiedPoint.path("offeredRate").longValue(),
         "published QOP changed");
-    JsonNode soak = qualification.path("soak").path("point");
-    require(soak.path("offeredRate").longValue() == recomputed.qop(), "soak is not at QOP");
-    require(summaries.containsKey(text(soak, "pointId")), "soak raw point is missing");
-    require(independentSaturationReasons(rateMeasurement(soak)).isEmpty(), "QOP soak is saturated");
-    require(!soak.path("saturated").booleanValue(), "QOP soak is published as saturated");
-    require(soak.path("saturationReasons").isEmpty(), "QOP soak has saturation reasons");
-    JsonNode logical = soak.path("logical");
-    require(logical.path("overloaded").longValue() == 0, "QOP soak overloaded");
-    require(logical.path("closedOrInvalid").longValue() == 0, "QOP soak rejected closed/invalid");
+  }
+
+  private static void verifySoakAttemptGuards(JsonNode point) {
+    JsonNode logical = point.path("logical");
     require(
         logical.path("initiallyAdmitted").longValue()
             == logical.path("terminalCompletions").longValue(),
-        "QOP soak did not terminally reconcile");
-    JsonNode attempts = soak.path("attempts");
-    require(attempts.path("pending").longValue() == 0, "QOP soak retains pending attempts");
+        "soak attempt did not terminally reconcile");
     require(
-        attempts.path("explicitServiceFailures").longValue() == 0,
-        "QOP soak has explicit service failures");
-    require(attempts.path("closedOrInvalid").longValue() == 0, "QOP soak has rejected attempts");
+        logical.path("closedOrInvalid").longValue() == 0, "soak attempt rejected closed/invalid");
+
+    RunAccounting terminal = accounting(point.path("attempts"));
+    require(terminal.pendingAtObservationCut() == 0, "soak attempt retains pending work");
+    require(terminal.explicitServiceFailures() == 0, "soak attempt has explicit service failures");
+    require(terminal.closedOrInvalid() == 0, "soak attempt has rejected attempts");
+    require(
+        terminal.submissionResultVariants().get("CHECKPOINT_REQUIRED") == 0
+            && terminal.submissionResultVariants().get("DURABILITY_UNKNOWN") == 0
+            && terminal.submissionResultVariants().get("FAILED_CLOSED") == 0,
+        "soak attempt contains a non-saturation system failure");
+    require(
+        logical.path("terminalCompletions").longValue() == terminal.terminalCompletions(),
+        "soak terminal summary differs from attempt accounting");
   }
 
   private static IndependentCapacity independentCapacity(
@@ -797,8 +876,8 @@ final class M10ReleaseBundleVerifier {
     long publishedKnee = knees.stream().mapToLong(Long::longValue).min().orElseThrow();
     long candidate = Math.floorDiv(Math.multiplyExact(publishedKnee, 70L), 100L);
     require(candidate > 0, "QOP candidate is not positive");
-    long selected = 0;
-    for (int index = 0; index < reference.size(); index++) {
+    List<Long> provisionalSoakCandidates = new ArrayList<>();
+    for (int index = reference.size() - 1; index >= 0; index--) {
       long rate = reference.get(index).offeredRate();
       if (rate <= candidate) {
         boolean allUnsaturated = true;
@@ -808,10 +887,12 @@ final class M10ReleaseBundleVerifier {
             break;
           }
         }
-        if (allUnsaturated) selected = Math.max(selected, rate);
+        if (allUnsaturated) provisionalSoakCandidates.add(rate);
       }
     }
-    require(selected > 0, "no all-sweep unsaturated measured QOP at or below candidate");
+    require(
+        !provisionalSoakCandidates.isEmpty(),
+        "no all-sweep unsaturated measured soak candidate at or below QOP candidate");
     for (List<RateMeasurement> sweep : sweeps) {
       boolean aboveKneeRetained =
           sweep.stream()
@@ -821,7 +902,8 @@ final class M10ReleaseBundleVerifier {
                           && !independentSaturationReasons(point).isEmpty());
       require(aboveKneeRetained, "capacity sweep lost above-knee saturation evidence");
     }
-    return new IndependentCapacity(List.copyOf(knees), publishedKnee, candidate, selected);
+    return new IndependentCapacity(
+        List.copyOf(knees), publishedKnee, candidate, List.copyOf(provisionalSoakCandidates));
   }
 
   private static List<String> independentSaturationReasons(RateMeasurement measurement) {
@@ -847,7 +929,10 @@ final class M10ReleaseBundleVerifier {
   }
 
   private record IndependentCapacity(
-      List<Long> sweepKnees, long publishedKnee, long qopCandidate, long qop) {}
+      List<Long> sweepKnees,
+      long publishedKnee,
+      long qopCandidate,
+      List<Long> provisionalSoakCandidates) {}
 
   private static RateMeasurement rateMeasurement(JsonNode point) {
     JsonNode observation = point.path("observationCut");
@@ -945,7 +1030,7 @@ final class M10ReleaseBundleVerifier {
           WORKLOAD_SHA256.equals(text(record, "workloadSha256")),
           "recovery record workload changed");
       require(
-          "M10Q1".equals(text(record, "qualificationRuntimePolicyId"))
+          "M10Q2".equals(text(record, "qualificationRuntimePolicyId"))
               && "M10_DEDICATED_NOT_M09_DEFAULT"
                   .equals(text(record, "qualificationRecoveryBudgetPolicy"))
               && record.path("qualificationMaxSuffixRecords").longValue() == 1_000_000L
@@ -954,7 +1039,7 @@ final class M10ReleaseBundleVerifier {
               && record.path("m09DefaultMaxSuffixBytes").longValue() == 1_048_576L
               && record.path("plannedWalRecordCeilingBytes").intValue() == 1_024
               && record.path("proactiveCheckpointOffsetNanos").longValue() == 100_000_000L,
-          "recovery M10Q1 boundary changed");
+          "recovery M10Q2 boundary changed");
       String pointId = text(record, "pointId");
       require(
           summaries.containsKey(pointId) && observed.add(pointId),
@@ -1034,6 +1119,7 @@ final class M10ReleaseBundleVerifier {
             "summary recovery field changed: " + field);
       }
     }
+    require(observed.equals(summaries.keySet()), "recovery/published point inventories differ");
     require(observedTraces.equals(traces.keySet()), "recovery/accepted trace inventories differ");
     files.add(relative);
   }
@@ -1041,7 +1127,7 @@ final class M10ReleaseBundleVerifier {
   private static void verifyFrozenIdentity(
       Path repositoryRoot, JsonNode root, String sourceCommit, BundleProfile expectedProfile) {
     require(
-        "matching.m10.qualification.v1".equals(text(root, "schemaVersion")),
+        "matching.m10.qualification.v2".equals(text(root, "schemaVersion")),
         "qualification schema changed");
     require("PASS".equals(text(root, "status")), "qualification is not PASS");
     require(expectedProfile.id.equals(text(root, "profileId")), "qualification profile changed");
@@ -1055,11 +1141,11 @@ final class M10ReleaseBundleVerifier {
         WORKLOAD_SHA256.equals(text(root.path("source"), "workloadSha256")),
         "qualification workload changed");
     require(
-        "M10Q1".equals(text(root, "qualificationRuntimePolicyId")),
+        "M10Q2".equals(text(root, "qualificationRuntimePolicyId")),
         "qualification runtime policy changed");
     JsonNode runtime = root.path("qualificationRuntime");
     require(
-        "M10Q1".equals(text(runtime, "policyId"))
+        "M10Q2".equals(text(runtime, "policyId"))
             && "M10_DEDICATED_NOT_M09_DEFAULT".equals(text(runtime, "scope"))
             && runtime.path("m09Default").path("maxSuffixRecords").longValue() == 64L
             && runtime.path("m09Default").path("maxSuffixBytes").longValue() == 1_048_576L
@@ -1070,7 +1156,7 @@ final class M10ReleaseBundleVerifier {
             && runtime.path("proactiveCheckpointOffsetNanos").longValue() == 100_000_000L
             && runtime.path("proactiveCheckpointAdmissionLagMaxNanos").longValue() == 10_000_000L
             && runtime.path("plannedRecordCeilingBytes").intValue() == 1_024,
-        "qualification M10Q1 recovery boundary changed");
+        "qualification M10Q2 recovery boundary changed");
     verifyRuntimeProvenance(repositoryRoot, root, sourceCommit, expectedProfile);
     require(
         "START_SUFFIX_PLUS_ARRIVALS_SCHEDULED_BEFORE_CHECKPOINT_ADMISSION_DEADLINE_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER"
@@ -1135,7 +1221,7 @@ final class M10ReleaseBundleVerifier {
             && profile.path("measurementSecondsPerRate").intValue()
                 == expectedProfile.measurementSeconds
             && profile.path("soakSeconds").intValue() == expectedProfile.soakSeconds
-            && "M10Q1".equals(text(profile, "qualificationRuntimePolicyId"))
+            && "M10Q2".equals(text(profile, "qualificationRuntimePolicyId"))
             && profile.path("recoveryBudgetMaxSuffixRecords").longValue() == 1_000_000L
             && profile.path("recoveryBudgetMaxSuffixBytes").longValue() == 1_073_741_824L
             && profile.path("proactiveCheckpointOffsetNanos").longValue() == 100_000_000L
@@ -1167,7 +1253,8 @@ final class M10ReleaseBundleVerifier {
             + (long) expectedProfile.sweeps
                 * 8L
                 * (expectedProfile.warmupSeconds + expectedProfile.measurementSeconds)
-            + expectedProfile.soakSeconds;
+            + Math.multiplyExact(
+                (long) root.path("soak").path("attempts").size(), expectedProfile.soakSeconds);
     require(!finished.isBefore(started), "release finish precedes start");
     require(
         Duration.between(started, finished).toSeconds() >= minimumRunSeconds,
@@ -1454,8 +1541,10 @@ final class M10ReleaseBundleVerifier {
         require(result.put(text(point, "pointId"), point) == null, "duplicate summary point");
       }
     }
-    JsonNode soak = qualification.path("soak").path("point");
-    require(result.put(text(soak, "pointId"), soak) == null, "duplicate soak point");
+    for (JsonNode attempt : qualification.path("soak").path("attempts")) {
+      JsonNode point = attempt.path("point");
+      require(result.put(text(point, "pointId"), point) == null, "duplicate soak point");
+    }
     return Map.copyOf(result);
   }
 

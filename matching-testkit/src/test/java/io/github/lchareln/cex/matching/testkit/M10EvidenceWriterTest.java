@@ -53,6 +53,7 @@ final class M10EvidenceWriterTest {
     JsonNode manifest = JsonSupport.parse(read(result.manifestPath()));
     assertEquals("M10", manifest.path("unit").stringValue());
     assertEquals("matching-0.5.0", manifest.path("productRelease").stringValue());
+    assertEquals("0.13", manifest.path("planVersion").stringValue());
     assertEquals(
         M10EvidenceWriter.REQUIRED_CLAIMS,
         manifest.path("claims").valueStream().map(node -> node.path("id").stringValue()).toList());
@@ -76,6 +77,62 @@ final class M10EvidenceWriterTest {
     assertTrue(paths.contains("reports/release/raw-arrivals/part-00000.jsonl.gz"));
     assertTrue(paths.contains("reports/release/diagnostics/core-sample-time.json"));
     assertEquals(result.manifestSha256(), Hashing.sha256Hex(read(result.manifestPath())));
+
+    JsonNode releaseClaim =
+        manifest
+            .path("claims")
+            .valueStream()
+            .filter(claim -> "release-open-loop-envelope".equals(claim.path("id").stringValue()))
+            .findFirst()
+            .orElseThrow();
+    assertTrue(
+        releaseClaim
+            .path("statement")
+            .stringValue()
+            .contains("retains every preceding saturated 1,800-second attempt"));
+    assertTrue(
+        releaseClaim
+            .path("statement")
+            .stringValue()
+            .contains("promotes the first full-duration PASS as the QOP"));
+    JsonNode releaseQualification = releaseClaim.path("observations").path("qualification");
+    assertEquals("M10Q2", releaseQualification.path("qualificationRuntimePolicyId").stringValue());
+    assertEquals(
+        List.of(200L, 100L),
+        releaseQualification
+            .path("capacity")
+            .path("provisionalSoakCandidates")
+            .valueStream()
+            .map(JsonNode::longValue)
+            .toList());
+    assertEquals(2, releaseQualification.path("soak").path("attempts").size());
+    assertEquals(
+        "SATURATED",
+        releaseQualification.path("soak").path("attempts").path(0).path("outcome").stringValue());
+    assertEquals(
+        "QUALIFIED",
+        releaseQualification.path("soak").path("attempts").path(1).path("outcome").stringValue());
+    assertEquals(2, releaseQualification.path("soak").path("qualifiedAttemptNumber").intValue());
+    assertEquals(
+        "qop-soak-attempt-02-rate-00000100",
+        releaseQualification.path("soak").path("qualifiedPointId").stringValue());
+    assertEquals(
+        100L, releaseQualification.path("capacity").path("qualifiedOperatingPoint").longValue());
+    assertEquals(50, releaseQualification.path("rawRecomputation").path("rawPoints").intValue());
+
+    JsonNode architectureClaim =
+        manifest
+            .path("claims")
+            .valueStream()
+            .filter(
+                claim -> "architecture-and-release-identity".equals(claim.path("id").stringValue()))
+            .findFirst()
+            .orElseThrow();
+    String architectureStatement = architectureClaim.path("statement").stringValue();
+    assertTrue(architectureStatement.contains("matching-core remains infrastructure-free"));
+    assertTrue(architectureStatement.contains("semantics-preserving hot-path audit split"));
+    assertTrue(architectureStatement.contains("dedicated terminal-history growth test"));
+    assertFalse(architectureStatement.contains("unchanged from the M10 start boundary"));
   }
 
   @Test
@@ -278,7 +335,7 @@ final class M10EvidenceWriterTest {
     root.put("schemaVersion", "matching.m10.check.v2");
     root.put("unit", "M10");
     root.put("status", "PASS");
-    root.put("contractPlanVersion", "0.12");
+    root.put("contractPlanVersion", "0.13");
     root.put(
         "objective",
         "Add bounded local admission and honest open-loop performance qualification without"
@@ -287,7 +344,7 @@ final class M10EvidenceWriterTest {
     ObjectNode course = root.putObject("courseDeclaration");
     course.put("case", "high-availability-cex");
     course.put("profile", "SPOT-CEX-1.0");
-    course.put("planVersion", "0.12");
+    course.put("planVersion", "0.13");
     course.put("project", "matching");
     course.put("unit", "M10");
     course.put("lifecycle", "COMPLETE");
@@ -413,7 +470,12 @@ final class M10EvidenceWriterTest {
     smoke.put("aboveKneeRetained", true);
     smoke.put("sweepKnee", 10);
     smoke.put("qopCandidate", 7);
-    smoke.put("qop", 7);
+    smoke.putArray("provisionalSoakCandidates").add(7).add(6);
+    smoke.put("soakAttemptCount", 2);
+    smoke.put("retainedSaturatedSoakAttempts", 1);
+    smoke.put("qualifiedAttemptNumber", 2);
+    smoke.put("qualifiedPointId", "qop-soak-attempt-02-rate-00000006");
+    smoke.put("qop", 6);
     smoke.put("deterministicDiagnosticEvidenceMode", "MODEL_ONLY");
     smoke.put("deterministicDiagnosticMethodIsomorphic", false);
     smoke.put("releaseThroughputClaim", false);
@@ -483,12 +545,13 @@ final class M10EvidenceWriterTest {
 
   private static ObjectNode qualification(String sourceCommit) {
     ObjectNode root = JsonSupport.MAPPER.createObjectNode();
-    root.put("schemaVersion", "matching.m10.qualification.v1");
+    root.put("schemaVersion", "matching.m10.qualification.v2");
     root.put("status", "PASS");
     root.put("runId", "m10-test-release");
     root.put("profileId", "RELEASE_QUALIFICATION");
     root.put("resultScope", "RELEASE_QUALIFICATION");
     root.put("eligibleForReleaseEvidence", true);
+    root.put("qualificationRuntimePolicyId", "M10Q2");
     root.putObject("source")
         .put("commit", sourceCommit)
         .put("workloadSha256", M10CheckRunner.WORKLOAD_SHA256);
@@ -497,11 +560,39 @@ final class M10EvidenceWriterTest {
         .put("osName", "test-os")
         .put("osVersion", "1")
         .put("osArchitecture", "test-arch");
+    ObjectNode capacity = root.putObject("capacity");
+    capacity.putArray("sweepKnees").add(300).add(300).add(300);
+    capacity.put("publishedKnee", 300);
+    capacity.put("qualifiedOperatingPointCandidate", 200);
+    capacity.putArray("provisionalSoakCandidates").add(200).add(100);
+    capacity.put("qualifiedOperatingPoint", 100);
+    ObjectNode soak = root.putObject("soak");
+    soak.put("durationSeconds", 1_800);
+    soak.put("promotionPolicyId", "M10Q2_DESCENDING_FULL_DURATION_FIRST_PASS");
+    ArrayNode attempts = soak.putArray("attempts");
+    ObjectNode saturated = attempts.addObject();
+    saturated.put("attemptNumber", 1);
+    saturated.put("outcome", "SATURATED");
+    saturated
+        .putObject("point")
+        .put("pointId", "qop-soak-attempt-01-rate-00000200")
+        .put("offeredRate", 200)
+        .put("saturated", true);
+    ObjectNode qualified = attempts.addObject();
+    qualified.put("attemptNumber", 2);
+    qualified.put("outcome", "QUALIFIED");
+    qualified
+        .putObject("point")
+        .put("pointId", "qop-soak-attempt-02-rate-00000100")
+        .put("offeredRate", 100)
+        .put("saturated", false);
+    soak.put("qualifiedAttemptNumber", 2);
+    soak.put("qualifiedPointId", "qop-soak-attempt-02-rate-00000100");
     root.putObject("rawRecomputation")
         .put("status", "PASS")
         .put("fromDecompressedRaw", true)
         .put("rawRecords", 42)
-        .put("rawPoints", 49)
+        .put("rawPoints", 50)
         .put("percentilesRecomputed", true)
         .put("accountingReconciled", true)
         .put("capacityEnvelopeRecomputed", true);
@@ -512,7 +603,7 @@ final class M10EvidenceWriterTest {
     return """
     case=high-availability-cex
     profile=SPOT-CEX-1.0
-    planVersion=0.12
+    planVersion=0.13
     project=matching
     unit=M10
     lifecycle=COMPLETE

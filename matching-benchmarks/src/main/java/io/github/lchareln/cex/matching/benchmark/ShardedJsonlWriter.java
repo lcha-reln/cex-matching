@@ -73,6 +73,15 @@ final class ShardedJsonlWriter implements AutoCloseable {
     return List.copyOf(shards);
   }
 
+  /** Seals the current shard for verification while allowing a later write to open the next one. */
+  synchronized List<ShardInfo> snapshot() throws IOException {
+    if (closed) {
+      throw new IllegalStateException("artifact writer is closed");
+    }
+    closeCurrentShard();
+    return List.copyOf(shards);
+  }
+
   @Override
   public synchronized void close() throws IOException {
     if (closed) {

@@ -54,7 +54,8 @@ public final class M10EvidenceWriter {
               + " latency evidence; the additional deterministic diagnostic is MODEL_ONLY.",
           "Only the separately supplied RELEASE_QUALIFICATION bundle can support the"
               + " machine-specific performance claim; this writer verifies and copies that bundle"
-              + " but never starts or abbreviates the roughly 46-minute profile.",
+              + " but never starts or abbreviates its roughly 46-minute minimum runtime. Each"
+              + " saturated higher provisional candidate adds another full 30-minute soak.",
           "The published knee and qualified operating point apply only to the recorded JVM, flags,"
               + " CPU, storage, filesystem, operating system, and power policy; they are not a"
               + " portable SLA or universal production capacity.",
@@ -63,7 +64,8 @@ public final class M10EvidenceWriter {
               + " capacity envelope.",
           "M10 uses a dedicated finite recovery suffix budget of 1,000,000 records and 1 GiB, not"
               + " the M09 default. One proactive checkpoint is scheduled 100 ms into each phase;"
-              + " a 30-minute QOP whose planned post-checkpoint suffix exceeds that bound fails"
+              + " a 30-minute provisional candidate whose planned post-checkpoint suffix exceeds"
+              + " that bound fails"
               + " before the soak rather than silently changing the qualification method.",
           "The open-loop runner covers the local admission service, M09 WAL, checkpoint pauses,"
               + " matching apply, completion accounting, resource series, and exact reopen; it does"
@@ -249,7 +251,7 @@ public final class M10EvidenceWriter {
     root.put("unit", "M10");
     root.put("unitTag", UNIT_TAG);
     root.put("productRelease", PRODUCT_RELEASE);
-    root.put("planVersion", "0.12");
+    root.put("planVersion", "0.13");
     ObjectNode source = root.putObject("source");
     source.put("commit", sourceCommit);
     source.put("dirty", false);
@@ -367,7 +369,9 @@ public final class M10EvidenceWriter {
         "release-open-loop-envelope",
         "performance",
         "A separately completed RELEASE_QUALIFICATION run binds the full open-loop calibration,"
-            + " three sweeps, deterministic knee and QOP, 1,800-second QOP soak, resource series,"
+            + " three sweeps, and deterministic provisional candidates; it retains every"
+            + " preceding saturated 1,800-second attempt and promotes the first full-duration"
+            + " PASS as the QOP. It also binds resource series,"
             + " decompressed raw reconciliation, exact load-then-reopen evidence, and a separate"
             + " full JMH SampleTime diagnostic for its recorded machine.",
         releaseObservation,
@@ -379,8 +383,10 @@ public final class M10EvidenceWriter {
         claims,
         "architecture-and-release-identity",
         "architecture",
-        "matching-core remains infrastructure-free and unchanged from the M10 start boundary; both"
-            + " annotated M10 release refs identify this exact clean source commit.",
+        "matching-core remains infrastructure-free. Relative to the amended M10 start, the"
+            + " architecture gate admits exactly the frozen semantics-preserving hot-path audit"
+            + " split and its dedicated terminal-history growth test; both annotated M10 release"
+            + " refs identify this exact clean source commit.",
         object(
             "environment", check.path("environment"),
             "architecture", check.path("architecture"),
@@ -475,7 +481,7 @@ public final class M10EvidenceWriter {
     require(
         PRODUCT_RELEASE.equals(manifest.path("productRelease").stringValue()),
         "evidence product release changed");
-    require("0.12".equals(manifest.path("planVersion").stringValue()), "evidence plan changed");
+    require("0.13".equals(manifest.path("planVersion").stringValue()), "evidence plan changed");
     List<String> claimIds = new ArrayList<>();
     List<String> bound = new ArrayList<>();
     for (JsonNode claim : manifest.path("claims")) {
@@ -515,7 +521,7 @@ public final class M10EvidenceWriter {
         "M10 check schema changed");
     require(
         M10CheckRunner.PASS.equals(check.path("status").stringValue()), "M10 check is not PASS");
-    require("0.12".equals(check.path("contractPlanVersion").stringValue()), "M10 plan changed");
+    require("0.13".equals(check.path("contractPlanVersion").stringValue()), "M10 plan changed");
     require(
         sourceCommit.equals(check.path("source").path("commit").stringValue()),
         "M10 check source commit changed");
@@ -555,7 +561,7 @@ public final class M10EvidenceWriter {
     require(result.rawRecords() > 0, "M10 release bundle has no decompressed raw records");
     JsonNode qualification = result.qualification();
     require(
-        "matching.m10.qualification.v1".equals(qualification.path("schemaVersion").stringValue()),
+        "matching.m10.qualification.v2".equals(qualification.path("schemaVersion").stringValue()),
         "M10 qualification schema changed");
     require(
         "PASS".equals(qualification.path("status").stringValue()), "M10 qualification is not PASS");
@@ -572,6 +578,7 @@ public final class M10EvidenceWriter {
             qualification.path("source").path("workloadSha256").stringValue()),
         "M10 qualification workload hash changed");
     JsonNode raw = qualification.path("rawRecomputation");
+    int soakAttempts = qualification.path("soak").path("attempts").size();
     require(
         "PASS".equals(raw.path("status").stringValue())
             && raw.path("fromDecompressedRaw").booleanValue()
@@ -579,7 +586,8 @@ public final class M10EvidenceWriter {
             && raw.path("accountingReconciled").booleanValue()
             && raw.path("capacityEnvelopeRecomputed").booleanValue()
             && raw.path("rawRecords").longValue() == result.rawRecords()
-            && raw.path("rawPoints").intValue() == 49,
+            && soakAttempts > 0
+            && raw.path("rawPoints").intValue() == 48 + soakAttempts,
         "M10 qualification lacks successful decompressed-raw recomputation");
 
     List<Path> relativeFiles = normalizeRelativeFiles(result.relativeFiles());
@@ -646,7 +654,7 @@ public final class M10EvidenceWriter {
         Map.ofEntries(
             Map.entry("case", "high-availability-cex"),
             Map.entry("profile", "SPOT-CEX-1.0"),
-            Map.entry("planVersion", "0.12"),
+            Map.entry("planVersion", "0.13"),
             Map.entry("project", "matching"),
             Map.entry("unit", "M10"),
             Map.entry("lifecycle", "COMPLETE"),

@@ -308,7 +308,7 @@ public final class M10CheckRunner {
     check.put("schemaVersion", "matching.m10.check.v2");
     check.put("unit", "M10");
     check.put("status", PASS);
-    check.put("contractPlanVersion", "0.12");
+    check.put("contractPlanVersion", "0.13");
     check.put(
         "objective",
         "Add bounded local admission and honest open-loop performance qualification without changing durable matching semantics.");
@@ -380,6 +380,15 @@ public final class M10CheckRunner {
     method.put(
         "qopCandidate",
         smoke.path("capacity").path("qualifiedOperatingPointCandidate").longValue());
+    method.set(
+        "provisionalSoakCandidates",
+        smoke.path("capacity").path("provisionalSoakCandidates").deepCopy());
+    int soakAttemptCount = smoke.path("soak").path("attempts").size();
+    method.put("soakAttemptCount", soakAttemptCount);
+    method.put("retainedSaturatedSoakAttempts", soakAttemptCount - 1);
+    method.put(
+        "qualifiedAttemptNumber", smoke.path("soak").path("qualifiedAttemptNumber").intValue());
+    method.put("qualifiedPointId", smoke.path("soak").path("qualifiedPointId").stringValue());
     method.put("qop", smoke.path("capacity").path("qualifiedOperatingPoint").longValue());
     method.put("deterministicDiagnosticEvidenceMode", "MODEL_ONLY");
     method.put("deterministicDiagnosticMethodIsomorphic", false);
@@ -439,7 +448,7 @@ public final class M10CheckRunner {
     failure.put("schemaVersion", "matching.m10.check.v2");
     failure.put("unit", "M10");
     failure.put("status", classification);
-    failure.put("contractPlanVersion", "0.12");
+    failure.put("contractPlanVersion", "0.13");
     failure.put("failure", detail == null || detail.isBlank() ? "M10 check failed" : detail);
     ObjectNode target = failure.putObject("releaseTarget");
     target.put("unitTag", "course/m10-complete");
@@ -460,7 +469,7 @@ public final class M10CheckRunner {
         Map.ofEntries(
             Map.entry("case", "high-availability-cex"),
             Map.entry("profile", "SPOT-CEX-1.0"),
-            Map.entry("planVersion", "0.12"),
+            Map.entry("planVersion", "0.13"),
             Map.entry("project", "matching"),
             Map.entry("unit", "M10"),
             Map.entry("lifecycle", "COMPLETE"),

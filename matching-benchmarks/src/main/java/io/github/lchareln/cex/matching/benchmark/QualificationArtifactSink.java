@@ -4,6 +4,7 @@ import io.github.lchareln.cex.matching.local.RecoveryBudget;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -26,7 +27,7 @@ public final class QualificationArtifactSink implements AutoCloseable {
   public static final String PHASE_CUT_SCHEMA = "matching.m10.raw-phase-cut.v2";
   public static final String ACCEPTED_TRACE_SCHEMA = "matching.m10.accepted-trace.v2";
   public static final String RECOVERY_SCHEMA = "matching.m10.recovery.v1";
-  public static final String QUALIFICATION_SCHEMA = "matching.m10.qualification.v1";
+  public static final String QUALIFICATION_SCHEMA = "matching.m10.qualification.v2";
 
   private final ObjectMapper mapper = JsonMapper.builder().build();
   private final Path output;
@@ -338,6 +339,23 @@ public final class QualificationArtifactSink implements AutoCloseable {
     return inventory;
   }
 
+  /** Seals cumulative raw shards so M10Q2 can verify one attempt before considering fallback. */
+  public synchronized Inventory snapshotRawArtifacts() throws IOException {
+    if (closed) {
+      throw new IllegalStateException("raw artifacts are closed");
+    }
+    Map<String, List<ShardedJsonlWriter.ShardInfo>> streams = new LinkedHashMap<>();
+    streams.put("raw-arrivals", arrivals.snapshot());
+    streams.put("raw-completions", completions.snapshot());
+    streams.put("raw-queue", queue.snapshot());
+    streams.put("resources", resources.snapshot());
+    streams.put("raw-maintenance", maintenance.snapshot());
+    streams.put("raw-phase-cuts", phaseCuts.snapshot());
+    streams.put("accepted-trace", acceptedTrace.snapshot());
+    writeRecovery();
+    return inventory(streams);
+  }
+
   private Inventory inventory;
 
   @Override
@@ -354,11 +372,15 @@ public final class QualificationArtifactSink implements AutoCloseable {
     streams.put("raw-phase-cuts", phaseCuts.finish());
     streams.put("accepted-trace", acceptedTrace.finish());
     writeRecovery();
-    Path recoveryPath = output.resolve("recovery.json");
-    inventory =
-        new Inventory(
-            streams, recoveryRecords.size(), Files.size(recoveryPath), sha256(recoveryPath));
+    inventory = inventory(streams);
     closed = true;
+  }
+
+  private Inventory inventory(Map<String, List<ShardedJsonlWriter.ShardInfo>> streams)
+      throws IOException {
+    Path recoveryPath = output.resolve("recovery.json");
+    return new Inventory(
+        streams, recoveryRecords.size(), Files.size(recoveryPath), sha256(recoveryPath));
   }
 
   public void writeQualification(ObjectNode qualification) throws IOException {
@@ -382,9 +404,13 @@ public final class QualificationArtifactSink implements AutoCloseable {
     root.put("recordType", "RECOVERY_COLLECTION");
     ArrayNode records = root.putArray("records");
     recoveryRecords.forEach(records::add);
-    mapper
-        .writerWithDefaultPrettyPrinter()
-        .writeValue(output.resolve("recovery.json").toFile(), root);
+    Path temporary = output.resolve(".recovery.json.tmp");
+    mapper.writerWithDefaultPrettyPrinter().writeValue(temporary.toFile(), root);
+    Files.move(
+        temporary,
+        output.resolve("recovery.json"),
+        StandardCopyOption.ATOMIC_MOVE,
+        StandardCopyOption.REPLACE_EXISTING);
   }
 
   private ObjectNode record(String schemaVersion, PointIdentity point) {
@@ -407,7 +433,7 @@ public final class QualificationArtifactSink implements AutoCloseable {
     node.put("eligibleForReleaseEvidence", context.eligibleForReleaseEvidence());
     node.put("sourceCommit", context.sourceCommit());
     node.put("workloadSha256", context.workloadSha256());
-    node.put("qualificationRuntimePolicyId", "M10Q1");
+    node.put("qualificationRuntimePolicyId", "M10Q2");
     node.put("qualificationRecoveryBudgetPolicy", "M10_DEDICATED_NOT_M09_DEFAULT");
     node.put("qualificationMaxSuffixRecords", profile.recoveryBudgetMaxSuffixRecords());
     node.put("qualificationMaxSuffixBytes", profile.recoveryBudgetMaxSuffixBytes());

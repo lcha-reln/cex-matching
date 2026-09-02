@@ -115,32 +115,35 @@ final class M10CompletionSuitesTest {
   }
 
   @Test
-  void releaseCapacityRejectsASaturatedQopSoak() {
+  void releaseCapacityRejectsASaturatedQualifiedSoak() {
     ObjectNode qualification = releaseCapacityFixture();
-    JsonNode soak = qualification.path("soak").path("point");
-    Map<String, JsonNode> summaries = Map.of("qop-soak", soak);
-    M10ReleaseBundleVerifier.verifyCapacity(qualification, summaries);
+    M10ReleaseBundleVerifier.verifyCapacity(qualification, soakSummaries(qualification));
 
-    ObjectNode cutAttempts = (ObjectNode) soak.path("observationCut").path("attemptAccounting");
-    cutAttempts.put("offers", 11);
-    cutAttempts.put("overloaded", 1);
+    ObjectNode qualified =
+        (ObjectNode) qualification.path("soak").path("attempts").path(0).path("point");
+    markSaturated(qualified);
     IllegalStateException failure =
         assertThrows(
             IllegalStateException.class,
-            () -> M10ReleaseBundleVerifier.verifyCapacity(qualification, summaries));
-    assertTrue(failure.getMessage().contains("QOP soak is saturated"));
+            () ->
+                M10ReleaseBundleVerifier.verifyCapacity(
+                    qualification, soakSummaries(qualification)));
+    assertTrue(failure.getMessage().contains("qualified soak attempt is saturated"));
 
     ObjectNode postCutOverload = releaseCapacityFixture();
-    JsonNode postCutSoak = postCutOverload.path("soak").path("point");
+    ObjectNode postCutSoak =
+        (ObjectNode) postCutOverload.path("soak").path("attempts").path(0).path("point");
     ((ObjectNode) postCutSoak.path("observationCut")).put("postCutOverloaded", 1);
+    postCutSoak.put("saturated", true);
+    ((ArrayNode) postCutSoak.path("saturationReasons")).add("POST_CUT_PLANNED_OVERLOAD_REJECTION");
     assertTrue(
         assertThrows(
                 IllegalStateException.class,
                 () ->
                     M10ReleaseBundleVerifier.verifyCapacity(
-                        postCutOverload, Map.of("qop-soak", postCutSoak)))
+                        postCutOverload, soakSummaries(postCutOverload)))
             .getMessage()
-            .contains("QOP soak is saturated"));
+            .contains("qualified soak attempt is saturated"));
   }
 
   @Test
@@ -153,8 +156,7 @@ final class M10CompletionSuitesTest {
                 IllegalStateException.class,
                 () ->
                     M10ReleaseBundleVerifier.verifyCapacity(
-                        wrongCandidate,
-                        Map.of("qop-soak", wrongCandidate.path("soak").path("point"))))
+                        wrongCandidate, soakSummaries(wrongCandidate)))
             .getMessage()
             .contains("QOP candidate changed"));
 
@@ -171,8 +173,154 @@ final class M10CompletionSuitesTest {
             IllegalStateException.class,
             () ->
                 M10ReleaseBundleVerifier.verifyCapacity(
-                    qualification, Map.of("qop-soak", qualification.path("soak").path("point"))));
-    assertTrue(failure.getMessage().contains("published QOP changed"));
+                    qualification, soakSummaries(qualification)));
+    assertTrue(failure.getMessage().contains("provisional soak candidates changed"));
+  }
+
+  @Test
+  void releaseCapacityPromotesTheFirstQualifiedFullDurationAttempt() {
+    ObjectNode qualification = releaseCapacityFallbackFixture();
+
+    M10ReleaseBundleVerifier.verifyCapacity(qualification, soakSummaries(qualification));
+
+    assertEquals(200, qualification.path("capacity").path("qualifiedOperatingPoint").longValue());
+    assertEquals(2, qualification.path("soak").path("qualifiedAttemptNumber").intValue());
+  }
+
+  @Test
+  void releaseCapacityRejectsSkippedReorderedOrMissingPrecedingAttempts() {
+    ObjectNode skipped = releaseCapacityFixture();
+    ObjectNode skippedPoint =
+        (ObjectNode) skipped.path("soak").path("attempts").path(0).path("point");
+    skippedPoint.put("offeredRate", 200);
+    skippedPoint.put("pointId", soakPointId(1, 200));
+    ((ObjectNode) skipped.path("capacity")).put("qualifiedOperatingPoint", 200);
+    ((ObjectNode) skipped.path("soak")).put("qualifiedPointId", soakPointId(1, 200));
+    assertTrue(
+        assertThrows(
+                IllegalStateException.class,
+                () -> M10ReleaseBundleVerifier.verifyCapacity(skipped, soakSummaries(skipped)))
+            .getMessage()
+            .contains("continuous provisional-candidate prefix"));
+
+    ObjectNode reordered = releaseCapacityFallbackFixture();
+    ArrayNode reorderedAttempts = (ArrayNode) reordered.path("soak").path("attempts");
+    JsonNode first = reorderedAttempts.path(0).deepCopy();
+    JsonNode second = reorderedAttempts.path(1).deepCopy();
+    reorderedAttempts.set(0, second);
+    reorderedAttempts.set(1, first);
+    assertTrue(
+        assertThrows(
+                IllegalStateException.class,
+                () -> M10ReleaseBundleVerifier.verifyCapacity(reordered, soakSummaries(reordered)))
+            .getMessage()
+            .contains("attempt numbers are not contiguous"));
+
+    ObjectNode missingPredecessor = releaseCapacityFallbackFixture();
+    ((ArrayNode) missingPredecessor.path("soak").path("attempts")).remove(0);
+    ((ObjectNode) missingPredecessor.path("soak")).put("qualifiedAttemptNumber", 1);
+    assertTrue(
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                    M10ReleaseBundleVerifier.verifyCapacity(
+                        missingPredecessor, soakSummaries(missingPredecessor)))
+            .getMessage()
+            .contains("attempt numbers are not contiguous"));
+  }
+
+  @Test
+  void releaseCapacityRejectsWrongOutcomesAndQualifiedPointers() {
+    ObjectNode precedingQualified = releaseCapacityFallbackFixture();
+    ((ObjectNode) precedingQualified.path("soak").path("attempts").path(0))
+        .put("outcome", "QUALIFIED");
+    assertTrue(
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                    M10ReleaseBundleVerifier.verifyCapacity(
+                        precedingQualified, soakSummaries(precedingQualified)))
+            .getMessage()
+            .contains("first-pass promotion"));
+
+    ObjectNode finalSaturated = releaseCapacityFallbackFixture();
+    ((ObjectNode) finalSaturated.path("soak").path("attempts").path(1)).put("outcome", "SATURATED");
+    assertTrue(
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                    M10ReleaseBundleVerifier.verifyCapacity(
+                        finalSaturated, soakSummaries(finalSaturated)))
+            .getMessage()
+            .contains("first-pass promotion"));
+
+    ObjectNode wrongAttemptPointer = releaseCapacityFallbackFixture();
+    ((ObjectNode) wrongAttemptPointer.path("soak")).put("qualifiedAttemptNumber", 1);
+    assertTrue(
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                    M10ReleaseBundleVerifier.verifyCapacity(
+                        wrongAttemptPointer, soakSummaries(wrongAttemptPointer)))
+            .getMessage()
+            .contains("qualified attempt pointer"));
+
+    ObjectNode wrongPointPointer = releaseCapacityFallbackFixture();
+    ((ObjectNode) wrongPointPointer.path("soak")).put("qualifiedPointId", soakPointId(1, 300));
+    assertTrue(
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                    M10ReleaseBundleVerifier.verifyCapacity(
+                        wrongPointPointer, soakSummaries(wrongPointPointer)))
+            .getMessage()
+            .contains("qualified point pointer"));
+
+    ObjectNode wrongQop = releaseCapacityFallbackFixture();
+    ((ObjectNode) wrongQop.path("capacity")).put("qualifiedOperatingPoint", 300);
+    assertTrue(
+        assertThrows(
+                IllegalStateException.class,
+                () -> M10ReleaseBundleVerifier.verifyCapacity(wrongQop, soakSummaries(wrongQop)))
+            .getMessage()
+            .contains("published QOP changed"));
+  }
+
+  @Test
+  void releaseCapacityNeverDowngradesSystemErrorsIntoSaturation() {
+    ObjectNode explicitFailure = releaseCapacityFallbackFixture();
+    ObjectNode failedAccounting =
+        (ObjectNode)
+            explicitFailure.path("soak").path("attempts").path(0).path("point").path("attempts");
+    failedAccounting.put("explicitServiceFailures", 1);
+    assertTrue(
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                    M10ReleaseBundleVerifier.verifyCapacity(
+                        explicitFailure, soakSummaries(explicitFailure)))
+            .getMessage()
+            .contains("explicit service failures"));
+
+    ObjectNode durabilityUnknown = releaseCapacityFallbackFixture();
+    ObjectNode variants =
+        (ObjectNode)
+            durabilityUnknown
+                .path("soak")
+                .path("attempts")
+                .path(0)
+                .path("point")
+                .path("attempts")
+                .path("submissionResultVariants");
+    variants.put("DURABILITY_UNKNOWN", 1);
+    assertTrue(
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                    M10ReleaseBundleVerifier.verifyCapacity(
+                        durabilityUnknown, soakSummaries(durabilityUnknown)))
+            .getMessage()
+            .contains("non-saturation system failure"));
   }
 
   @Test
@@ -313,6 +461,14 @@ final class M10CompletionSuitesTest {
   }
 
   private static ObjectNode releaseCapacityFixture() {
+    return releaseCapacityFixture(false);
+  }
+
+  private static ObjectNode releaseCapacityFallbackFixture() {
+    return releaseCapacityFixture(true);
+  }
+
+  private static ObjectNode releaseCapacityFixture(boolean firstAttemptSaturates) {
     ObjectNode qualification = JsonSupport.MAPPER.createObjectNode();
     ArrayNode sweeps = qualification.putArray("sweeps");
     for (int sweep = 1; sweep <= 3; sweep++) {
@@ -328,15 +484,62 @@ final class M10CompletionSuitesTest {
     capacity.putArray("sweepKnees").add(500).add(500).add(500);
     capacity.put("publishedKnee", 500);
     capacity.put("qualifiedOperatingPointCandidate", 350);
-    capacity.put("qualifiedOperatingPoint", 300);
-    ObjectNode soak = ratePoint("qop-soak", 300, false);
-    soak.put("sweep", 0);
-    soak.putObject("attempts")
-        .put("pending", 0)
-        .put("explicitServiceFailures", 0)
-        .put("closedOrInvalid", 0);
-    qualification.putObject("soak").set("point", soak);
+    capacity.putArray("provisionalSoakCandidates").add(300).add(200).add(100);
+    capacity.put("qualifiedOperatingPoint", firstAttemptSaturates ? 200 : 300);
+
+    ObjectNode soak = qualification.putObject("soak");
+    soak.put("durationSeconds", 1_800);
+    soak.put("promotionPolicyId", "M10Q2_DESCENDING_FULL_DURATION_FIRST_PASS");
+    ArrayNode attempts = soak.putArray("attempts");
+    addSoakAttempt(
+        attempts, 1, 300, firstAttemptSaturates, firstAttemptSaturates ? "SATURATED" : "QUALIFIED");
+    if (firstAttemptSaturates) {
+      addSoakAttempt(attempts, 2, 200, false, "QUALIFIED");
+      soak.put("qualifiedAttemptNumber", 2);
+      soak.put("qualifiedPointId", soakPointId(2, 200));
+    } else {
+      soak.put("qualifiedAttemptNumber", 1);
+      soak.put("qualifiedPointId", soakPointId(1, 300));
+    }
     return qualification;
+  }
+
+  private static void addSoakAttempt(
+      ArrayNode attempts, int attemptNumber, long rate, boolean saturated, String outcome) {
+    ObjectNode point = ratePoint(soakPointId(attemptNumber, rate), rate, saturated);
+    point.put("phase", "SOAK");
+    point.put("sweep", 0);
+    point.put("ladderPermille", 0);
+    attempts
+        .addObject()
+        .put("attemptNumber", attemptNumber)
+        .put("outcome", outcome)
+        .set("point", point);
+  }
+
+  private static String soakPointId(int attemptNumber, long rate) {
+    return "qop-soak-attempt-%02d-rate-%08d".formatted(attemptNumber, rate);
+  }
+
+  private static Map<String, JsonNode> soakSummaries(JsonNode qualification) {
+    Map<String, JsonNode> summaries = new java.util.LinkedHashMap<>();
+    for (JsonNode attempt : qualification.path("soak").path("attempts")) {
+      JsonNode point = attempt.path("point");
+      summaries.put(point.path("pointId").stringValue(), point);
+    }
+    return Map.copyOf(summaries);
+  }
+
+  private static void markSaturated(ObjectNode point) {
+    ObjectNode cutAttempts = (ObjectNode) point.path("observationCut").path("attemptAccounting");
+    cutAttempts.put("offers", 11);
+    cutAttempts.put("overloaded", 1);
+    ObjectNode terminalAttempts = (ObjectNode) point.path("attempts");
+    terminalAttempts.put("offers", 11);
+    terminalAttempts.put("overloaded", 1);
+    ((ObjectNode) point.path("logical")).put("overloaded", 1);
+    point.put("saturated", true);
+    ((ArrayNode) point.path("saturationReasons")).add("OVERLOAD_REJECTION");
   }
 
   private static ObjectNode calibrationFixture() {
@@ -367,6 +570,8 @@ final class M10CompletionSuitesTest {
   private static ObjectNode ratePoint(String id, long rate, boolean saturated) {
     ObjectNode point = JsonSupport.MAPPER.createObjectNode();
     point.put("pointId", id);
+    point.put("phase", "MEASUREMENT");
+    point.put("ladderPermille", 0);
     point.put("offeredRate", rate);
     ObjectNode logical = point.putObject("logical");
     logical.put("initiallyAdmitted", 10);
@@ -396,6 +601,7 @@ final class M10CompletionSuitesTest {
     }
     attempts.put("explicitServiceFailures", 0);
     attempts.put("pending", 0);
+    point.set("attempts", attempts.deepCopy());
     observation.put("startingBacklog", 0);
     observation.put("endingBacklog", 0);
     observation.put("p99QueueDepth", 0);

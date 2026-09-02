@@ -54,4 +54,30 @@ class ShardedJsonlWriterTest {
     assertEquals(0, actual.getFirst());
     assertEquals(total - 1, actual.getLast());
   }
+
+  @Test
+  void sealsAVerifiableSnapshotThenContinuesInANewShard() throws Exception {
+    var mapper = JsonMapper.builder().build();
+    ShardedJsonlWriter writer =
+        new ShardedJsonlWriter(mapper, temporary, "raw-queue", "matching.m10.raw-queue.v2");
+
+    writer.write(record(mapper, 1));
+    var firstSnapshot = writer.snapshot();
+    writer.write(record(mapper, 2));
+    var completed = writer.finish();
+
+    assertEquals(1, firstSnapshot.size());
+    assertEquals("raw-queue/part-00000.jsonl.gz", firstSnapshot.getFirst().relativePath());
+    assertEquals(2, completed.size());
+    assertEquals("raw-queue/part-00001.jsonl.gz", completed.getLast().relativePath());
+    assertEquals(firstSnapshot.getFirst(), completed.getFirst());
+  }
+
+  private static tools.jackson.databind.node.ObjectNode record(
+      tools.jackson.databind.ObjectMapper mapper, int index) {
+    var record = mapper.createObjectNode();
+    record.put("schemaVersion", "matching.m10.raw-queue.v2");
+    record.put("index", index);
+    return record;
+  }
 }

@@ -9,7 +9,8 @@ of measurements and never combines them:
   M08W1 WAL, and M09S1 snapshots. It persists raw offers, completions, latency, queue, and resource
 observations before publishing derived percentiles or a knee.
 
-Both qualification profiles use the explicit `M10Q1` recovery policy: 1,000,000 suffix records,
+Both qualification profiles use the M10Q2 runtime policy, retaining the M10Q1 finite recovery
+boundary: 1,000,000 suffix records,
 1 GiB of encoded suffix bytes, a 1,024-byte planning ceiling for this workload, and one checkpoint
 scheduled 100 ms into every warmup, measurement, and soak phase through the same bounded FIFO. This
 is deliberately not the unchanged M09 default of 64 records / 1 MiB. Prefix and post-checkpoint
@@ -20,7 +21,10 @@ the runner does not silently add periodic checkpoints or claim the result for M0
 
 `CI_SMOKE` is a short check that the method executes. It is always labelled `METHOD_SMOKE_ONLY` and
 is ineligible for release evidence. `RELEASE_QUALIFICATION` uses the frozen 20-second calibration,
-three complete sweeps, ten-second warmups, thirty-second measurements, and 1,800-second QOP soak.
+three complete sweeps and ten-second warmups plus thirty-second measurements. Every common
+short-window candidate at or below the 70% knee candidate is tried from highest to lowest with a
+complete 1,800-second soak; the first full-duration unsaturated point is the only QOP. Saturated
+higher attempts stay in the final evidence, while a system error stops promotion immediately.
 It requires a complete environment description supplied on the command line; a missing collector
 or dimension is an error, never a zero.
 

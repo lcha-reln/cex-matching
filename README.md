@@ -54,8 +54,10 @@ The explicit M10 command writes a schema-valid completion report:
 The start contract freezes 20 admission and methodology scenarios, SplitMix64 seed `6010`, 64
 histories by 256 actions across four lanes, 28 proof obligations, 12 executable mutant IDs, and five
 tutorial permalinks. The release profile uses open-loop scheduled arrivals, three complete sweeps,
-p50/p95/p99/p99.9, deterministic knee selection, a 70%-of-knee candidate narrowed to an all-sweep
-unsaturated measured operating point, and a 1,800-second soak. JMH `SampleTime` remains diagnostic.
+p50/p95/p99/p99.9, deterministic knee selection, and a 70%-of-knee candidate narrowed to a
+strictly descending list of all-sweep-unsaturated measured rates. Each provisional rate receives a
+complete 1,800-second soak until the first full-duration PASS becomes the QOP; saturated higher
+attempts remain evidence, while a system error stops the run. JMH `SampleTime` remains diagnostic.
 `CI_SMOKE` is short and explicitly
 ineligible for release evidence. The exact contract is in [`docs/specs/m10.md`](docs/specs/m10.md).
 Every admitted item must pass through exactly one unchanged local-runtime `SubmissionResult` or an
@@ -64,11 +66,11 @@ The public completion handle is callback-free and non-cancellable, so caller con
 capture the single owner worker; configured queue capacity is explicitly bounded from 1 through 256.
 
 The qualification does not pretend to measure the unchanged M09 default of 64 suffix records / 1
-MiB. It freezes and publishes `M10Q1` instead: a finite 1,000,000-record / 1-GiB suffix budget, a
+MiB. M10Q2 retains the M10Q1 finite 1,000,000-record / 1-GiB suffix budget, a
 proactive same-FIFO checkpoint admitted no later than 110 ms into each scheduled phase, strict
 producer-lag gates with a bounded closure grace, and an immutable scheduled-window observation cut
 that is preserved separately from both late admission decisions and the later zero-pending drain.
-The default and qualification settings both remain visible in every eligible report; an `M10Q1`
+The default and qualification settings both remain visible in every eligible report; an `M10Q2`
 capacity envelope is not evidence for the M09 default.
 
 Ordinary CI proves only that the method and contracts execute. It does not publish CI-run throughput

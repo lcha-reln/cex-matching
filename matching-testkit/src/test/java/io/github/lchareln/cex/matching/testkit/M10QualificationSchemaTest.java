@@ -1,5 +1,6 @@
 package io.github.lchareln.cex.matching.testkit;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -22,6 +23,8 @@ import tools.jackson.databind.node.ObjectNode;
 
 final class M10QualificationSchemaTest {
   private static final String BUNDLE_ENV = "M10_SCHEMA_PROBE_BUNDLE";
+  private static final String QUALIFICATION_SCHEMA_PATH =
+      "schemas/matching.m10.qualification.v2.schema.json";
   private static final Map<String, String> STREAM_DEFINITIONS =
       Map.of(
           "raw-arrivals/part-00000.jsonl.gz", "rawArrivalRecord",
@@ -35,7 +38,7 @@ final class M10QualificationSchemaTest {
   void configuredBundleValidatesQualificationEveryRawShapeAndRecovery() throws Exception {
     Path root = Path.of(System.getProperty("matching.repositoryRoot"));
     JsonNode schema =
-        JsonSupport.parse(Files.readAllBytes(root.resolve(M10ReleaseBundleVerifier.SCHEMA_PATH)));
+        JsonSupport.parse(Files.readAllBytes(root.resolve(QUALIFICATION_SCHEMA_PATH)));
     String configured = System.getenv(BUNDLE_ENV);
     assumeTrue(
         configured != null && !configured.isBlank(),
@@ -129,6 +132,139 @@ final class M10QualificationSchemaTest {
     ((ObjectNode) release.path("artifacts")).remove("diagnosticJmh");
     assertThrows(
         FixtureSchemaException.class, () -> JsonSupport.validate(release, schema.toString(), true));
+  }
+
+  @Test
+  void v2AcceptsMultipleSoakAttemptsAndLeavesPromotionRelationsToJavaVerifier() throws Exception {
+    Path root = Path.of(System.getProperty("matching.repositoryRoot"));
+    JsonNode schema =
+        JsonSupport.parse(Files.readAllBytes(root.resolve(QUALIFICATION_SCHEMA_PATH)));
+
+    assertEquals(
+        "matching.m10.qualification.v2",
+        schema.path("properties").path("schemaVersion").path("const").stringValue());
+    assertEquals(
+        "M10Q2",
+        schema.path("properties").path("qualificationRuntimePolicyId").path("const").stringValue());
+    assertEquals(
+        "M10Q2",
+        schema
+            .path("$defs")
+            .path("profileSharedProperties")
+            .path("properties")
+            .path("qualificationRuntimePolicyId")
+            .path("const")
+            .stringValue());
+    assertEquals(
+        "M10Q2",
+        schema
+            .path("$defs")
+            .path("qualificationRuntime")
+            .path("properties")
+            .path("policyId")
+            .path("const")
+            .stringValue());
+    assertEquals(
+        "#/$defs/point",
+        schema
+            .path("$defs")
+            .path("soakAttempt")
+            .path("properties")
+            .path("point")
+            .path("$ref")
+            .stringValue());
+
+    ObjectNode soak = JsonSupport.MAPPER.createObjectNode();
+    soak.put("durationSeconds", 1_800);
+    soak.put("promotionPolicyId", "M10Q2_DESCENDING_FULL_DURATION_FIRST_PASS");
+    ArrayNode attempts = soak.putArray("attempts");
+    attempts.add(soakAttempt(1, "SATURATED"));
+    attempts.add(soakAttempt(2, "QUALIFIED"));
+    soak.put("qualifiedAttemptNumber", 2);
+    soak.put("qualifiedPointId", "qop-soak-attempt-02-rate-00000100");
+
+    String structuralSoakSchema = structuralSoakFragment(schema);
+    assertDoesNotThrow(
+        () -> JsonSupport.validate(soak, structuralSoakSchema, true),
+        "the v2 representation must admit retained saturated attempts before qualification");
+
+    ObjectNode relationallyWrong = soak.deepCopy();
+    ((ObjectNode) relationallyWrong.path("attempts").path(0)).put("attemptNumber", 2);
+    ((ObjectNode) relationallyWrong.path("attempts").path(1)).put("attemptNumber", 1);
+    relationallyWrong.put("qualifiedAttemptNumber", 1);
+    relationallyWrong.put("qualifiedPointId", "qop-soak-attempt-01-rate-00000200");
+    // JSON Schema owns the closed representation. Contiguous ordering, descending rates, the
+    // final-attempt QUALIFIED rule, and qualified-point equality remain Java-verifier judgments.
+    assertDoesNotThrow(
+        () -> JsonSupport.validate(relationallyWrong, structuralSoakSchema, true),
+        "cross-field promotion relations must remain the Java verifier's responsibility");
+
+    ObjectNode systemError = soak.deepCopy();
+    ((ObjectNode) systemError.path("attempts").path(0)).put("outcome", "SYSTEM_ERROR");
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(systemError, structuralSoakSchema, true));
+
+    ObjectNode emptyAttempts = soak.deepCopy();
+    ((ArrayNode) emptyAttempts.path("attempts")).removeAll();
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(emptyAttempts, structuralSoakSchema, true));
+
+    ObjectNode extraAttemptField = soak.deepCopy();
+    ((ObjectNode) extraAttemptField.path("attempts").path(0)).put("systemError", true);
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(extraAttemptField, structuralSoakSchema, true));
+  }
+
+  @Test
+  void v2CapacityRequiresPositiveNonEmptyUniqueProvisionalCandidates() throws Exception {
+    Path root = Path.of(System.getProperty("matching.repositoryRoot"));
+    JsonNode schema =
+        JsonSupport.parse(Files.readAllBytes(root.resolve(QUALIFICATION_SCHEMA_PATH)));
+    String capacitySchema = fragment(schema, "capacity");
+    ObjectNode capacity = JsonSupport.MAPPER.createObjectNode();
+    capacity.putArray("sweepKnees").add(300);
+    capacity.put("publishedKnee", 300);
+    capacity.put("qualifiedOperatingPointCandidate", 200);
+    capacity.putArray("provisionalSoakCandidates").add(200).add(100);
+    capacity.put("qualifiedOperatingPoint", 100);
+    JsonSupport.validate(capacity, capacitySchema, true);
+
+    ObjectNode empty = capacity.deepCopy();
+    ((ArrayNode) empty.path("provisionalSoakCandidates")).removeAll();
+    assertThrows(
+        FixtureSchemaException.class, () -> JsonSupport.validate(empty, capacitySchema, true));
+
+    ObjectNode duplicate = capacity.deepCopy();
+    ((ArrayNode) duplicate.path("provisionalSoakCandidates")).removeAll().add(100).add(100);
+    assertThrows(
+        FixtureSchemaException.class, () -> JsonSupport.validate(duplicate, capacitySchema, true));
+
+    ObjectNode nonPositive = capacity.deepCopy();
+    ((ArrayNode) nonPositive.path("provisionalSoakCandidates")).removeAll().add(0);
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(nonPositive, capacitySchema, true));
+  }
+
+  private static ObjectNode soakAttempt(int attemptNumber, String outcome) {
+    ObjectNode attempt = JsonSupport.MAPPER.createObjectNode();
+    attempt.put("attemptNumber", attemptNumber);
+    attempt.put("outcome", outcome);
+    attempt.putObject("point");
+    return attempt;
+  }
+
+  private static String structuralSoakFragment(JsonNode schema) {
+    ObjectNode wrapper = JsonSupport.MAPPER.createObjectNode();
+    wrapper.put("$schema", "https://json-schema.org/draft/2020-12/schema");
+    wrapper.put("$ref", "#/$defs/soak");
+    ObjectNode definitions = (ObjectNode) schema.path("$defs").deepCopy();
+    definitions.set("point", JsonSupport.MAPPER.createObjectNode());
+    wrapper.set("$defs", definitions);
+    return wrapper.toString();
   }
 
   private static ObjectNode syntheticRelease(ObjectNode smoke) {

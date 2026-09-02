@@ -72,13 +72,14 @@ public final class SaturationAnalysis {
     if (sweeps.size() != requiredSweepCount) {
       throw new IllegalArgumentException("unexpected sweep count for qualification profile");
     }
+    requireSameLadder(sweeps);
     List<Long> knees = sweeps.stream().map(SaturationAnalysis::perSweepKnee).toList();
     long publishedKnee = knees.stream().mapToLong(Long::longValue).min().orElseThrow();
     long qopCandidate = Math.floorDiv(Math.multiplyExact(publishedKnee, 70L), 100L);
     if (qopCandidate <= 0) {
       throw new IllegalStateException("qualified operating point candidate is not positive");
     }
-    long qop = selectMeasuredUnsaturatedQop(sweeps, qopCandidate);
+    List<Long> provisionalSoakCandidates = selectProvisionalSoakCandidates(sweeps, qopCandidate);
     boolean aboveKneeRetained =
         sweeps.stream()
             .allMatch(
@@ -91,38 +92,44 @@ public final class SaturationAnalysis {
     if (!aboveKneeRetained) {
       throw new IllegalStateException("each sweep must retain saturated evidence above the knee");
     }
-    return new PublishedEnvelope(knees, publishedKnee, qopCandidate, qop);
+    return new PublishedEnvelope(knees, publishedKnee, qopCandidate, provisionalSoakCandidates);
   }
 
-  private static long selectMeasuredUnsaturatedQop(
-      List<List<RateMeasurement>> sweeps, long qopCandidate) {
+  private static void requireSameLadder(List<List<RateMeasurement>> sweeps) {
     List<RateMeasurement> referenceSweep = sweeps.getFirst();
     for (List<RateMeasurement> sweep : sweeps) {
       if (sweep.size() != referenceSweep.size()) {
-        throw new IllegalStateException("sweep ladders differ while selecting QOP");
+        throw new IllegalStateException("sweep ladders differ while selecting soak candidates");
       }
       for (int index = 0; index < referenceSweep.size(); index++) {
         if (sweep.get(index).offeredRate() != referenceSweep.get(index).offeredRate()) {
-          throw new IllegalStateException("sweep offered rates differ while selecting QOP");
+          throw new IllegalStateException(
+              "sweep offered rates differ while selecting soak candidates");
         }
       }
     }
-    return referenceSweep.stream()
-        .mapToLong(RateMeasurement::offeredRate)
-        .filter(rate -> rate <= qopCandidate)
-        .filter(
-            rate ->
-                sweeps.stream()
-                    .allMatch(
-                        sweep ->
-                            sweep.stream()
-                                .filter(point -> point.offeredRate() == rate)
-                                .allMatch(point -> !classify(point).saturated())))
-        .max()
-        .orElseThrow(
-            () ->
-                new IllegalStateException(
-                    "no all-sweep unsaturated measured rate at or below QOP candidate"));
+  }
+
+  private static List<Long> selectProvisionalSoakCandidates(
+      List<List<RateMeasurement>> sweeps, long qopCandidate) {
+    List<RateMeasurement> referenceSweep = sweeps.getFirst();
+    List<Long> candidates = new ArrayList<>();
+    for (int index = referenceSweep.size() - 1; index >= 0; index--) {
+      long rate = referenceSweep.get(index).offeredRate();
+      if (rate <= qopCandidate) {
+        int ladderIndex = index;
+        boolean unsaturatedInEverySweep =
+            sweeps.stream().allMatch(sweep -> !classify(sweep.get(ladderIndex)).saturated());
+        if (unsaturatedInEverySweep) {
+          candidates.add(rate);
+        }
+      }
+    }
+    if (candidates.isEmpty()) {
+      throw new IllegalStateException(
+          "no all-sweep unsaturated measured rate at or below QOP candidate");
+    }
+    return List.copyOf(candidates);
   }
 
   public record SaturationDecision(boolean saturated, List<String> reasons) {
@@ -135,15 +142,26 @@ public final class SaturationAnalysis {
   }
 
   public record PublishedEnvelope(
-      List<Long> sweepKnees, long publishedKnee, long qopCandidate, long qop) {
+      List<Long> sweepKnees,
+      long publishedKnee,
+      long qopCandidate,
+      List<Long> provisionalSoakCandidates) {
     public PublishedEnvelope {
       sweepKnees = List.copyOf(sweepKnees);
+      provisionalSoakCandidates = List.copyOf(provisionalSoakCandidates);
       if ((sweepKnees.size() != 1 && sweepKnees.size() != 3)
           || publishedKnee <= 0
           || qopCandidate <= 0
-          || qop <= 0
-          || qop > qopCandidate) {
+          || provisionalSoakCandidates.isEmpty()) {
         throw new IllegalArgumentException("invalid published capacity envelope");
+      }
+      long previous = Long.MAX_VALUE;
+      for (long candidate : provisionalSoakCandidates) {
+        if (candidate <= 0 || candidate > qopCandidate || candidate >= previous) {
+          throw new IllegalArgumentException(
+              "provisional soak candidates must be positive, eligible, and strictly descending");
+        }
+        previous = candidate;
       }
     }
   }
