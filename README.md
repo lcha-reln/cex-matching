@@ -18,10 +18,9 @@ taker-owned self-trade-prevention instruction. M08 completes the first local dur
 caller-serialized, single-shard M08C1/M08W1 runtime with durable bidirectional identity, genesis
 recovery, and an ACK that may occur only after append, force, and matching apply. M09 completes the
 next local-storage axis: one `M09S1` snapshot, a 64-record / 1-MiB WAL-suffix recovery budget, and
-whole-segment retirement after durable snapshot publication. M10 now freezes the next structured
-RED: a configurable bounded non-blocking local admission service, measured at capacity 64, and an honest machine-specific performance
-qualification method. No M10 admission service, benchmark runner, completion judge, or evidence
-exists at this start boundary.
+whole-segment retirement after durable snapshot publication. M10 completes the last local-runtime
+axis: a configurable bounded non-blocking admission service, measured at capacity 64, plus an honest
+machine-specific performance qualification and independently verified raw evidence pipeline.
 
 ## Current course boundary
 
@@ -29,9 +28,9 @@ exists at this start boundary.
 - Plan version: `0.13`
 - Unit: `M10`
 - Declared start ref: `course/m10-start`
-- Declared future complete ref: `course/m10-complete`
-- Target product release: `matching-0.5.0` at the future M10 completion ref
-- Lifecycle at this boundary: `READY / CONTRACT / GOAL_NOT_IMPLEMENTED`
+- Declared complete ref: `course/m10-complete`
+- Product release: `matching-0.5.0` at the M10 completion ref
+- Lifecycle at this boundary: `COMPLETE / IMPLEMENTED / PASS`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -39,17 +38,17 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The root build remains GREEN by rerunning the completed M09 and inherited boundaries:
+The root build reruns the completed M10 judge and every inherited boundary:
 
 ```bash
 ./gradlew clean build --no-daemon
 ```
 
-The explicit M10 command writes a schema-valid structured RED and intentionally exits nonzero:
+The explicit M10 command writes a schema-valid completion report:
 
 ```bash
 ./gradlew m10Check --no-daemon
-# M10 check status: GOAL_NOT_IMPLEMENTED
+# M10 check status: PASS
 ```
 
 The start contract freezes 20 admission and methodology scenarios, SplitMix64 seed `6010`, 64
@@ -61,6 +60,8 @@ unsaturated measured operating point, and a 1,800-second soak. JMH `SampleTime` 
 ineligible for release evidence. The exact contract is in [`docs/specs/m10.md`](docs/specs/m10.md).
 Every admitted item must pass through exactly one unchanged local-runtime `SubmissionResult` or an
 explicit service failure; only the durable result variants are ACKs, and enqueue is never an ACK.
+The public completion handle is callback-free and non-cancellable, so caller continuations cannot
+capture the single owner worker; configured queue capacity is explicitly bounded from 1 through 256.
 
 The qualification does not pretend to measure the unchanged M09 default of 64 suffix records / 1
 MiB. It freezes and publishes `M10Q1` instead: a finite 1,000,000-record / 1-GiB suffix budget, a
@@ -70,8 +71,8 @@ that is preserved separately from both late admission decisions and the later ze
 The default and qualification settings both remain visible in every eligible report; an `M10Q1`
 capacity envelope is not evidence for the M09 default.
 
-Ordinary CI proves only that the method and contracts execute. It must not publish CI-run throughput
-as the `matching-0.5.0` capacity claim. The future product evidence requires the full release profile,
+Ordinary CI proves only that the method and contracts execute. It does not publish CI-run throughput
+as the `matching-0.5.0` capacity claim. Product evidence comes from the full release profile,
 raw samples, resource series, environment fingerprint, load-then-recovery equality, clean source,
 and both annotated release refs at one commit.
 

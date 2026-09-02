@@ -174,6 +174,11 @@ public final class LocalMatchingRuntime implements AutoCloseable {
     return wal.nextWalSequence();
   }
 
+  /** Exact current replay suffix, including values reconstructed during a fresh open. */
+  public synchronized RecoverySuffixStats recoverySuffixStats() {
+    return wal.recoverySuffixStats();
+  }
+
   public synchronized String semanticStateDigest() {
     return commandApplier.semanticStateDigest();
   }

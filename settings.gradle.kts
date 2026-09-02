@@ -11,5 +11,5 @@ plugins {
 
 rootProject.name = "cex-matching"
 
-include("matching-core", "matching-local-runtime", "matching-testkit")
+include("matching-core", "matching-local-runtime", "matching-benchmarks", "matching-testkit")
 include("matching-reference")

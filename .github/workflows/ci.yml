@@ -1,4 +1,4 @@
-name: Matching M10 contract
+name: Matching M10 completion
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  contract:
+  completion:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -34,153 +34,134 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Parse every frozen JSON resource
-        shell: bash
-        run: |
-          mapfile -t resources < <(find schemas matching-testkit/src/test/resources -type f -name '*.json' -print | sort)
-          test "${#resources[@]}" -gt 0
-          jq empty "${resources[@]}"
-
-      - name: Verify M09 inherited GREEN and M10 structured RED
+      - name: Validate completion refs and frozen JSON
         shell: bash
         run: |
           test "$(sed -n 's/^unit=//p' course.properties)" = M10
           test "$(sed -n 's/^planVersion=//p' course.properties)" = 0.13
-          test "$(sed -n 's/^lifecycle=//p' course.properties)" = READY
-          test "$(sed -n 's/^designDepth=//p' course.properties)" = CONTRACT
-          test "$(sed -n 's/^m10Check.expectedStatus=//p' course.properties)" = GOAL_NOT_IMPLEMENTED
+          test "$(sed -n 's/^lifecycle=//p' course.properties)" = COMPLETE
+          test "$(sed -n 's/^designDepth=//p' course.properties)" = IMPLEMENTED
+          test "$(sed -n 's/^m10Check.expectedStatus=//p' course.properties)" = PASS
           test "$(sed -n 's/^startRef=//p' course.properties)" = course/m10-start
           test "$(sed -n 's/^completeRef=//p' course.properties)" = course/m10-complete
 
           test "$(git cat-file -t course/m09-complete)" = tag
+          test "$(git cat-file -t course/m10-start)" = tag
+          test "$(git cat-file -t course/m10-complete)" = tag
+          test "$(git cat-file -t matching-0.5.0)" = tag
           git merge-base --is-ancestor "$(git rev-parse 'course/m09-complete^{}')" HEAD
+          git merge-base --is-ancestor "$(git rev-parse 'course/m10-start^{}')" HEAD
+          test "$(git rev-parse 'course/m10-complete^{}')" = "$(git rev-parse HEAD)"
+          test "$(git rev-parse 'matching-0.5.0^{}')" = "$(git rev-parse HEAD)"
 
-          if test "${GITHUB_REF}" = refs/tags/course/m10-start; then
-            test "$(git cat-file -t course/m10-start)" = tag
-            test "$(git rev-parse 'course/m10-start^{}')" = "$(git rev-parse HEAD)"
-          elif git rev-parse --verify --quiet 'refs/tags/course/m10-start^{commit}' >/dev/null; then
-            test "$(git cat-file -t course/m10-start)" = tag
-            git merge-base --is-ancestor "$(git rev-parse 'course/m10-start^{}')" HEAD
-          fi
+          start_workload_sha="$(git show 'course/m10-start:matching-testkit/src/test/resources/m10/workload-v1.json' | sha256sum | cut -d ' ' -f 1)"
+          test "$start_workload_sha" = "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b"
+          cmp \
+            <(git show 'course/m10-start:schemas/matching.m10.workload.v1.schema.json') \
+            schemas/matching.m10.workload.v1.schema.json
 
-          ./gradlew clean build --no-daemon --max-workers=1
-          jq -e '
-            .schemaVersion == "matching.m09.check.v2" and
-            .unit == "M09" and
-            .status == "PASS" and
-            .contractPlanVersion == "0.11" and
-            .coverage == {"required": 32, "observed": 32} and
-            .mutants.required == 12 and
-            .mutants.killedAsStudentFailure == 12 and
-            .mutants.systemErrorCountedAsKill == false and
-            .releaseTarget.productRelease == null
-          ' build/reports/m09/check.json
+          mapfile -t resources < <(find schemas matching-testkit/src/test/resources -type f -name '*.json' -print | sort)
+          test "${#resources[@]}" -gt 0
+          jq empty "${resources[@]}"
 
-          m10_log="${RUNNER_TEMP:-/tmp}/m10-gradle-output.log"
-          set +e
-          set -o pipefail
-          ./gradlew m10Check --no-daemon --max-workers=1 2>&1 | tee "$m10_log"
-          exit_code="${PIPESTATUS[0]}"
-          set +o pipefail
-          set -e
-          test "$exit_code" -ne 0
-          grep -Fq "M10 check status: GOAL_NOT_IMPLEMENTED" "$m10_log"
-          jq -e '
-            .schemaVersion == "matching.m10.check.v1" and
+      - name: Run clean completion judge
+        shell: bash
+        run: |
+          ./gradlew clean build \
+            -Pm10.cpuModel="GitHub-hosted-${RUNNER_ARCH}" \
+            -Pm10.storageDevice="GitHub-hosted-ephemeral" \
+            -Pm10.filesystem="runner-temp" \
+            -Pm10.powerPolicy="GITHUB_HOSTED_RUNNER_DEFAULT" \
+            -Pm10.runId="m10-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --no-daemon --max-workers=1
+
+      - name: Verify completion report
+        shell: bash
+        run: |
+          jq -e --arg commit "$(git rev-parse HEAD)" '
+            .schemaVersion == "matching.m10.check.v2" and
             .unit == "M10" and
-            .status == "GOAL_NOT_IMPLEMENTED" and
+            .status == "PASS" and
             .contractPlanVersion == "0.13" and
-            .inheritedBaseline == {
-              "unit": "M09",
-              "completeRef": "course/m09-complete",
-              "expectedStatus": "PASS"
-            } and
-            .workloadProfile == {
-              "sha256": "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b",
-              "seed": "6010",
-              "fixedScenarios": 20,
-              "generatedHistories": 64,
-              "actionsPerHistory": 256,
-              "generatedActions": 16384,
-              "lanes": 4,
-              "queueCapacity": 64,
-              "coverageObligations": 28,
-              "requiredMutants": 12,
-              "schemaProbes": 8
-            } and
-            .admissionContract.submission == "TRY_SUBMIT_NON_BLOCKING" and
-            .admissionContract.fullResult == "OVERLOADED_BEFORE_WAL" and
-            .admissionContract.acceptedCompletion == "EXACTLY_ONE_SUBMISSION_RESULT_OR_EXPLICIT_FAILURE" and
-            .measurementContract.microbenchmark == {
-              "harness": "JMH",
-              "mode": "SampleTime",
-              "benchmarks": [
-                "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.restingMakerThenMatchingTaker",
-                "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.canonicalEnvelopeDecode"
-              ],
-              "resultScope": "DIAGNOSTIC_ONLY",
-              "releaseGate": false
-            } and
-            .measurementContract.qualificationRuntime.policyId == "M10Q1" and
-            .measurementContract.qualificationRuntime.scope == "M10_DEDICATED_NOT_M09_DEFAULT" and
-            .measurementContract.qualificationRuntime.m09Default == {"maxSuffixRecords": 64, "maxSuffixBytes": 1048576} and
-            .measurementContract.qualificationRuntime.finiteRecoveryBudget == {"maxSuffixRecords": 1000000, "maxSuffixBytes": 1073741824} and
-            .measurementContract.qualificationRuntime.proactiveCheckpointOffsetNanos == 100000000 and
-            .measurementContract.qualificationRuntime.proactiveCheckpointAdmissionLagMaxNanos == 10000000 and
-            .measurementContract.qualificationRuntime.plannedRecordCeilingBytes == 1024 and
-            .measurementContract.qualificationRuntime.phaseBudgetPreflight.validatePrefixAndSuffixSeparately == true and
-            .measurementContract.qualificationRuntime.scheduler.producerClosureGraceMaxNanos == 250000000 and
-            .measurementContract.qualificationRuntime.scheduler.scheduledObservationCutDoesNotMove == true and
-            .measurementContract.qualificationRuntime.scheduler.allScheduledArrivalsMaterialized == true and
-            .measurementContract.qualificationRuntime.scheduler.allAdmissionDecisionsWithinLagLimits == true and
-            .measurementContract.qualificationRuntime.scheduler.observationCutLagMaxNanos == 10000000 and
-            .measurementContract.qualificationRuntime.observationCut == "IMMUTABLE_SCHEDULED_WINDOW_END_RAW_RECONSTRUCTED_BEFORE_PRODUCER_CLOSURE_AND_TERMINAL_DRAIN" and
-            .measurementContract.qualificationRuntime.rawTimeContract.admissionTimestamp == "admissionDecisionNanos" and
-            .measurementContract.qualificationRuntime.rawTimeContract.completionTimestamp == "ownerCompletedNanos" and
-            .measurementContract.qualificationRuntime.terminalDrain == "ZERO_PENDING_BEFORE_RECOVERY" and
-            .measurementContract.releaseOpenLoop.calibrationSeconds == 20 and
-            .measurementContract.releaseOpenLoop.sweeps == 3 and
-            .measurementContract.releaseOpenLoop.warmupSecondsPerRate == 10 and
-            .measurementContract.releaseOpenLoop.measurementSecondsPerRate == 30 and
-            .measurementContract.releaseOpenLoop.rateLadderPermille == [250, 500, 700, 850, 1000, 1150, 1350, 1600] and
-            .measurementContract.releaseOpenLoop.percentiles == [0.5, 0.95, 0.99, 0.999] and
-            .measurementContract.releaseOpenLoop.latencyOrigin == "SCHEDULED_ARRIVAL" and
-            .measurementContract.ciSmoke == {
-              "profileId": "CI_SMOKE",
-              "resultScope": "METHOD_SMOKE_ONLY",
-              "eligibleForReleaseEvidence": false,
-              "methodIsomorphic": true
-            } and
-            .measurementContract.saturation.perSweepKnee == "FIRST_OF_TWO_CONSECUTIVE_SATURATED_RATES" and
-            .measurementContract.saturation.publishedKnee == "MIN_OF_THREE_SWEEP_KNEES" and
-            .measurementContract.saturation.qualifiedOperatingPoint == "FLOOR_70_PERCENT_OF_PUBLISHED_KNEE" and
-            .measurementContract.releaseSoak.durationSeconds == 1800 and
-            (.coverageObligations | length) == 28 and
-            (.requiredMutants | length) == 12 and
-            (.tutorialPermalinks | length) == 5 and
-            (has("fixedResults") | not) and
-            (has("benchmarkResults") | not) and
-            (has("mutants") | not) and
+            .source == {"commit": $commit, "dirty": false} and
+            .courseDeclaration.lifecycle == "COMPLETE" and
+            .courseDeclaration.designDepth == "IMPLEMENTED" and
+            .workloadProfile.sha256 == "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b" and
+            .fixed == {"scenarios": 20, "status": "PASS"} and
+            .generator.actions == 16384 and
+            .generator.executedActions == 16384 and
+            .generator.byteExactRegeneration == true and
+            .coverage == {"required": 28, "observed": 28} and
+            .mutants.required == 12 and
+            .mutants.killed == 12 and
+            .mutants.classification == "STUDENT_FAILURE" and
+            .mutants.systemErrorCountedAsKill == false and
+            .admissionService.bounded == true and
+            .admissionService.singleOwnerWorker == true and
+            .admissionService.enqueueIsAck == false and
+            .admissionService.overloadBeforeWalAndIdentity == true and
+            .methodSmoke.profileId == "CI_SMOKE" and
+            .methodSmoke.resultScope == "METHOD_SMOKE_ONLY" and
+            .methodSmoke.eligibleForReleaseEvidence == false and
+            .methodSmoke.releaseThroughputClaim == false and
+            .loadRecovery.realLocalRuntimeExact == true and
+            .releaseBoundary.fullReleaseExecutedByThisCheck == false and
+            .releaseBoundary.noReleaseNumbersFabricated == true and
             .releaseTarget == {
               "unitTag": "course/m10-complete",
               "productRelease": "matching-0.5.0",
               "verification": "FULL_RELEASE_PROFILE_AND_CLEAN_TREE_EVIDENCE"
-            }
+            } and
+            (.artifactBindings | length) == 21
           ' build/reports/m10/check.json
-          test ! -e build/lab-evidence/M10
 
-      - name: Upload M09 inherited reports
+      - name: Verify non-release CI smoke
+        shell: bash
+        run: |
+          jq -e --arg commit "$(git rev-parse HEAD)" '
+            .schemaVersion == "matching.m10.qualification.v1" and
+            .status == "PASS" and
+            .profileId == "CI_SMOKE" and
+            .resultScope == "METHOD_SMOKE_ONLY" and
+            .eligibleForReleaseEvidence == false and
+            .source.commit == $commit and
+            .source.workloadSha256 == "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b" and
+            .profile.id == "CI_SMOKE" and
+            .profile.sweeps == 1 and
+            .profile.soakSeconds == 3 and
+            .qualificationRuntime.policyId == "M10Q1" and
+            .qualificationRuntime.scope == "M10_DEDICATED_NOT_M09_DEFAULT" and
+            .qualificationRuntime.m09Default == {"maxSuffixRecords": 64, "maxSuffixBytes": 1048576} and
+            .qualificationRuntime.finiteRecoveryBudget == {"maxSuffixRecords": 1000000, "maxSuffixBytes": 1073741824} and
+            .qualificationRuntime.proactiveCheckpointAdmissionLagMaxNanos == 10000000 and
+            .qualificationRuntime.phaseBudgetPreflight.validatePrefixAndSuffixSeparately == true and
+            .qualificationRuntime.scheduler.producerClosureGraceMaxNanos == 250000000 and
+            .qualificationRuntime.scheduler.allScheduledArrivalsMaterialized == true and
+            .qualificationRuntime.scheduler.allAdmissionDecisionsWithinLagLimits == true and
+            .qualificationRuntime.scheduler.scheduledObservationCutDoesNotMove == true and
+            .qualificationRuntime.scheduler.observationCutLagMaxNanos == 10000000 and
+            .qualificationRuntime.observationCut == "IMMUTABLE_SCHEDULED_WINDOW_END_RAW_RECONSTRUCTED_BEFORE_PRODUCER_CLOSURE_AND_TERMINAL_DRAIN" and
+            .qualificationRuntime.rawTimeContract.admissionTimestamp == "admissionDecisionNanos" and
+            .qualificationRuntime.rawTimeContract.completionTimestamp == "ownerCompletedNanos" and
+            (.sweeps | length) == 1 and
+            (.sweeps[0] | length) == 8 and
+            .rawRecomputation.status == "PASS" and
+            .rawRecomputation.fromDecompressedRaw == true and
+            .rawRecomputation.exactAttemptJoin == true and
+            .rawRecomputation.reconstructedTraceHashesExact == true and
+            .rawRecomputation.recoverySuffixRecordsAndBytesExact == true and
+            .rawRecomputation.allNewWalRecordsWithinPlanningCeiling == true and
+            .soak.durationSeconds == 3 and
+            .soak.point.saturated == false and
+            .soak.point.terminalDrain.attemptAccounting.pending == 0
+          ' build/reports/m10-ci-smoke/qualification.json
+
+      - name: Upload M10 completion reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: matching-m09-inherited-reports
-          path: build/reports/m09/
-          if-no-files-found: error
-
-      - name: Upload M10 RED report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: matching-m10-reports
-          path: build/reports/m10/
+          name: matching-m10-completion-reports
+          path: |
+            build/reports/m10/
+            build/reports/m10-ci-smoke/
           if-no-files-found: error

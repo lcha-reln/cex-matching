@@ -1,4 +1,4 @@
-# matching-local-runtime (M08 preparation)
+# matching-local-runtime
 
 This module is the JDK-only, single-process, single-shard durability boundary around
 `matching-core`. It is deliberately separate from `matching-core`: the deterministic matcher stays
@@ -35,6 +35,42 @@ terminal order identities remain committed even when the resting book is empty. 
 not a snapshot, checkpoint, or restart shortcut; recovery recomputes it by replaying the WAL from
 genesis.
 
+## M10 bounded owner service
+
+`LocalMatchingService` is the last single-process boundary before an Aeron adapter. It owns exactly
+one `LocalMatchingRuntime`, one platform worker, and one FIFO configured from 1 through 256 slots.
+The M10 qualification configuration freezes 64 slots. The maximum bounds queued ownership to 256
+MiB at the one-MiB envelope limit before the owner/runtime working copies. Construction failure at
+the queue, service, thread, or thread-start stage closes any runtime and directory lock already
+acquired.
+
+`trySubmit` never waits for capacity or business execution. It either transfers an owned copy of
+the envelope and returns an `Enqueued` completion handle, or returns a rejection. Queue-full is
+checked before cloning and returns `OVERLOADED_BEFORE_WAL`: the rejected envelope never reaches
+copy, decode, WAL, identity, or apply. An
+enqueue is not a durable acknowledgement. The completion preserves the exact `SubmissionResult`
+returned by the runtime, including structural/preflight rejection, `CheckpointRequired`, unknown,
+and fail-closed outcomes, or reports an explicit service failure if the worker could not invoke that
+boundary.
+
+`CompletionHandle` is callback-free and exposes only `isDone`, interruptible `get`, and timed
+interruptible `await`. It does not implement `Future` or `CompletionStage`, has no cancellation or
+caller-completion surface, and cannot run a caller continuation on the owner worker. Callers that
+need orchestration wait or poll from their own thread; the M10 qualification coordinator polls an
+explicitly bounded registry in owner `workSequence` order.
+
+`CheckpointRequired` is never swallowed. A coordinator can order `tryCheckpoint` through the same
+bounded FIFO and owner worker, observe its independent completion, then retry the exact envelope as
+a new reconciled attempt. Checkpoint admission and accounting are distinct from business offers and
+ACKs. Checkpoint or unexpected worker failure closes admission and explicitly completes every
+accepted pending item. Deliberate `close` rejects new work first, drains accepted business and
+maintenance work, then closes the owned runtime.
+
+`ServiceMetricsSnapshot` exposes current and maximum queue depth, every admission outcome, every
+submission-result variant, durable-ACK count, explicit failure count, maintenance accounting, and
+reconciliation predicates. The finite queue is the only handoff; there is no secondary unbounded
+executor or control queue.
+
 ## M07 integration
 
 M08C1 retains `participantGroupId`, raw `stpPolicy`, and optional expected active RuleSet on every
@@ -49,7 +85,7 @@ application sequence and result.
 The deterministic `FaultInjector` distinguishes injected failures immediately before an operation
 from crash windows after a successful operation. A generic injected `IOException` is not evidence
 of a specific ENOSPC, read-only-filesystem, or device failure. These seams and child-process checks
-do not prove physical durability under real power loss. This module does not implement snapshots, retention, bounded
-recovery, replication, Aeron, quorum/failover, database dual writes, multiple shards, group commit,
-upgrade compatibility, performance SLOs, or automatic corruption repair. It is not an M08 evidence
-bundle and does not by itself establish production high availability.
+do not prove physical durability under real power loss. This module does not implement replication,
+Aeron, quorum/failover, database dual writes, multiple shards, group commit, upgrade compatibility,
+portable performance SLOs, or automatic corruption repair. The bounded local service and finite
+machine qualification do not by themselves establish production high availability.

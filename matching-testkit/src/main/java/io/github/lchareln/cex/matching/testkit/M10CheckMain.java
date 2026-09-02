@@ -5,23 +5,38 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 
-/** Command-line entrypoint for the M10 performance-qualification structured RED. */
+/** Command-line entrypoint for the M10 structured RED or completed qualification judge. */
 public final class M10CheckMain {
   private M10CheckMain() {}
 
   public static void main(String[] arguments) {
-    if (arguments.length != 2) {
+    if (arguments.length < 2 || arguments.length > 3) {
       throw new IllegalArgumentException(
-          "usage: M10CheckMain <repository-root> <report-directory>");
+          "usage: M10CheckMain <repository-root> <report-directory> [ci-smoke-directory]");
     }
     Path root = Path.of(arguments[0]);
     String expected = expectedStatus(root);
-    if (!M10StartCheckRunner.STATUS.equals(expected)) {
-      throw new IllegalStateException("M10 completion judge is not implemented at the start ref");
+    String status;
+    Path reportPath;
+    if (M10StartCheckRunner.STATUS.equals(expected)) {
+      M10StartCheckRunner.Result result =
+          new M10StartCheckRunner().run(root, Path.of(arguments[1]));
+      status = result.status();
+      reportPath = result.reportPath();
+    } else {
+      Path smoke =
+          arguments.length == 3
+              ? Path.of(arguments[2])
+              : root.resolve("build/reports/m10-ci-smoke");
+      M10CheckRunner.Result result =
+          new M10CheckRunner().run(root, Path.of(arguments[1]), root, smoke);
+      status = result.status();
+      reportPath = result.reportPath();
     }
-    M10StartCheckRunner.Result result = new M10StartCheckRunner().run(root, Path.of(arguments[1]));
-    System.out.println("M10 check status: " + result.status() + " (" + result.reportPath() + ")");
-    System.exit(1);
+    System.out.println("M10 check status: " + status + " (" + reportPath + ")");
+    if (!M10CheckRunner.PASS.equals(status)) {
+      System.exit(1);
+    }
   }
 
   private static String expectedStatus(Path root) {
@@ -32,7 +47,7 @@ public final class M10CheckMain {
       throw new IllegalStateException("cannot read course.properties", failure);
     }
     String value = properties.getProperty("m10Check.expectedStatus");
-    if (!M10StartCheckRunner.STATUS.equals(value)) {
+    if (!M10StartCheckRunner.STATUS.equals(value) && !M10CheckRunner.PASS.equals(value)) {
       throw new IllegalStateException("unsupported M10 expected status: " + value);
     }
     return value;

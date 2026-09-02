@@ -1,0 +1,1252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m10.qualification.v1.schema.json",
+  "title": "M10 qualification summary and artifact record contracts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "runId",
+    "profileId",
+    "resultScope",
+    "eligibleForReleaseEvidence",
+    "qualificationRuntimePolicyId",
+    "runtimeProvenance",
+    "source",
+    "profile",
+    "qualificationRuntime",
+    "calibration",
+    "environment",
+    "sweeps",
+    "capacity",
+    "soak",
+    "rawRecomputation",
+    "artifacts"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "matching.m10.qualification.v1"},
+    "status": {"const": "PASS"},
+    "runId": {"$ref": "#/$defs/runId"},
+    "profileId": {"enum": ["CI_SMOKE", "RELEASE_QUALIFICATION"]},
+    "resultScope": {"enum": ["METHOD_SMOKE_ONLY", "RELEASE_QUALIFICATION"]},
+    "eligibleForReleaseEvidence": {"type": "boolean"},
+    "qualificationRuntimePolicyId": {"const": "M10Q1"},
+    "runtimeProvenance": {"$ref": "#/$defs/runtimeProvenance"},
+    "source": {"$ref": "#/$defs/source"},
+    "profile": {"type": "object"},
+    "qualificationRuntime": {"$ref": "#/$defs/qualificationRuntime"},
+    "calibration": {"$ref": "#/$defs/calibration"},
+    "environment": {"$ref": "#/$defs/environment"},
+    "sweeps": {"type": "array"},
+    "capacity": {"$ref": "#/$defs/capacity"},
+    "soak": {"type": "object"},
+    "rawRecomputation": {"$ref": "#/$defs/rawRecomputation"},
+    "artifacts": {"$ref": "#/$defs/artifacts"}
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/ciQualification"},
+    {"$ref": "#/$defs/releaseQualification"}
+  ],
+  "$defs": {
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "gitCommit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "workloadSha256": {
+      "const": "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "workloadSha256"],
+      "properties": {
+        "commit": {"$ref": "#/$defs/gitCommit"},
+        "workloadSha256": {"$ref": "#/$defs/workloadSha256"}
+      }
+    },
+    "runtimeProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryHead", "repositoryDirty", "matchingBenchmarkClassesSha256", "matchingLocalRuntimeClassesSha256", "matchingCoreClassesSha256", "combinedRuntimeClassesSha256"],
+      "properties": {
+        "repositoryHead": {"$ref": "#/$defs/gitCommit"},
+        "repositoryDirty": {"type": "boolean"},
+        "matchingBenchmarkClassesSha256": {"$ref": "#/$defs/sha256"},
+        "matchingLocalRuntimeClassesSha256": {"$ref": "#/$defs/sha256"},
+        "matchingCoreClassesSha256": {"$ref": "#/$defs/sha256"},
+        "combinedRuntimeClassesSha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "ciQualification": {
+      "type": "object",
+      "required": ["profileId", "resultScope", "eligibleForReleaseEvidence", "runtimeProvenance", "profile", "calibration", "sweeps", "capacity", "soak", "rawRecomputation", "artifacts"],
+      "properties": {
+        "profileId": {"const": "CI_SMOKE"},
+        "resultScope": {"const": "METHOD_SMOKE_ONLY"},
+        "eligibleForReleaseEvidence": {"const": false},
+        "runtimeProvenance": {"$ref": "#/$defs/runtimeProvenance"},
+        "profile": {"$ref": "#/$defs/ciProfile"},
+        "calibration": {
+          "allOf": [
+            {"$ref": "#/$defs/calibration"},
+            {"type": "object", "properties": {"elapsedNanos": {"type": "integer", "minimum": 1000000000}}}
+          ]
+        },
+        "sweeps": {"$ref": "#/$defs/ciSweeps"},
+        "capacity": {
+          "allOf": [
+            {"$ref": "#/$defs/capacity"},
+            {"type": "object", "properties": {"sweepKnees": {"type": "array", "minItems": 1, "maxItems": 1}}}
+          ]
+        },
+        "soak": {"$ref": "#/$defs/ciSoak"},
+        "rawRecomputation": {
+          "allOf": [
+            {"$ref": "#/$defs/rawRecomputation"},
+            {
+              "type": "object",
+              "properties": {
+                "phaseCutRecords": {"const": 17},
+                "reconstructedRecoveryTraces": {"const": 9},
+                "verifiedPublishedPoints": {"const": 9}
+              }
+            }
+          ]
+        },
+        "artifacts": {
+          "allOf": [
+            {"$ref": "#/$defs/artifacts"},
+            {
+              "type": "object",
+              "properties": {
+                "recoveryJson": {
+                  "allOf": [
+                    {"$ref": "#/$defs/recoveryInventory"},
+                    {"type": "object", "properties": {"recordCount": {"const": 9}}}
+                  ]
+                }
+              },
+              "not": {"required": ["diagnosticJmh"]}
+            }
+          ]
+        }
+      }
+    },
+    "releaseQualification": {
+      "type": "object",
+      "required": ["profileId", "resultScope", "eligibleForReleaseEvidence", "runtimeProvenance", "profile", "calibration", "sweeps", "capacity", "soak", "rawRecomputation", "artifacts"],
+      "properties": {
+        "profileId": {"const": "RELEASE_QUALIFICATION"},
+        "resultScope": {"const": "RELEASE_QUALIFICATION"},
+        "eligibleForReleaseEvidence": {"const": true},
+        "runtimeProvenance": {
+          "allOf": [
+            {"$ref": "#/$defs/runtimeProvenance"},
+            {"type": "object", "properties": {"repositoryDirty": {"const": false}}}
+          ]
+        },
+        "profile": {"$ref": "#/$defs/releaseProfile"},
+        "calibration": {
+          "allOf": [
+            {"$ref": "#/$defs/calibration"},
+            {"type": "object", "properties": {"elapsedNanos": {"type": "integer", "minimum": 20000000000}}}
+          ]
+        },
+        "sweeps": {"$ref": "#/$defs/releaseSweeps"},
+        "capacity": {
+          "allOf": [
+            {"$ref": "#/$defs/capacity"},
+            {"type": "object", "properties": {"sweepKnees": {"type": "array", "minItems": 3, "maxItems": 3}}}
+          ]
+        },
+        "soak": {"$ref": "#/$defs/releaseSoak"},
+        "rawRecomputation": {
+          "allOf": [
+            {"$ref": "#/$defs/rawRecomputation"},
+            {
+              "type": "object",
+              "properties": {
+                "phaseCutRecords": {"const": 49},
+                "reconstructedRecoveryTraces": {"const": 25},
+                "verifiedPublishedPoints": {"const": 25}
+              }
+            }
+          ]
+        },
+        "artifacts": {
+          "allOf": [
+            {"$ref": "#/$defs/artifacts"},
+            {
+              "type": "object",
+              "required": ["diagnosticJmh"],
+              "properties": {
+                "recoveryJson": {
+                  "allOf": [
+                    {"$ref": "#/$defs/recoveryInventory"},
+                    {"type": "object", "properties": {"recordCount": {"const": 25}}}
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "profileSharedProperties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "resultScope",
+        "eligibleForReleaseEvidence",
+        "calibrationSeconds",
+        "sweeps",
+        "warmupSecondsPerRate",
+        "measurementSecondsPerRate",
+        "rateLadderPermille",
+        "percentiles",
+        "rankRule",
+        "soakSeconds",
+        "qualificationRuntimePolicyId",
+        "recoveryBudgetMaxSuffixRecords",
+        "recoveryBudgetMaxSuffixBytes",
+        "proactiveCheckpointOffsetNanos",
+        "plannedWalRecordCeilingBytes"
+      ],
+      "properties": {
+        "id": {"enum": ["CI_SMOKE", "RELEASE_QUALIFICATION"]},
+        "resultScope": {"enum": ["METHOD_SMOKE_ONLY", "RELEASE_QUALIFICATION"]},
+        "eligibleForReleaseEvidence": {"type": "boolean"},
+        "calibrationSeconds": {"type": "integer", "minimum": 1},
+        "sweeps": {"type": "integer", "minimum": 1, "maximum": 3},
+        "warmupSecondsPerRate": {"type": "integer", "minimum": 1},
+        "measurementSecondsPerRate": {"type": "integer", "minimum": 1},
+        "rateLadderPermille": {"const": [250, 500, 700, 850, 1000, 1150, 1350, 1600]},
+        "percentiles": {"const": [0.5, 0.95, 0.99, 0.999]},
+        "rankRule": {"const": "NEAREST_RANK_CEIL_Q_TIMES_N"},
+        "soakSeconds": {"type": "integer", "minimum": 1},
+        "qualificationRuntimePolicyId": {"const": "M10Q1"},
+        "recoveryBudgetMaxSuffixRecords": {"const": 1000000},
+        "recoveryBudgetMaxSuffixBytes": {"const": 1073741824},
+        "proactiveCheckpointOffsetNanos": {"const": 100000000},
+        "plannedWalRecordCeilingBytes": {"const": 1024}
+      }
+    },
+    "ciProfile": {
+      "allOf": [
+        {"$ref": "#/$defs/profileSharedProperties"},
+        {
+          "type": "object",
+          "properties": {
+            "id": {"const": "CI_SMOKE"},
+            "resultScope": {"const": "METHOD_SMOKE_ONLY"},
+            "eligibleForReleaseEvidence": {"const": false},
+            "calibrationSeconds": {"const": 1},
+            "sweeps": {"const": 1},
+            "warmupSecondsPerRate": {"const": 1},
+            "measurementSecondsPerRate": {"const": 2},
+            "soakSeconds": {"const": 3}
+          }
+        }
+      ]
+    },
+    "releaseProfile": {
+      "allOf": [
+        {"$ref": "#/$defs/profileSharedProperties"},
+        {
+          "type": "object",
+          "properties": {
+            "id": {"const": "RELEASE_QUALIFICATION"},
+            "resultScope": {"const": "RELEASE_QUALIFICATION"},
+            "eligibleForReleaseEvidence": {"const": true},
+            "calibrationSeconds": {"const": 20},
+            "sweeps": {"const": 3},
+            "warmupSecondsPerRate": {"const": 10},
+            "measurementSecondsPerRate": {"const": 30},
+            "soakSeconds": {"const": 1800}
+          }
+        }
+      ]
+    },
+    "qualificationRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyId",
+        "scope",
+        "m09Default",
+        "finiteRecoveryBudget",
+        "proactiveCheckpointOffsetNanos",
+        "proactiveCheckpointAdmissionLagMaxNanos",
+        "plannedRecordCeilingBytes",
+        "phaseBudgetPreflight",
+        "scheduler",
+        "rawTimeContract",
+        "observationCut",
+        "terminalDrain",
+        "resourceSampling",
+        "directReplay"
+      ],
+      "properties": {
+        "policyId": {"const": "M10Q1"},
+        "scope": {"const": "M10_DEDICATED_NOT_M09_DEFAULT"},
+        "m09Default": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxSuffixRecords", "maxSuffixBytes"],
+          "properties": {
+            "maxSuffixRecords": {"const": 64},
+            "maxSuffixBytes": {"const": 1048576}
+          }
+        },
+        "finiteRecoveryBudget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxSuffixRecords", "maxSuffixBytes"],
+          "properties": {
+            "maxSuffixRecords": {"const": 1000000},
+            "maxSuffixBytes": {"const": 1073741824}
+          }
+        },
+        "proactiveCheckpointOffsetNanos": {"const": 100000000},
+        "proactiveCheckpointAdmissionLagMaxNanos": {"const": 10000000},
+        "plannedRecordCeilingBytes": {"const": 1024},
+        "phaseBudgetPreflight": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prefixRecords", "postCheckpointSuffixRecords", "validatePrefixAndSuffixSeparately"],
+          "properties": {
+            "prefixRecords": {"const": "START_SUFFIX_PLUS_ARRIVALS_SCHEDULED_BEFORE_CHECKPOINT_ADMISSION_DEADLINE_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER"},
+            "postCheckpointSuffixRecords": {"const": "ALL_PLANNED_DURABLE_ARRIVALS_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER"},
+            "validatePrefixAndSuffixSeparately": {"const": true}
+          }
+        },
+        "scheduler": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["initialArrivalThread", "coordinator", "scheduledObservationCutDoesNotMove", "producerClosureGraceMaxNanos", "allScheduledArrivalsMaterialized", "allAdmissionDecisionsWithinLagLimits", "p99ProducerLagMaxNanos", "maxProducerLagMaxNanos", "observationCutLagMaxNanos"],
+          "properties": {
+            "initialArrivalThread": {"const": "DEDICATED_NO_COMPLETION_CHECKPOINT_OR_ARTIFACT_IO"},
+            "coordinator": {"const": "ASYNC_COMPLETION_CHECKPOINT_RETRY_AND_ARTIFACT_IO"},
+            "scheduledObservationCutDoesNotMove": {"const": true},
+            "producerClosureGraceMaxNanos": {"const": 250000000},
+            "allScheduledArrivalsMaterialized": {"const": true},
+            "allAdmissionDecisionsWithinLagLimits": {"const": true},
+            "p99ProducerLagMaxNanos": {"const": 50000000},
+            "maxProducerLagMaxNanos": {"const": 250000000},
+            "observationCutLagMaxNanos": {"const": 10000000}
+          }
+        },
+        "rawTimeContract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["admissionTimestamp", "admissionObservationKind", "completionTimestamp", "completionTimeOrigin"],
+          "properties": {
+            "admissionTimestamp": {"const": "admissionDecisionNanos"},
+            "admissionObservationKind": {"const": "ADMISSION_GATE_DECISION"},
+            "completionTimestamp": {"const": "ownerCompletedNanos"},
+            "completionTimeOrigin": {"const": "OWNER_COMPLETED_UNDER_GATE"}
+          }
+        },
+        "observationCut": {"const": "IMMUTABLE_SCHEDULED_WINDOW_END_RAW_RECONSTRUCTED_BEFORE_PRODUCER_CLOSURE_AND_TERMINAL_DRAIN"},
+        "terminalDrain": {"const": "ZERO_PENDING_BEFORE_RECOVERY"},
+        "resourceSampling": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["targetCadenceNanos", "maximumScheduledGapNanos", "maximumObservedGapNanos", "maximumSamplingLagNanos", "scope", "cumulativeCounters", "gauges"],
+          "properties": {
+            "targetCadenceNanos": {"const": 1000000000},
+            "maximumScheduledGapNanos": {"const": 2000000000},
+            "maximumObservedGapNanos": {"const": 2000000000},
+            "maximumSamplingLagNanos": {"const": 2000000000},
+            "scope": {"const": "SCHEDULED_WINDOW_THROUGH_TERMINAL_DRAIN"},
+            "cumulativeCounters": {"const": "MONOTONIC_NON_DECREASING"},
+            "gauges": {"const": "NON_NEGATIVE_NOT_CUMULATIVE"}
+          }
+        },
+        "directReplay": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runtimeConfig", "purpose"],
+          "properties": {
+            "runtimeConfig": {"const": "M08_LEGACY_UNBOUNDED_NO_SNAPSHOT"},
+            "purpose": {"const": "FRESH_ORDERED_APPLY_DIAGNOSTIC_ONLY"}
+          }
+        }
+      }
+    },
+    "calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "purpose", "elapsedNanos", "logicalOperations", "durableCompletions", "checkpointCount", "referenceRate"],
+      "properties": {
+        "mode": {"const": "UNPACED"},
+        "purpose": {"const": "RATE_SELECTION_ONLY"},
+        "elapsedNanos": {"type": "integer", "minimum": 1},
+        "logicalOperations": {"type": "integer", "minimum": 1},
+        "durableCompletions": {"type": "integer", "minimum": 1},
+        "checkpointCount": {"const": 0},
+        "referenceRate": {"type": "integer", "minimum": 1}
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["javaRuntime", "javaVersion", "javaVendor", "vmName", "jvmArguments", "osName", "osVersion", "osArchitecture", "availableProcessors", "physicalMemoryBytes", "cpuModel", "storageDevice", "filesystem", "powerPolicy", "runStartedAt", "runFinishedAt"],
+      "properties": {
+        "javaRuntime": {"type": "string", "minLength": 1},
+        "javaVersion": {"type": "string", "minLength": 1},
+        "javaVendor": {"type": "string", "minLength": 1},
+        "vmName": {"type": "string", "minLength": 1},
+        "jvmArguments": {"type": "array", "items": {"type": "string"}},
+        "osName": {"type": "string", "minLength": 1},
+        "osVersion": {"type": "string", "minLength": 1},
+        "osArchitecture": {"type": "string", "minLength": 1},
+        "availableProcessors": {"type": "integer", "minimum": 1},
+        "physicalMemoryBytes": {"type": "integer", "minimum": 1},
+        "cpuModel": {"$ref": "#/$defs/environmentValue"},
+        "storageDevice": {"$ref": "#/$defs/environmentValue"},
+        "filesystem": {"$ref": "#/$defs/environmentValue"},
+        "powerPolicy": {"$ref": "#/$defs/environmentValue"},
+        "runStartedAt": {"type": "string", "format": "date-time"},
+        "runFinishedAt": {"type": "string", "format": "date-time"}
+      }
+    },
+    "environmentValue": {
+      "type": "string",
+      "minLength": 1,
+      "not": {"enum": ["unknown", "unavailable"]}
+    },
+    "ciSweeps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "prefixItems": [{"$ref": "#/$defs/sweep1"}],
+      "items": false
+    },
+    "releaseSweeps": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        {"$ref": "#/$defs/sweep1"},
+        {"$ref": "#/$defs/sweep2"},
+        {"$ref": "#/$defs/sweep3"}
+      ],
+      "items": false
+    },
+    "sweep1": {"$ref": "#/$defs/sweep1Items"},
+    "sweep2": {"$ref": "#/$defs/sweep2Items"},
+    "sweep3": {"$ref": "#/$defs/sweep3Items"},
+    "sweep1Items": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        {"$ref": "#/$defs/s1p0250"}, {"$ref": "#/$defs/s1p0500"},
+        {"$ref": "#/$defs/s1p0700"}, {"$ref": "#/$defs/s1p0850"},
+        {"$ref": "#/$defs/s1p1000"}, {"$ref": "#/$defs/s1p1150"},
+        {"$ref": "#/$defs/s1p1350"}, {"$ref": "#/$defs/s1p1600"}
+      ],
+      "items": false
+    },
+    "sweep2Items": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        {"$ref": "#/$defs/s2p0250"}, {"$ref": "#/$defs/s2p0500"},
+        {"$ref": "#/$defs/s2p0700"}, {"$ref": "#/$defs/s2p0850"},
+        {"$ref": "#/$defs/s2p1000"}, {"$ref": "#/$defs/s2p1150"},
+        {"$ref": "#/$defs/s2p1350"}, {"$ref": "#/$defs/s2p1600"}
+      ],
+      "items": false
+    },
+    "sweep3Items": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        {"$ref": "#/$defs/s3p0250"}, {"$ref": "#/$defs/s3p0500"},
+        {"$ref": "#/$defs/s3p0700"}, {"$ref": "#/$defs/s3p0850"},
+        {"$ref": "#/$defs/s3p1000"}, {"$ref": "#/$defs/s3p1150"},
+        {"$ref": "#/$defs/s3p1350"}, {"$ref": "#/$defs/s3p1600"}
+      ],
+      "items": false
+    },
+    "s1p0250": {"$ref": "#/$defs/s1p0250Value"},
+    "s1p0500": {"$ref": "#/$defs/s1p0500Value"},
+    "s1p0700": {"$ref": "#/$defs/s1p0700Value"},
+    "s1p0850": {"$ref": "#/$defs/s1p0850Value"},
+    "s1p1000": {"$ref": "#/$defs/s1p1000Value"},
+    "s1p1150": {"$ref": "#/$defs/s1p1150Value"},
+    "s1p1350": {"$ref": "#/$defs/s1p1350Value"},
+    "s1p1600": {"$ref": "#/$defs/s1p1600Value"},
+    "s2p0250": {"$ref": "#/$defs/s2p0250Value"},
+    "s2p0500": {"$ref": "#/$defs/s2p0500Value"},
+    "s2p0700": {"$ref": "#/$defs/s2p0700Value"},
+    "s2p0850": {"$ref": "#/$defs/s2p0850Value"},
+    "s2p1000": {"$ref": "#/$defs/s2p1000Value"},
+    "s2p1150": {"$ref": "#/$defs/s2p1150Value"},
+    "s2p1350": {"$ref": "#/$defs/s2p1350Value"},
+    "s2p1600": {"$ref": "#/$defs/s2p1600Value"},
+    "s3p0250": {"$ref": "#/$defs/s3p0250Value"},
+    "s3p0500": {"$ref": "#/$defs/s3p0500Value"},
+    "s3p0700": {"$ref": "#/$defs/s3p0700Value"},
+    "s3p0850": {"$ref": "#/$defs/s3p0850Value"},
+    "s3p1000": {"$ref": "#/$defs/s3p1000Value"},
+    "s3p1150": {"$ref": "#/$defs/s3p1150Value"},
+    "s3p1350": {"$ref": "#/$defs/s3p1350Value"},
+    "s3p1600": {"$ref": "#/$defs/s3p1600Value"},
+    "s1p0250Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-1-rate-0250-measurement"}, "sweep": {"const": 1}, "ladderPermille": {"const": 250}}}]},
+    "s1p0500Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-1-rate-0500-measurement"}, "sweep": {"const": 1}, "ladderPermille": {"const": 500}}}]},
+    "s1p0700Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-1-rate-0700-measurement"}, "sweep": {"const": 1}, "ladderPermille": {"const": 700}}}]},
+    "s1p0850Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-1-rate-0850-measurement"}, "sweep": {"const": 1}, "ladderPermille": {"const": 850}}}]},
+    "s1p1000Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-1-rate-1000-measurement"}, "sweep": {"const": 1}, "ladderPermille": {"const": 1000}}}]},
+    "s1p1150Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-1-rate-1150-measurement"}, "sweep": {"const": 1}, "ladderPermille": {"const": 1150}}}]},
+    "s1p1350Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-1-rate-1350-measurement"}, "sweep": {"const": 1}, "ladderPermille": {"const": 1350}}}]},
+    "s1p1600Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-1-rate-1600-measurement"}, "sweep": {"const": 1}, "ladderPermille": {"const": 1600}}}]},
+    "s2p0250Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-2-rate-0250-measurement"}, "sweep": {"const": 2}, "ladderPermille": {"const": 250}}}]},
+    "s2p0500Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-2-rate-0500-measurement"}, "sweep": {"const": 2}, "ladderPermille": {"const": 500}}}]},
+    "s2p0700Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-2-rate-0700-measurement"}, "sweep": {"const": 2}, "ladderPermille": {"const": 700}}}]},
+    "s2p0850Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-2-rate-0850-measurement"}, "sweep": {"const": 2}, "ladderPermille": {"const": 850}}}]},
+    "s2p1000Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-2-rate-1000-measurement"}, "sweep": {"const": 2}, "ladderPermille": {"const": 1000}}}]},
+    "s2p1150Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-2-rate-1150-measurement"}, "sweep": {"const": 2}, "ladderPermille": {"const": 1150}}}]},
+    "s2p1350Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-2-rate-1350-measurement"}, "sweep": {"const": 2}, "ladderPermille": {"const": 1350}}}]},
+    "s2p1600Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-2-rate-1600-measurement"}, "sweep": {"const": 2}, "ladderPermille": {"const": 1600}}}]},
+    "s3p0250Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-3-rate-0250-measurement"}, "sweep": {"const": 3}, "ladderPermille": {"const": 250}}}]},
+    "s3p0500Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-3-rate-0500-measurement"}, "sweep": {"const": 3}, "ladderPermille": {"const": 500}}}]},
+    "s3p0700Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-3-rate-0700-measurement"}, "sweep": {"const": 3}, "ladderPermille": {"const": 700}}}]},
+    "s3p0850Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-3-rate-0850-measurement"}, "sweep": {"const": 3}, "ladderPermille": {"const": 850}}}]},
+    "s3p1000Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-3-rate-1000-measurement"}, "sweep": {"const": 3}, "ladderPermille": {"const": 1000}}}]},
+    "s3p1150Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-3-rate-1150-measurement"}, "sweep": {"const": 3}, "ladderPermille": {"const": 1150}}}]},
+    "s3p1350Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-3-rate-1350-measurement"}, "sweep": {"const": 3}, "ladderPermille": {"const": 1350}}}]},
+    "s3p1600Value": {"allOf": [{"$ref": "#/$defs/measurementPoint"}, {"type": "object", "properties": {"pointId": {"const": "sweep-3-rate-1600-measurement"}, "sweep": {"const": 3}, "ladderPermille": {"const": 1600}}}]},
+    "measurementPoint": {
+      "allOf": [
+        {"$ref": "#/$defs/point"},
+        {
+          "type": "object",
+          "properties": {
+            "pointId": {"pattern": "^sweep-[1-3]-rate-(0250|0500|0700|0850|1000|1150|1350|1600)-measurement$"},
+            "phase": {"const": "MEASUREMENT"},
+            "sweep": {"type": "integer", "minimum": 1, "maximum": 3},
+            "ladderPermille": {"enum": [250, 500, 700, 850, 1000, 1150, 1350, 1600]}
+          }
+        }
+      ]
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pointId", "phase", "sweep", "ladderPermille", "offeredRate", "logical", "attempts", "latencyPercentilesNanos", "p99QueueDepth", "startingBacklog", "endingBacklog", "phaseBudgetPreflight", "observationCut", "terminalDrain", "saturated", "saturationReasons", "recovery"],
+      "properties": {
+        "pointId": {"type": "string", "minLength": 1},
+        "phase": {"enum": ["MEASUREMENT", "SOAK"]},
+        "sweep": {"type": "integer", "minimum": 0, "maximum": 3},
+        "ladderPermille": {"type": "integer", "minimum": 0, "maximum": 1600},
+        "offeredRate": {"type": "integer", "minimum": 1},
+        "logical": {"$ref": "#/$defs/logical"},
+        "attempts": {"$ref": "#/$defs/terminalAccounting"},
+        "latencyPercentilesNanos": {"$ref": "#/$defs/percentiles"},
+        "p99QueueDepth": {"type": "integer", "minimum": 0, "maximum": 64},
+        "startingBacklog": {"type": "integer", "minimum": 0, "maximum": 65},
+        "endingBacklog": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "phaseBudgetPreflight": {"$ref": "#/$defs/phaseBudgetPreflight"},
+        "observationCut": {"$ref": "#/$defs/observationCut"},
+        "terminalDrain": {"$ref": "#/$defs/terminalDrain"},
+        "saturated": {"type": "boolean"},
+        "saturationReasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["OVERLOAD_REJECTION", "POST_CUT_PLANNED_OVERLOAD_REJECTION", "P99_QUEUE_DEPTH_AT_LEAST_80_PERCENT", "COMPLETED_PER_ADMITTED_BELOW_99_5_PERCENT", "END_BACKLOG_GROWTH_ABOVE_10_PERCENT"]}
+        },
+        "recovery": {"$ref": "#/$defs/pointRecovery"}
+      }
+    },
+    "logical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["offers", "initiallyAdmitted", "overloaded", "closedOrInvalid", "terminalCompletions"],
+      "properties": {
+        "offers": {"type": "integer", "minimum": 1},
+        "initiallyAdmitted": {"type": "integer", "minimum": 1},
+        "overloaded": {"type": "integer", "minimum": 0},
+        "closedOrInvalid": {"type": "integer", "minimum": 0},
+        "terminalCompletions": {"type": "integer", "minimum": 1}
+      }
+    },
+    "accounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["offers", "admitted", "overloaded", "closedOrInvalid", "submissionResultVariants", "explicitServiceFailures", "pending", "durableAcknowledgements"],
+      "properties": {
+        "offers": {"type": "integer", "minimum": 0},
+        "admitted": {"type": "integer", "minimum": 0},
+        "overloaded": {"type": "integer", "minimum": 0},
+        "closedOrInvalid": {"type": "integer", "minimum": 0},
+        "submissionResultVariants": {"$ref": "#/$defs/submissionVariants"},
+        "explicitServiceFailures": {"type": "integer", "minimum": 0},
+        "pending": {"type": "integer", "minimum": 0},
+        "durableAcknowledgements": {"type": "integer", "minimum": 0}
+      }
+    },
+    "terminalAccounting": {
+      "allOf": [
+        {"$ref": "#/$defs/accounting"},
+        {
+          "type": "object",
+          "properties": {
+            "offers": {"type": "integer", "minimum": 1},
+            "admitted": {"type": "integer", "minimum": 1},
+            "pending": {"const": 0},
+            "durableAcknowledgements": {"type": "integer", "minimum": 1}
+          }
+        }
+      ]
+    },
+    "submissionVariants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["NEW_DURABLY_APPLIED", "DUPLICATE_REPLAYED", "STRUCTURAL_REJECTED", "PREFLIGHT_REJECTED", "CHECKPOINT_REQUIRED", "DURABILITY_UNKNOWN", "FAILED_CLOSED"],
+      "properties": {
+        "NEW_DURABLY_APPLIED": {"type": "integer", "minimum": 0},
+        "DUPLICATE_REPLAYED": {"type": "integer", "minimum": 0},
+        "STRUCTURAL_REJECTED": {"type": "integer", "minimum": 0},
+        "PREFLIGHT_REJECTED": {"type": "integer", "minimum": 0},
+        "CHECKPOINT_REQUIRED": {"type": "integer", "minimum": 0},
+        "DURABILITY_UNKNOWN": {"type": "integer", "minimum": 0},
+        "FAILED_CLOSED": {"type": "integer", "minimum": 0}
+      }
+    },
+    "percentiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["p50", "p95", "p99", "p99_9"],
+      "properties": {
+        "p50": {"type": "integer", "minimum": 0},
+        "p95": {"type": "integer", "minimum": 0},
+        "p99": {"type": "integer", "minimum": 0},
+        "p99_9": {"type": "integer", "minimum": 0}
+      }
+    },
+    "phaseBudgetPreflight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plannedInitialOffers", "plannedBeforeLatestCheckpointAdmission", "actualSuffixRecordsAtPhaseStart", "actualSuffixBytesAtPhaseStart", "queueCapacityPlusOwnerBound", "conservativeRetryDurableBound", "worstPrefixRecords", "worstPrefixBytes", "worstPostCheckpointSuffixRecords", "worstPostCheckpointSuffixBytes", "validatedSeparately", "actualSuffixRecordsAtTerminalDrain", "actualSuffixBytesAtTerminalDrain"],
+      "properties": {
+        "plannedInitialOffers": {"type": "integer", "minimum": 1},
+        "plannedBeforeLatestCheckpointAdmission": {"type": "integer", "minimum": 0},
+        "actualSuffixRecordsAtPhaseStart": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "actualSuffixBytesAtPhaseStart": {"type": "integer", "minimum": 0, "maximum": 1073741824},
+        "queueCapacityPlusOwnerBound": {"const": 65},
+        "conservativeRetryDurableBound": {"const": 65},
+        "worstPrefixRecords": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "worstPrefixBytes": {"type": "integer", "minimum": 1, "maximum": 1073741824},
+        "worstPostCheckpointSuffixRecords": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "worstPostCheckpointSuffixBytes": {"type": "integer", "minimum": 1, "maximum": 1073741824},
+        "validatedSeparately": {"const": true},
+        "actualSuffixRecordsAtTerminalDrain": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "actualSuffixBytesAtTerminalDrain": {"type": "integer", "minimum": 0, "maximum": 1073741824}
+      }
+    },
+    "observationCut": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phaseOriginNanos", "scheduledWindowEndNanos", "observedNanos", "observationLagNanos", "plannedInitialOffers", "initialDecisionsAtCut", "scheduledDecisionBacklogAtCut", "servicePendingAtCut", "queueCapacity", "startingBacklog", "endingBacklog", "p99QueueDepth", "postCutOverloaded", "attemptAccounting", "pacingFidelity"],
+      "properties": {
+        "phaseOriginNanos": {"type": "integer", "minimum": 0},
+        "scheduledWindowEndNanos": {"type": "integer", "minimum": 1},
+        "observedNanos": {"type": "integer", "minimum": 1},
+        "observationLagNanos": {"type": "integer", "minimum": 0, "maximum": 10000000},
+        "plannedInitialOffers": {"type": "integer", "minimum": 1},
+        "initialDecisionsAtCut": {"type": "integer", "minimum": 0},
+        "scheduledDecisionBacklogAtCut": {"type": "integer", "minimum": 0},
+        "servicePendingAtCut": {"type": "integer", "minimum": 0, "maximum": 65},
+        "queueCapacity": {"const": 64},
+        "startingBacklog": {"type": "integer", "minimum": 0, "maximum": 65},
+        "endingBacklog": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "p99QueueDepth": {"type": "integer", "minimum": 0, "maximum": 64},
+        "postCutOverloaded": {"type": "integer", "minimum": 0},
+        "attemptAccounting": {"$ref": "#/$defs/accounting"},
+        "pacingFidelity": {"$ref": "#/$defs/pacingFidelity"}
+      }
+    },
+    "pacingFidelity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plannedInitialOffers", "producedInitialOffers", "producerLagP99Nanos", "producerLagMaxNanos", "producerLagP99LimitNanos", "producerLagMaxLimitNanos", "allScheduledArrivalsMaterialized", "allAdmissionDecisionsWithinLagLimits", "passed"],
+      "properties": {
+        "plannedInitialOffers": {"type": "integer", "minimum": 1},
+        "producedInitialOffers": {"type": "integer", "minimum": 1},
+        "producerLagP99Nanos": {"type": "integer", "minimum": 0, "maximum": 50000000},
+        "producerLagMaxNanos": {"type": "integer", "minimum": 0, "maximum": 250000000},
+        "producerLagP99LimitNanos": {"const": 50000000},
+        "producerLagMaxLimitNanos": {"const": 250000000},
+        "allScheduledArrivalsMaterialized": {"const": true},
+        "allAdmissionDecisionsWithinLagLimits": {"const": true},
+        "passed": {"const": true}
+      }
+    },
+    "terminalDrain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observedNanos", "elapsedAfterObservationCutNanos", "logicalTerminalCompletions", "logicalLatencySamples", "attemptAccounting"],
+      "properties": {
+        "observedNanos": {"type": "integer", "minimum": 1},
+        "elapsedAfterObservationCutNanos": {"type": "integer", "minimum": 0},
+        "logicalTerminalCompletions": {"type": "integer", "minimum": 1},
+        "logicalLatencySamples": {"type": "integer", "minimum": 1},
+        "attemptAccounting": {"$ref": "#/$defs/terminalAccounting"}
+      }
+    },
+    "pointRecovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["durableOperations", "duplicatesReplayed", "liveResultDigest", "recoveredResultDigest", "directReplayResultDigest", "liveSemanticStateDigest", "recoveredSemanticStateDigest", "directReplaySemanticStateDigest", "recoveryTraceSha256", "recoveryTraceId", "configuredMaxSuffixRecords", "configuredMaxSuffixBytes", "actualSuffixRecords", "actualSuffixBytes", "recoveryElapsedNanos", "recoveredWalConfig", "directReplayWalConfig"],
+      "properties": {
+        "durableOperations": {"type": "integer", "minimum": 1},
+        "duplicatesReplayed": {"type": "integer", "minimum": 1},
+        "liveResultDigest": {"$ref": "#/$defs/sha256"},
+        "recoveredResultDigest": {"$ref": "#/$defs/sha256"},
+        "directReplayResultDigest": {"$ref": "#/$defs/sha256"},
+        "liveSemanticStateDigest": {"$ref": "#/$defs/sha256"},
+        "recoveredSemanticStateDigest": {"$ref": "#/$defs/sha256"},
+        "directReplaySemanticStateDigest": {"$ref": "#/$defs/sha256"},
+        "recoveryTraceSha256": {"$ref": "#/$defs/sha256"},
+        "recoveryTraceId": {"$ref": "#/$defs/recoveryTraceId"},
+        "configuredMaxSuffixRecords": {"const": 1000000},
+        "configuredMaxSuffixBytes": {"const": 1073741824},
+        "actualSuffixRecords": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "actualSuffixBytes": {"type": "integer", "minimum": 0, "maximum": 1073741824},
+        "recoveryElapsedNanos": {"type": "integer", "minimum": 1},
+        "recoveredWalConfig": {"const": "M10_DEDICATED_FINITE_WITH_M09S1"},
+        "directReplayWalConfig": {"const": "M08_LEGACY_UNBOUNDED_NO_SNAPSHOT"}
+      }
+    },
+    "recoveryTraceId": {
+      "type": "string",
+      "pattern": "^(sweep-[1-3]-rate-(0250|0500|0700|0850|1000|1150|1350|1600)|qop-soak)$"
+    },
+    "ciSoak": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["durationSeconds", "point"],
+      "properties": {
+        "durationSeconds": {"const": 3},
+        "point": {"$ref": "#/$defs/soakPoint"}
+      }
+    },
+    "releaseSoak": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["durationSeconds", "point"],
+      "properties": {
+        "durationSeconds": {"const": 1800},
+        "point": {"$ref": "#/$defs/soakPoint"}
+      }
+    },
+    "soakPoint": {
+      "allOf": [
+        {"$ref": "#/$defs/point"},
+        {
+          "type": "object",
+          "properties": {
+            "pointId": {"const": "qop-soak"},
+            "phase": {"const": "SOAK"},
+            "sweep": {"const": 0},
+            "ladderPermille": {"const": 0},
+            "saturated": {"const": false},
+            "saturationReasons": {"type": "array", "maxItems": 0},
+            "logical": {
+              "allOf": [
+                {"$ref": "#/$defs/logical"},
+                {"type": "object", "properties": {"overloaded": {"const": 0}, "closedOrInvalid": {"const": 0}}}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "capacity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sweepKnees", "publishedKnee", "qualifiedOperatingPointCandidate", "qualifiedOperatingPoint"],
+      "properties": {
+        "sweepKnees": {"type": "array", "minItems": 1, "maxItems": 3, "items": {"type": "integer", "minimum": 1}},
+        "publishedKnee": {"type": "integer", "minimum": 1},
+        "qualifiedOperatingPointCandidate": {"type": "integer", "minimum": 1},
+        "qualifiedOperatingPoint": {"type": "integer", "minimum": 1}
+      }
+    },
+    "rawRecomputation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "fromDecompressedRaw", "arrivalRecords", "completionRecords", "queueRecords", "resourceRecords", "maintenanceRecords", "phaseCutRecords", "acceptedTraceRecords", "reconstructedRecoveryTraces", "exactAttemptJoin", "reconstructedTraceHashesExact", "recoverySuffixRecordsAndBytesExact", "allNewWalRecordsWithinPlanningCeiling", "verifiedPublishedPoints"],
+      "properties": {
+        "status": {"const": "PASS"},
+        "fromDecompressedRaw": {"const": true},
+        "arrivalRecords": {"type": "integer", "minimum": 1},
+        "completionRecords": {"type": "integer", "minimum": 1},
+        "queueRecords": {"type": "integer", "minimum": 1},
+        "resourceRecords": {"type": "integer", "minimum": 1},
+        "maintenanceRecords": {"type": "integer", "minimum": 1},
+        "phaseCutRecords": {"type": "integer", "minimum": 1},
+        "acceptedTraceRecords": {"type": "integer", "minimum": 1},
+        "reconstructedRecoveryTraces": {"type": "integer", "minimum": 1},
+        "exactAttemptJoin": {"const": true},
+        "reconstructedTraceHashesExact": {"const": true},
+        "recoverySuffixRecordsAndBytesExact": {"const": true},
+        "allNewWalRecordsWithinPlanningCeiling": {"const": true},
+        "verifiedPublishedPoints": {"enum": [9, 25]}
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["streams", "recoveryJson"],
+      "properties": {
+        "streams": {"$ref": "#/$defs/streamInventory"},
+        "recoveryJson": {"$ref": "#/$defs/recoveryInventory"},
+        "diagnosticJmh": {"$ref": "#/$defs/diagnosticJmh"}
+      }
+    },
+    "streamInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw-arrivals", "raw-completions", "raw-queue", "resources", "raw-maintenance", "raw-phase-cuts", "accepted-trace"],
+      "properties": {
+        "raw-arrivals": {"$ref": "#/$defs/rawArrivalShards"},
+        "raw-completions": {"$ref": "#/$defs/rawCompletionShards"},
+        "raw-queue": {"$ref": "#/$defs/rawQueueShards"},
+        "resources": {"$ref": "#/$defs/resourceShards"},
+        "raw-maintenance": {"$ref": "#/$defs/rawMaintenanceShards"},
+        "raw-phase-cuts": {"$ref": "#/$defs/rawPhaseCutShards"},
+        "accepted-trace": {"$ref": "#/$defs/acceptedTraceShards"}
+      }
+    },
+    "rawArrivalShards": {"allOf": [{"$ref": "#/$defs/shards"}, {"type": "array", "items": {"type": "object", "properties": {"relativePath": {"pattern": "^raw-arrivals/part-[0-9]{5}\\.jsonl\\.gz$"}}}}]},
+    "rawCompletionShards": {"allOf": [{"$ref": "#/$defs/shards"}, {"type": "array", "items": {"type": "object", "properties": {"relativePath": {"pattern": "^raw-completions/part-[0-9]{5}\\.jsonl\\.gz$"}}}}]},
+    "rawQueueShards": {"allOf": [{"$ref": "#/$defs/shards"}, {"type": "array", "items": {"type": "object", "properties": {"relativePath": {"pattern": "^raw-queue/part-[0-9]{5}\\.jsonl\\.gz$"}}}}]},
+    "resourceShards": {"allOf": [{"$ref": "#/$defs/shards"}, {"type": "array", "items": {"type": "object", "properties": {"relativePath": {"pattern": "^resources/part-[0-9]{5}\\.jsonl\\.gz$"}}}}]},
+    "rawMaintenanceShards": {"allOf": [{"$ref": "#/$defs/shards"}, {"type": "array", "items": {"type": "object", "properties": {"relativePath": {"pattern": "^raw-maintenance/part-[0-9]{5}\\.jsonl\\.gz$"}}}}]},
+    "rawPhaseCutShards": {"allOf": [{"$ref": "#/$defs/shards"}, {"type": "array", "items": {"type": "object", "properties": {"relativePath": {"pattern": "^raw-phase-cuts/part-[0-9]{5}\\.jsonl\\.gz$"}}}}]},
+    "acceptedTraceShards": {"allOf": [{"$ref": "#/$defs/shards"}, {"type": "array", "items": {"type": "object", "properties": {"relativePath": {"pattern": "^accepted-trace/part-[0-9]{5}\\.jsonl\\.gz$"}}}}]},
+    "shards": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["relativePath", "recordCount", "compressedBytes", "sha256"],
+        "properties": {
+          "relativePath": {"type": "string", "pattern": "^(raw-arrivals|raw-completions|raw-queue|resources|raw-maintenance|raw-phase-cuts|accepted-trace)/part-[0-9]{5}\\.jsonl\\.gz$"},
+          "recordCount": {"type": "integer", "minimum": 1, "maximum": 25000},
+          "compressedBytes": {"type": "integer", "minimum": 1},
+          "sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "recoveryInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relativePath", "recordCount", "bytes", "sha256"],
+      "properties": {
+        "relativePath": {"const": "recovery.json"},
+        "recordCount": {"enum": [9, 25]},
+        "bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "diagnosticJmh": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relativePath", "bytes", "sha256", "jmhVersion", "harness", "mode", "benchmarks", "resultScope", "eligibleForCapacityEnvelope", "sourceCommit", "benchmarkClassesSha256"],
+      "properties": {
+        "relativePath": {"const": "diagnostics/core-sample-time.json"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "jmhVersion": {"const": "1.37"},
+        "harness": {"const": "JMH"},
+        "mode": {"const": "sample"},
+        "benchmarks": {
+          "const": [
+            "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.restingMakerThenMatchingTaker",
+            "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.canonicalEnvelopeDecode"
+          ]
+        },
+        "resultScope": {"const": "DIAGNOSTIC_ONLY"},
+        "eligibleForCapacityEnvelope": {"const": false},
+        "sourceCommit": {"$ref": "#/$defs/gitCommit"},
+        "benchmarkClassesSha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "artifactIdentity": {
+      "type": "object",
+      "required": ["schemaVersion", "runId", "profileId", "resultScope", "eligibleForReleaseEvidence", "sourceCommit", "workloadSha256", "qualificationRuntimePolicyId", "qualificationRecoveryBudgetPolicy", "qualificationMaxSuffixRecords", "qualificationMaxSuffixBytes", "m09DefaultMaxSuffixRecords", "m09DefaultMaxSuffixBytes", "plannedWalRecordCeilingBytes", "proactiveCheckpointOffsetNanos"],
+      "properties": {
+        "schemaVersion": {"type": "string", "pattern": "^matching\\.m10\\."},
+        "runId": {"$ref": "#/$defs/runId"},
+        "profileId": {"enum": ["CI_SMOKE", "RELEASE_QUALIFICATION"]},
+        "resultScope": {"enum": ["METHOD_SMOKE_ONLY", "RELEASE_QUALIFICATION"]},
+        "eligibleForReleaseEvidence": {"type": "boolean"},
+        "sourceCommit": {"$ref": "#/$defs/gitCommit"},
+        "workloadSha256": {"$ref": "#/$defs/workloadSha256"},
+        "qualificationRuntimePolicyId": {"const": "M10Q1"},
+        "qualificationRecoveryBudgetPolicy": {"const": "M10_DEDICATED_NOT_M09_DEFAULT"},
+        "qualificationMaxSuffixRecords": {"const": 1000000},
+        "qualificationMaxSuffixBytes": {"const": 1073741824},
+        "m09DefaultMaxSuffixRecords": {"const": 64},
+        "m09DefaultMaxSuffixBytes": {"const": 1048576},
+        "plannedWalRecordCeilingBytes": {"const": 1024},
+        "proactiveCheckpointOffsetNanos": {"const": 100000000}
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "profileId": {"const": "CI_SMOKE"},
+            "resultScope": {"const": "METHOD_SMOKE_ONLY"},
+            "eligibleForReleaseEvidence": {"const": false}
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "profileId": {"const": "RELEASE_QUALIFICATION"},
+            "resultScope": {"const": "RELEASE_QUALIFICATION"},
+            "eligibleForReleaseEvidence": {"const": true}
+          }
+        }
+      ]
+    },
+    "rawPointIdentity": {
+      "allOf": [
+        {"$ref": "#/$defs/artifactIdentity"},
+        {
+          "type": "object",
+          "required": ["recordType", "pointId", "phase", "sweep", "ladderPermille", "offeredRate"],
+          "properties": {
+            "recordType": {"const": "DATA"},
+            "pointId": {"type": "string", "pattern": "^(sweep-[1-3]-rate-(0250|0500|0700|0850|1000|1150|1350|1600)-(warmup|measurement)|qop-soak)$"},
+            "phase": {"enum": ["WARMUP", "MEASUREMENT", "SOAK"]},
+            "sweep": {"type": "integer", "minimum": 0, "maximum": 3},
+            "ladderPermille": {"enum": [0, 250, 500, 700, 850, 1000, 1150, 1350, 1600]},
+            "offeredRate": {"type": "integer", "minimum": 1}
+          }
+        }
+      ]
+    },
+    "rawArrivalRecord": {
+      "allOf": [
+        {"$ref": "#/$defs/rawPointIdentity"},
+        {
+          "type": "object",
+          "required": ["logicalOperationId", "attempt", "retryOriginAttempt", "retryOfferOrdinal", "canonicalEnvelopeSha256", "attemptKind", "timeDomain", "latencyOrigin", "scheduledArrivalNanos", "admissionDecisionNanos", "producerLagNanos", "admissionOutcome", "rejectionCode", "observationKind", "decisionQueueDepth"],
+          "properties": {
+            "schemaVersion": {"const": "matching.m10.raw-arrival.v2"},
+            "logicalOperationId": {"type": "string", "minLength": 1},
+            "attempt": {"type": "integer", "minimum": 0},
+            "retryOriginAttempt": {"type": ["integer", "null"], "minimum": 0},
+            "retryOfferOrdinal": {"type": "integer", "minimum": 0},
+            "canonicalEnvelopeSha256": {"$ref": "#/$defs/sha256"},
+            "attemptKind": {"enum": ["INITIAL_SCHEDULED", "CHECKPOINT_RETRY"]},
+            "timeDomain": {"const": "RUN_RELATIVE_MONOTONIC_NANOS"},
+            "latencyOrigin": {"const": "SCHEDULED_ARRIVAL"},
+            "scheduledArrivalNanos": {"type": "integer", "minimum": 0},
+            "admissionDecisionNanos": {"type": "integer", "minimum": 0},
+            "producerLagNanos": {"type": "integer", "minimum": 0, "maximum": 250000000},
+            "admissionOutcome": {"enum": ["ENQUEUED_NOT_ACK", "REJECTED"]},
+            "rejectionCode": {"type": ["string", "null"], "enum": [null, "INVALID_ENVELOPE_REFERENCE", "INVALID_ENVELOPE_SIZE", "OVERLOADED_BEFORE_WAL", "NOT_ACCEPTING", "SERVICE_FAILED_CLOSED"]},
+            "observationKind": {"const": "ADMISSION_GATE_DECISION"},
+            "decisionQueueDepth": {"type": "integer", "minimum": 0, "maximum": 64}
+          },
+          "allOf": [
+            {
+              "if": {"properties": {"attemptKind": {"const": "INITIAL_SCHEDULED"}}, "required": ["attemptKind"]},
+              "then": {"properties": {"attempt": {"const": 0}, "retryOriginAttempt": {"type": "null"}, "retryOfferOrdinal": {"const": 0}}},
+              "else": {"properties": {"attempt": {"type": "integer", "minimum": 1}, "retryOriginAttempt": {"type": "integer", "minimum": 0}, "retryOfferOrdinal": {"type": "integer", "minimum": 1}}}
+            },
+            {
+              "if": {"properties": {"admissionOutcome": {"const": "ENQUEUED_NOT_ACK"}}, "required": ["admissionOutcome"]},
+              "then": {"properties": {"rejectionCode": {"type": "null"}}},
+              "else": {"properties": {"rejectionCode": {"type": "string"}}}
+            }
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "rawCompletionRecord": {
+      "allOf": [
+        {"$ref": "#/$defs/rawPointIdentity"},
+        {
+          "type": "object",
+          "required": ["logicalOperationId", "attempt", "canonicalEnvelopeSha256", "timeDomain", "timeOrigin", "latencyOrigin", "scheduledArrivalNanos", "ownerCompletedNanos", "latencyFromScheduledNanos", "completionKind", "submissionResultVariant", "serviceFailureCode", "logicalTerminal", "canonicalResultDigest", "semanticStateDigest", "walRecordLength"],
+          "properties": {
+            "schemaVersion": {"const": "matching.m10.raw-completion.v2"},
+            "logicalOperationId": {"type": "string", "minLength": 1},
+            "attempt": {"type": "integer", "minimum": 0},
+            "canonicalEnvelopeSha256": {"$ref": "#/$defs/sha256"},
+            "timeDomain": {"const": "RUN_RELATIVE_MONOTONIC_NANOS"},
+            "timeOrigin": {"const": "OWNER_COMPLETED_UNDER_GATE"},
+            "latencyOrigin": {"const": "SCHEDULED_ARRIVAL"},
+            "scheduledArrivalNanos": {"type": "integer", "minimum": 0},
+            "ownerCompletedNanos": {"type": "integer", "minimum": 0},
+            "latencyFromScheduledNanos": {"type": "integer", "minimum": 0},
+            "completionKind": {"enum": ["SUBMISSION_RESULT", "EXPLICIT_SERVICE_FAILURE"]},
+            "submissionResultVariant": {"type": ["string", "null"], "enum": [null, "NEW_DURABLY_APPLIED", "DUPLICATE_REPLAYED", "STRUCTURAL_REJECTED", "PREFLIGHT_REJECTED", "CHECKPOINT_REQUIRED", "DURABILITY_UNKNOWN", "FAILED_CLOSED"]},
+            "serviceFailureCode": {"type": ["string", "null"], "enum": [null, "RUNTIME_FAILED_CLOSED", "UNEXPECTED_WORKER_FAILURE", "CHECKPOINT_FAILED", "UNEXPECTED_WORKER_INTERRUPTION"]},
+            "logicalTerminal": {"type": "boolean"},
+            "canonicalResultDigest": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+            "semanticStateDigest": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+            "walRecordLength": {"type": ["integer", "null"], "minimum": 1, "maximum": 1024}
+          },
+          "allOf": [
+            {
+              "if": {"properties": {"completionKind": {"const": "SUBMISSION_RESULT"}}, "required": ["completionKind"]},
+              "then": {"properties": {"submissionResultVariant": {"type": "string"}, "serviceFailureCode": {"type": "null"}}},
+              "else": {"properties": {"submissionResultVariant": {"type": "null"}, "serviceFailureCode": {"type": "string"}, "logicalTerminal": {"const": true}, "canonicalResultDigest": {"type": "null"}, "semanticStateDigest": {"type": "null"}, "walRecordLength": {"type": "null"}}}
+            },
+            {
+              "if": {"properties": {"submissionResultVariant": {"const": "NEW_DURABLY_APPLIED"}}, "required": ["submissionResultVariant"]},
+              "then": {"properties": {"walRecordLength": {"type": "integer", "minimum": 1, "maximum": 1024}}},
+              "else": {"properties": {"walRecordLength": {"type": "null"}}}
+            }
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "rawQueueRecord": {
+      "allOf": [
+        {"$ref": "#/$defs/rawPointIdentity"},
+        {
+          "type": "object",
+          "required": ["logicalOperationId", "attempt", "attemptKind", "admissionDecisionNanos", "observationKind", "decisionQueueDepth"],
+          "properties": {
+            "schemaVersion": {"const": "matching.m10.raw-queue.v2"},
+            "logicalOperationId": {"type": "string", "minLength": 1},
+            "attempt": {"type": "integer", "minimum": 0},
+            "attemptKind": {"enum": ["INITIAL_SCHEDULED", "CHECKPOINT_RETRY"]},
+            "admissionDecisionNanos": {"type": "integer", "minimum": 0},
+            "observationKind": {"const": "ADMISSION_GATE_DECISION"},
+            "decisionQueueDepth": {"type": "integer", "minimum": 0, "maximum": 64}
+          },
+          "if": {"properties": {"attemptKind": {"const": "INITIAL_SCHEDULED"}}, "required": ["attemptKind"]},
+          "then": {"properties": {"attempt": {"const": 0}}},
+          "else": {"properties": {"attempt": {"type": "integer", "minimum": 1}}}
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "resourceObservationRecord": {
+      "allOf": [
+        {"$ref": "#/$defs/rawPointIdentity"},
+        {
+          "type": "object",
+          "required": ["sampleSequence", "sampleKind", "scheduledSampleNanos", "observedNanos", "samplingLagNanos", "allocationUnit", "totalThreadAllocatedBytes", "gcCountUnit", "garbageCollectionCount", "gcTimeUnit", "garbageCollectionMillis", "cpuUnit", "processCpuNanos", "memoryUnit", "heapUsedBytes", "committedVirtualMemoryBytes", "systemMemoryUsedBytes", "queueDepth"],
+          "properties": {
+            "schemaVersion": {"const": "matching.m10.resource-observation.v1"},
+            "sampleSequence": {"type": "integer", "minimum": 1},
+            "sampleKind": {"enum": ["PERIODIC", "TERMINAL"]},
+            "scheduledSampleNanos": {"type": "integer", "minimum": 0},
+            "observedNanos": {"type": "integer", "minimum": 0},
+            "samplingLagNanos": {"type": "integer", "minimum": 0},
+            "allocationUnit": {"const": "CUMULATIVE_BYTES_ALL_THREADS"},
+            "totalThreadAllocatedBytes": {"type": "integer", "minimum": 0},
+            "gcCountUnit": {"const": "CUMULATIVE_COLLECTIONS"},
+            "garbageCollectionCount": {"type": "integer", "minimum": 0},
+            "gcTimeUnit": {"const": "CUMULATIVE_MILLISECONDS"},
+            "garbageCollectionMillis": {"type": "integer", "minimum": 0},
+            "cpuUnit": {"const": "CUMULATIVE_PROCESS_NANOSECONDS"},
+            "processCpuNanos": {"type": "integer", "minimum": 0},
+            "memoryUnit": {"const": "BYTES"},
+            "heapUsedBytes": {"type": "integer", "minimum": 0},
+            "committedVirtualMemoryBytes": {"type": "integer", "minimum": 0},
+            "systemMemoryUsedBytes": {"type": "integer", "minimum": 0},
+            "queueDepth": {"type": "integer", "minimum": 0, "maximum": 64}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "rawMaintenanceRecord": {
+      "oneOf": [
+        {"$ref": "#/$defs/rawMaintenanceAdmission"},
+        {"$ref": "#/$defs/rawMaintenanceCompletion"}
+      ]
+    },
+    "maintenanceShared": {
+      "allOf": [
+        {"$ref": "#/$defs/rawPointIdentity"},
+        {
+          "type": "object",
+          "required": ["eventKind", "maintenanceType", "maintenanceAttempt", "reason", "scheduledPhaseOffsetNanos", "scheduledNanos", "offeredNanos"],
+          "properties": {
+            "schemaVersion": {"const": "matching.m10.raw-maintenance.v1"},
+            "eventKind": {"enum": ["ADMISSION", "COMPLETION"]},
+            "maintenanceType": {"const": "M09S1_CHECKPOINT"},
+            "maintenanceAttempt": {"type": "integer", "minimum": 1},
+            "reason": {"enum": ["PROACTIVE_PHASE_CHECKPOINT", "CHECKPOINT_REQUIRED_RETRY"]},
+            "scheduledPhaseOffsetNanos": {"type": "integer", "minimum": 0},
+            "scheduledNanos": {"type": "integer", "minimum": 0},
+            "offeredNanos": {"type": "integer", "minimum": 0}
+          },
+          "if": {"properties": {"reason": {"const": "PROACTIVE_PHASE_CHECKPOINT"}}, "required": ["reason"]},
+          "then": {"properties": {"scheduledPhaseOffsetNanos": {"const": 100000000}}}
+        }
+      ]
+    },
+    "rawMaintenanceAdmission": {
+      "allOf": [
+        {"$ref": "#/$defs/maintenanceShared"},
+        {
+          "type": "object",
+          "required": ["offerLagNanos", "admissionOutcome", "rejectionCode"],
+          "properties": {
+            "eventKind": {"const": "ADMISSION"},
+            "offerLagNanos": {"type": "integer", "minimum": 0},
+            "admissionOutcome": {"enum": ["ENQUEUED", "REJECTED"]},
+            "rejectionCode": {"type": ["string", "null"], "enum": [null, "INVALID_ENVELOPE_REFERENCE", "INVALID_ENVELOPE_SIZE", "OVERLOADED_BEFORE_WAL", "NOT_ACCEPTING", "SERVICE_FAILED_CLOSED"]}
+          },
+          "if": {"properties": {"admissionOutcome": {"const": "ENQUEUED"}}, "required": ["admissionOutcome"]},
+          "then": {"properties": {"rejectionCode": {"type": "null"}}},
+          "else": {"properties": {"rejectionCode": {"type": "string"}}}
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "rawMaintenanceCompletion": {
+      "allOf": [
+        {"$ref": "#/$defs/maintenanceShared"},
+        {
+          "type": "object",
+          "required": ["terminalNanos", "pauseFromScheduledNanos", "completionKind", "failureCode", "suffixRecordsBeforeReset", "suffixBytesBeforeReset", "suffixRecordsAfterReset", "suffixBytesAfterReset"],
+          "properties": {
+            "eventKind": {"const": "COMPLETION"},
+            "terminalNanos": {"type": "integer", "minimum": 0},
+            "pauseFromScheduledNanos": {"type": "integer", "minimum": 0},
+            "completionKind": {"enum": ["COMPLETED", "EXPLICIT_FAILURE"]},
+            "failureCode": {"type": ["string", "null"], "enum": [null, "RUNTIME_FAILED_CLOSED", "UNEXPECTED_WORKER_FAILURE", "CHECKPOINT_FAILED", "UNEXPECTED_WORKER_INTERRUPTION"]},
+            "suffixRecordsBeforeReset": {"type": "integer", "minimum": 0, "maximum": 1000000},
+            "suffixBytesBeforeReset": {"type": "integer", "minimum": 0, "maximum": 1073741824},
+            "suffixRecordsAfterReset": {"type": "integer", "minimum": 0, "maximum": 1000000},
+            "suffixBytesAfterReset": {"type": "integer", "minimum": 0, "maximum": 1073741824}
+          },
+          "if": {"properties": {"completionKind": {"const": "COMPLETED"}}, "required": ["completionKind"]},
+          "then": {"properties": {"failureCode": {"type": "null"}, "suffixRecordsAfterReset": {"const": 0}, "suffixBytesAfterReset": {"const": 0}}},
+          "else": {"properties": {"failureCode": {"type": "string"}}}
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "rawPhaseCutRecord": {
+      "allOf": [
+        {"$ref": "#/$defs/rawPointIdentity"},
+        {
+          "type": "object",
+          "required": ["observationCut", "terminalDrain"],
+          "properties": {
+            "schemaVersion": {"const": "matching.m10.raw-phase-cut.v2"},
+            "observationCut": {"$ref": "#/$defs/observationCut"},
+            "terminalDrain": {"$ref": "#/$defs/terminalDrain"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "acceptedTraceRecord": {
+      "allOf": [
+        {"$ref": "#/$defs/rawPointIdentity"},
+        {
+          "type": "object",
+          "required": ["recoveryTraceId", "traceOrdinal", "logicalOperationId", "attempt", "canonicalEnvelopeEncoding", "canonicalEnvelopeSha256", "canonicalEnvelopeBase64", "canonicalResultDigest", "semanticStateDigest"],
+          "properties": {
+            "schemaVersion": {"const": "matching.m10.accepted-trace.v2"},
+            "recoveryTraceId": {"$ref": "#/$defs/recoveryTraceId"},
+            "traceOrdinal": {"type": "integer", "minimum": 1},
+            "logicalOperationId": {"type": "string", "minLength": 1},
+            "attempt": {"type": "integer", "minimum": 0},
+            "canonicalEnvelopeEncoding": {"const": "BASE64"},
+            "canonicalEnvelopeSha256": {"$ref": "#/$defs/sha256"},
+            "canonicalEnvelopeBase64": {"type": "string", "minLength": 4, "pattern": "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"},
+            "canonicalResultDigest": {"$ref": "#/$defs/sha256"},
+            "semanticStateDigest": {"$ref": "#/$defs/sha256"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "recoveryCollection": {
+      "allOf": [
+        {"$ref": "#/$defs/artifactIdentity"},
+        {
+          "type": "object",
+          "required": ["recordType", "records"],
+          "properties": {
+            "schemaVersion": {"const": "matching.m10.recovery.v1"},
+            "recordType": {"const": "RECOVERY_COLLECTION"},
+            "records": {"type": "array", "items": {"$ref": "#/$defs/recoveryRecord"}}
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "profileId": {"const": "CI_SMOKE"},
+                "records": {"type": "array", "minItems": 9, "maxItems": 9}
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "profileId": {"const": "RELEASE_QUALIFICATION"},
+                "records": {"type": "array", "minItems": 25, "maxItems": 25}
+              }
+            }
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "recoveryRecord": {
+      "allOf": [
+        {"$ref": "#/$defs/rawPointIdentity"},
+        {
+          "type": "object",
+          "required": ["recoveryTraceId", "durableOperations", "duplicatesReplayed", "liveResultDigest", "recoveredResultDigest", "directReplayResultDigest", "liveSemanticStateDigest", "recoveredSemanticStateDigest", "directReplaySemanticStateDigest", "recoveryTraceSha256", "configuredMaxSuffixRecords", "configuredMaxSuffixBytes", "actualSuffixRecords", "actualSuffixBytes", "recoveryElapsedNanos", "recoveredWalConfig", "directReplayWalConfig", "exactResultDigest", "exactSemanticStateDigest"],
+          "properties": {
+            "schemaVersion": {"const": "matching.m10.recovery.v1"},
+            "phase": {"enum": ["MEASUREMENT", "SOAK"]},
+            "pointId": {"type": "string", "pattern": "^(sweep-[1-3]-rate-(0250|0500|0700|0850|1000|1150|1350|1600)-measurement|qop-soak)$"},
+            "recoveryTraceId": {"$ref": "#/$defs/recoveryTraceId"},
+            "durableOperations": {"type": "integer", "minimum": 1},
+            "duplicatesReplayed": {"type": "integer", "minimum": 1},
+            "liveResultDigest": {"$ref": "#/$defs/sha256"},
+            "recoveredResultDigest": {"$ref": "#/$defs/sha256"},
+            "directReplayResultDigest": {"$ref": "#/$defs/sha256"},
+            "liveSemanticStateDigest": {"$ref": "#/$defs/sha256"},
+            "recoveredSemanticStateDigest": {"$ref": "#/$defs/sha256"},
+            "directReplaySemanticStateDigest": {"$ref": "#/$defs/sha256"},
+            "recoveryTraceSha256": {"$ref": "#/$defs/sha256"},
+            "configuredMaxSuffixRecords": {"const": 1000000},
+            "configuredMaxSuffixBytes": {"const": 1073741824},
+            "actualSuffixRecords": {"type": "integer", "minimum": 0, "maximum": 1000000},
+            "actualSuffixBytes": {"type": "integer", "minimum": 0, "maximum": 1073741824},
+            "recoveryElapsedNanos": {"type": "integer", "minimum": 1},
+            "recoveredWalConfig": {"const": "M10_DEDICATED_FINITE_WITH_M09S1"},
+            "directReplayWalConfig": {"const": "M08_LEGACY_UNBOUNDED_NO_SNAPSHOT"},
+            "exactResultDigest": {"const": true},
+            "exactSemanticStateDigest": {"const": true}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

@@ -6,6 +6,7 @@ plugins {
 dependencies {
     api(project(":matching-core"))
     implementation(project(":matching-local-runtime"))
+    implementation(project(":matching-benchmarks"))
     implementation(project(":matching-reference"))
     implementation(libs.jackson.databind)
     implementation(libs.json.schema.validator)
@@ -35,7 +36,15 @@ tasks.withType<Test>().configureEach {
         "**/M07StartCheckRunnerTest.class",
         "**/M08StartCheckRunnerTest.class",
         "**/M09StartCheckRunnerTest.class",
+        "**/M10StartCheckRunnerTest.class",
     )
+    filter {
+        // M10 deliberately introduces bounded java.util.concurrent admission types. The M10 gate
+        // supersedes this one M09 source-only assertion; every M09 semantic test remains enabled.
+        excludeTestsMatching(
+            "io.github.lchareln.cex.matching.testkit.M09CompletionSuitesTest.enforcesTheInheritedArchitectureAndTestkitProbeBoundary",
+        )
+    }
 }
 
 val m00ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m00")
@@ -70,6 +79,26 @@ val m09ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m09")
 val m09EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M09")
 val m09UnitTag = providers.gradleProperty("m09.unitTag").orElse("course/m09-complete")
 val m10ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m10")
+val m10CiSmokeDirectory = rootProject.layout.buildDirectory.dir("reports/m10-ci-smoke")
+val m10ReleaseDirectory = rootProject.layout.buildDirectory.dir("reports/m10-release")
+val m10EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M10")
+val m10UnitTag = providers.gradleProperty("m10.unitTag").orElse("course/m10-complete")
+val m10ProductRelease = providers.gradleProperty("m10.productRelease").orElse("matching-0.5.0")
+
+val m10QualificationSchemaProbe = tasks.register<Test>("m10QualificationSchemaProbe") {
+    group = "verification"
+    description = "Validates a freshly generated M10 CI smoke bundle against every artifact schema."
+    dependsOn(":matching-benchmarks:m10CiSmokeLoad", "testClasses")
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    environment("M10_SCHEMA_PROBE_BUNDLE", m10CiSmokeDirectory.get().asFile.absolutePath)
+    filter {
+        includeTestsMatching(
+            "io.github.lchareln.cex.matching.testkit.M10QualificationSchemaTest.*",
+        )
+    }
+    doNotTrackState("The schema probe must consume the newly generated smoke bundle")
+}
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -351,13 +380,40 @@ tasks.register<JavaExec>("m09Evidence") {
 
 tasks.register<JavaExec>("m10Check") {
     group = "verification"
-    description = "Runs the frozen M10 bounded-admission and performance-qualification structured RED."
-    dependsOn("m09Check", "classes")
+    description = "Runs the completed M10 bounded-admission and qualification-method judge."
+    dependsOn(
+        "test",
+        ":matching-core:test",
+        ":matching-local-runtime:test",
+        ":matching-benchmarks:check",
+        ":matching-benchmarks:m10CiSmokeLoad",
+        ":matching-reference:check",
+        m10QualificationSchemaProbe,
+        "classes",
+    )
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("io.github.lchareln.cex.matching.testkit.M10CheckMain")
     args(
         rootProject.layout.projectDirectory.asFile.absolutePath,
         m10ReportDirectory.get().asFile.absolutePath,
+        m10CiSmokeDirectory.get().asFile.absolutePath,
     )
-    doNotTrackState("M10 must never reuse a stale structured RED report")
+    doNotTrackState("M10 must never reuse a stale completion report")
+}
+
+tasks.register<JavaExec>("m10Evidence") {
+    group = "verification"
+    description = "Validates and publishes clean-tree M10 correctness and full release evidence."
+    dependsOn("m10Check")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M10EvidenceMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m10ReportDirectory.get().asFile.absolutePath,
+        m10ReleaseDirectory.get().asFile.absolutePath,
+        m10EvidenceDirectory.get().asFile.absolutePath,
+        m10UnitTag.get(),
+        m10ProductRelease.get(),
+    )
+    doNotTrackState("Evidence must re-check M10 tags, raw release artifacts, and working-tree cleanliness on every invocation")
 }

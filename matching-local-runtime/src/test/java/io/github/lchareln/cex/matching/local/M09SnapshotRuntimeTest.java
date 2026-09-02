@@ -88,11 +88,19 @@ class M09SnapshotRuntimeTest {
                 "ops-after-snapshot"));
     Path checkpointed = directory("checkpointed");
     Path genesis = directory("genesis");
+    int suffixRecordBytes;
 
     try (LocalMatchingRuntime runtime = LocalMatchingRuntime.open(config(checkpointed))) {
       prefix.forEach(command -> assertDurable(runtime.submit(command)));
-      runtime.checkpoint();
-      assertDurable(runtime.submit(suffix));
+      RecoverySuffixStats prefixStats = runtime.recoverySuffixStats();
+      CheckpointResult checkpoint = runtime.checkpoint();
+      assertEquals(prefixStats.records(), checkpoint.suffixRecordsBeforeCheckpoint());
+      assertEquals(prefixStats.bytes(), checkpoint.suffixBytesBeforeCheckpoint());
+      assertEquals(new RecoverySuffixStats(0, 0), runtime.recoverySuffixStats());
+      SubmissionResult.NewDurablyApplied applied =
+          assertInstanceOf(SubmissionResult.NewDurablyApplied.class, runtime.submit(suffix));
+      suffixRecordBytes = applied.position().recordLength();
+      assertEquals(new RecoverySuffixStats(1, suffixRecordBytes), runtime.recoverySuffixStats());
     }
     try (LocalMatchingRuntime runtime = LocalMatchingRuntime.open(config(genesis))) {
       prefix.forEach(command -> assertDurable(runtime.submit(command)));
@@ -101,6 +109,8 @@ class M09SnapshotRuntimeTest {
 
     try (LocalMatchingRuntime fromSnapshot = LocalMatchingRuntime.open(config(checkpointed));
         LocalMatchingRuntime fromGenesis = LocalMatchingRuntime.open(config(genesis))) {
+      assertEquals(
+          new RecoverySuffixStats(1, suffixRecordBytes), fromSnapshot.recoverySuffixStats());
       assertEquals(fromGenesis.nextWalSequence(), fromSnapshot.nextWalSequence());
       assertEquals(fromGenesis.semanticStateDigest(), fromSnapshot.semanticStateDigest());
       assertInstanceOf(SubmissionResult.DuplicateReplayed.class, fromSnapshot.submit(suffix));

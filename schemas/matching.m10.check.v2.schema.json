@@ -1,0 +1,428 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m10.check.v2.schema.json",
+  "oneOf": [
+    {"$ref": "#/$defs/pass"},
+    {"$ref": "#/$defs/failure"}
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": ["schemaVersion", "unit", "status", "contractPlanVersion", "releaseTarget"],
+      "properties": {
+        "schemaVersion": {"const": "matching.m10.check.v2"},
+        "unit": {"const": "M10"},
+        "status": {"enum": ["PASS", "STUDENT_FAILURE", "SYSTEM_ERROR"]},
+        "contractPlanVersion": {"const": "0.12"},
+        "releaseTarget": {"$ref": "#/$defs/releaseTarget"}
+      }
+    },
+    "pass": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion", "unit", "status", "contractPlanVersion", "objective", "source",
+            "courseDeclaration", "inheritedM09", "workloadProfile", "fixed", "generator",
+            "admissionService", "methodSmoke", "loadRecovery", "coverage", "mutants",
+            "qualificationRuntime", "releaseBoundary", "releaseTarget", "environment",
+            "architecture", "artifactBindings"
+          ],
+          "properties": {
+            "schemaVersion": {"const": "matching.m10.check.v2"},
+            "unit": {"const": "M10"},
+            "status": {"const": "PASS"},
+            "contractPlanVersion": {"const": "0.12"},
+            "objective": {"const": "Add bounded local admission and honest open-loop performance qualification without changing durable matching semantics."},
+            "source": {"$ref": "#/$defs/source"},
+            "courseDeclaration": {"$ref": "#/$defs/course"},
+            "inheritedM09": {"$ref": "#/$defs/inherited"},
+            "workloadProfile": {"$ref": "#/$defs/workload"},
+            "fixed": {"$ref": "#/$defs/fixed"},
+            "generator": {"$ref": "#/$defs/generator"},
+            "admissionService": {"$ref": "#/$defs/admission"},
+            "methodSmoke": {"$ref": "#/$defs/smoke"},
+            "loadRecovery": {"$ref": "#/$defs/recovery"},
+            "coverage": {"$ref": "#/$defs/coverage"},
+            "mutants": {"$ref": "#/$defs/mutants"},
+            "qualificationRuntime": {"$ref": "#/$defs/qualificationRuntime"},
+            "releaseBoundary": {"$ref": "#/$defs/boundary"},
+            "releaseTarget": {"$ref": "#/$defs/releaseTarget"},
+            "environment": {"$ref": "#/$defs/environment"},
+            "architecture": {"$ref": "#/$defs/architecture"},
+            "artifactBindings": {
+              "type": "array",
+              "minItems": 21,
+              "maxItems": 21,
+              "uniqueItems": true,
+              "items": {"$ref": "#/$defs/artifact"}
+            }
+          }
+        }
+      ]
+    },
+    "failure": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "unit", "status", "contractPlanVersion", "failure", "releaseTarget"],
+          "properties": {
+            "schemaVersion": {"const": "matching.m10.check.v2"},
+            "unit": {"const": "M10"},
+            "status": {"enum": ["STUDENT_FAILURE", "SYSTEM_ERROR"]},
+            "contractPlanVersion": {"const": "0.12"},
+            "failure": {"type": "string", "minLength": 1},
+            "releaseTarget": {"$ref": "#/$defs/releaseTarget"}
+          }
+        }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "dirty"],
+      "properties": {
+        "commit": {"type": "string", "pattern": "^[a-f0-9]{40}(?:[a-f0-9]{24})?$"},
+        "dirty": {"type": "boolean"}
+      }
+    },
+    "course": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case", "profile", "planVersion", "project", "unit", "lifecycle", "designDepth", "startRef", "completeRef", "m10Check.expectedStatus", "evidencePath"],
+      "properties": {
+        "case": {"const": "high-availability-cex"},
+        "profile": {"const": "SPOT-CEX-1.0"},
+        "planVersion": {"const": "0.12"},
+        "project": {"const": "matching"},
+        "unit": {"const": "M10"},
+        "lifecycle": {"const": "COMPLETE"},
+        "designDepth": {"const": "IMPLEMENTED"},
+        "startRef": {"const": "course/m10-start"},
+        "completeRef": {"const": "course/m10-complete"},
+        "m10Check.expectedStatus": {"const": "PASS"},
+        "evidencePath": {"const": "build/lab-evidence/M10/manifest.json"}
+      }
+    },
+    "inherited": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "completeRef", "status", "fixedScenarios", "generatedOperations", "mutantsKilled", "semanticSource", "semanticSourceCommit", "sourceOnlyArchitectureBaseline", "sourceOnlyArchitectureBaselineCommit", "sourceOnlyArchitectureSupersededBy"],
+      "properties": {
+        "unit": {"const": "M09"},
+        "completeRef": {"const": "course/m09-complete"},
+        "status": {"const": "PASS"},
+        "fixedScenarios": {"type": "integer", "minimum": 22},
+        "generatedOperations": {"type": "integer", "minimum": 3840},
+        "mutantsKilled": {"const": 12},
+        "semanticSource": {"const": "CURRENT_HEAD_COMPILED_PRODUCTION_CLASSES"},
+        "semanticSourceCommit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "sourceOnlyArchitectureBaseline": {"const": "course/m09-complete"},
+        "sourceOnlyArchitectureBaselineCommit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "sourceOnlyArchitectureSupersededBy": {"const": "M10_ARCHITECTURE_GATE"}
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "seed", "fixedScenarios", "generatedHistories", "actionsPerHistory", "generatedActions", "lanes", "queueCapacity", "coverageObligations", "requiredMutants", "schemaProbes"],
+      "properties": {
+        "sha256": {"const": "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b"},
+        "seed": {"const": "6010"},
+        "fixedScenarios": {"const": 20},
+        "generatedHistories": {"const": 64},
+        "actionsPerHistory": {"const": 256},
+        "generatedActions": {"const": 16384},
+        "lanes": {"const": 4},
+        "queueCapacity": {"const": 64},
+        "coverageObligations": {"const": 28},
+        "requiredMutants": {"const": 12},
+        "schemaProbes": {"const": 8}
+      }
+    },
+    "fixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarios", "status"],
+      "properties": {"scenarios": {"const": 20}, "status": {"const": "PASS"}}
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "histories", "actionsPerHistory", "actions", "executedActions", "comparisons", "ledgerChecks", "terminalReconciliations", "lanes", "byteExactRegeneration", "freshModelPerHistory", "terminalLedgersReconcile", "digest"],
+      "properties": {
+        "algorithm": {"const": "splitmix64-v1"},
+        "histories": {"const": 64},
+        "actionsPerHistory": {"const": 256},
+        "actions": {"const": 16384},
+        "executedActions": {"const": 16384},
+        "comparisons": {"type": "integer", "minimum": 16384},
+        "ledgerChecks": {"type": "integer", "minimum": 16384},
+        "terminalReconciliations": {"const": 64},
+        "lanes": {"const": 4},
+        "byteExactRegeneration": {"const": true},
+        "freshModelPerHistory": {"const": true},
+        "terminalLedgersReconcile": {"const": true},
+        "digest": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bounded", "singleOwnerWorker", "enqueueIsAck", "overloadBeforeWalAndIdentity", "exactSubmissionResultPassThrough", "checkpointAttemptMaintenanceLogicalLedgersSeparate", "terminalAccountingReconciles"],
+      "properties": {
+        "bounded": {"const": true},
+        "singleOwnerWorker": {"const": true},
+        "enqueueIsAck": {"const": false},
+        "overloadBeforeWalAndIdentity": {"const": true},
+        "exactSubmissionResultPassThrough": {"const": true},
+        "checkpointAttemptMaintenanceLogicalLedgersSeparate": {"const": true},
+        "terminalAccountingReconciles": {"const": true}
+      }
+    },
+    "smoke": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileId", "resultScope", "eligibleForReleaseEvidence", "evidenceMode", "methodIsomorphic", "latencyOrigin", "rawArrivals", "rawCompletions", "verifiedRawRecords", "verifiedBundleFiles", "qualificationSha256", "percentileRankRule", "percentilesRecomputed", "resourceDimensionsPresent", "aboveKneeRetained", "sweepKnee", "qopCandidate", "qop", "deterministicDiagnosticEvidenceMode", "deterministicDiagnosticMethodIsomorphic", "releaseThroughputClaim"],
+      "properties": {
+        "profileId": {"const": "CI_SMOKE"},
+        "resultScope": {"const": "METHOD_SMOKE_ONLY"},
+        "eligibleForReleaseEvidence": {"const": false},
+        "evidenceMode": {"const": "REAL_CI_SMOKE_BUNDLE"},
+        "methodIsomorphic": {"const": true},
+        "latencyOrigin": {"const": "SCHEDULED_ARRIVAL"},
+        "rawArrivals": {"type": "integer", "minimum": 512},
+        "rawCompletions": {"type": "integer", "minimum": 1},
+        "verifiedRawRecords": {"type": "integer", "minimum": 1},
+        "verifiedBundleFiles": {"type": "integer", "minimum": 9},
+        "qualificationSha256": {"$ref": "#/$defs/sha256"},
+        "percentileRankRule": {"const": "NEAREST_RANK_CEIL_Q_TIMES_N"},
+        "percentilesRecomputed": {"const": true},
+        "resourceDimensionsPresent": {"const": true},
+        "aboveKneeRetained": {"const": true},
+        "sweepKnee": {"type": "integer", "minimum": 1},
+        "qopCandidate": {"type": "integer", "minimum": 1},
+        "qop": {"type": "integer", "minimum": 1},
+        "deterministicDiagnosticEvidenceMode": {"const": "MODEL_ONLY"},
+        "deterministicDiagnosticMethodIsomorphic": {"const": false},
+        "releaseThroughputClaim": {"const": false}
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["realLocalRuntimeExact", "methodModelExact", "releaseProfileStillRequired"],
+      "properties": {
+        "realLocalRuntimeExact": {"const": true},
+        "methodModelExact": {"const": true},
+        "releaseProfileStillRequired": {"const": true}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "observed"],
+      "properties": {"required": {"const": 28}, "observed": {"const": 28}}
+    },
+    "mutants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "killed", "classification", "systemErrorCountedAsKill", "systemErrorControls"],
+      "properties": {
+        "required": {"const": 12},
+        "killed": {"const": 12},
+        "classification": {"const": "STUDENT_FAILURE"},
+        "systemErrorCountedAsKill": {"const": false},
+        "systemErrorControls": {"type": "integer", "minimum": 3}
+      }
+    },
+    "qualificationRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyId", "scope", "m09Default", "finiteRecoveryBudget",
+        "proactiveCheckpointOffsetNanos", "proactiveCheckpointAdmissionLagMaxNanos",
+        "plannedRecordCeilingBytes",
+        "phaseBudgetPreflight", "scheduler", "rawTimeContract", "observationCut", "terminalDrain",
+        "resourceSampling", "directReplay"
+      ],
+      "properties": {
+        "policyId": {"const": "M10Q1"},
+        "scope": {"const": "M10_DEDICATED_NOT_M09_DEFAULT"},
+        "m09Default": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxSuffixRecords", "maxSuffixBytes"],
+          "properties": {
+            "maxSuffixRecords": {"const": 64},
+            "maxSuffixBytes": {"const": 1048576}
+          }
+        },
+        "finiteRecoveryBudget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxSuffixRecords", "maxSuffixBytes"],
+          "properties": {
+            "maxSuffixRecords": {"const": 1000000},
+            "maxSuffixBytes": {"const": 1073741824}
+          }
+        },
+        "proactiveCheckpointOffsetNanos": {"const": 100000000},
+        "proactiveCheckpointAdmissionLagMaxNanos": {"const": 10000000},
+        "plannedRecordCeilingBytes": {"const": 1024},
+        "phaseBudgetPreflight": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "prefixRecords", "postCheckpointSuffixRecords",
+            "validatePrefixAndSuffixSeparately"
+          ],
+          "properties": {
+            "prefixRecords": {"const": "START_SUFFIX_PLUS_ARRIVALS_SCHEDULED_BEFORE_CHECKPOINT_ADMISSION_DEADLINE_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER"},
+            "postCheckpointSuffixRecords": {"const": "ALL_PLANNED_DURABLE_ARRIVALS_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER"},
+            "validatePrefixAndSuffixSeparately": {"const": true}
+          }
+        },
+        "scheduler": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "initialArrivalThread", "coordinator",
+            "scheduledObservationCutDoesNotMove", "producerClosureGraceMaxNanos",
+            "allScheduledArrivalsMaterialized", "allAdmissionDecisionsWithinLagLimits",
+            "p99ProducerLagMaxNanos", "maxProducerLagMaxNanos", "observationCutLagMaxNanos"
+          ],
+          "properties": {
+            "initialArrivalThread": {"const": "DEDICATED_NO_COMPLETION_CHECKPOINT_OR_ARTIFACT_IO"},
+            "coordinator": {"const": "ASYNC_COMPLETION_CHECKPOINT_RETRY_AND_ARTIFACT_IO"},
+            "scheduledObservationCutDoesNotMove": {"const": true},
+            "producerClosureGraceMaxNanos": {"const": 250000000},
+            "allScheduledArrivalsMaterialized": {"const": true},
+            "allAdmissionDecisionsWithinLagLimits": {"const": true},
+            "p99ProducerLagMaxNanos": {"const": 50000000},
+            "maxProducerLagMaxNanos": {"const": 250000000},
+            "observationCutLagMaxNanos": {"const": 10000000}
+          }
+        },
+        "rawTimeContract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "admissionTimestamp", "admissionObservationKind",
+            "completionTimestamp", "completionTimeOrigin"
+          ],
+          "properties": {
+            "admissionTimestamp": {"const": "admissionDecisionNanos"},
+            "admissionObservationKind": {"const": "ADMISSION_GATE_DECISION"},
+            "completionTimestamp": {"const": "ownerCompletedNanos"},
+            "completionTimeOrigin": {"const": "OWNER_COMPLETED_UNDER_GATE"}
+          }
+        },
+        "observationCut": {"const": "IMMUTABLE_SCHEDULED_WINDOW_END_RAW_RECONSTRUCTED_BEFORE_PRODUCER_CLOSURE_AND_TERMINAL_DRAIN"},
+        "terminalDrain": {"const": "ZERO_PENDING_BEFORE_RECOVERY"},
+        "resourceSampling": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "targetCadenceNanos", "maximumScheduledGapNanos", "scope",
+            "cumulativeCounters", "gauges"
+          ],
+          "properties": {
+            "targetCadenceNanos": {"const": 1000000000},
+            "maximumScheduledGapNanos": {"const": 2000000000},
+            "scope": {"const": "SCHEDULED_WINDOW_THROUGH_TERMINAL_DRAIN"},
+            "cumulativeCounters": {"const": "MONOTONIC_NON_DECREASING"},
+            "gauges": {"const": "NON_NEGATIVE_NOT_CUMULATIVE"}
+          }
+        },
+        "directReplay": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runtimeConfig", "purpose"],
+          "properties": {
+            "runtimeConfig": {"const": "M08_LEGACY_UNBOUNDED_NO_SNAPSHOT"},
+            "purpose": {"const": "FRESH_ORDERED_APPLY_DIAGNOSTIC_ONLY"}
+          }
+        }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ordinaryCheckProfile", "ordinaryCheckScope", "ordinaryCheckEligibleForReleaseEvidence", "fullReleaseProfileRequired", "fullReleaseSoakSeconds", "fullReleaseExecutedByThisCheck", "noReleaseNumbersFabricated"],
+      "properties": {
+        "ordinaryCheckProfile": {"const": "CI_SMOKE"},
+        "ordinaryCheckScope": {"const": "METHOD_SMOKE_ONLY"},
+        "ordinaryCheckEligibleForReleaseEvidence": {"const": false},
+        "fullReleaseProfileRequired": {"const": true},
+        "fullReleaseSoakSeconds": {"const": 1800},
+        "fullReleaseExecutedByThisCheck": {"const": false},
+        "noReleaseNumbersFabricated": {"const": true}
+      }
+    },
+    "releaseTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "verification"],
+      "properties": {
+        "unitTag": {"const": "course/m10-complete"},
+        "productRelease": {"const": "matching-0.5.0"},
+        "verification": {"const": "FULL_RELEASE_PROFILE_AND_CLEAN_TREE_EVIDENCE"}
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "status", "scope", "javaRuntime", "javaVersion", "javaVendor", "vmName", "jvmArguments", "osName", "osVersion", "osArchitecture", "availableProcessors", "maximumHeapBytes", "filesystemName", "filesystemType", "cpuModel", "storageDevice", "powerPolicy", "releaseEnvironmentComplete"],
+      "properties": {
+        "schemaVersion": {"const": "matching.m10.environment.v1"},
+        "status": {"const": "PASS"},
+        "scope": {"const": "METHOD_SMOKE_EXECUTION_ENVIRONMENT"},
+        "javaRuntime": {"type": "string", "minLength": 1},
+        "javaVersion": {"type": "string", "minLength": 1},
+        "javaVendor": {"type": "string", "minLength": 1},
+        "vmName": {"type": "string", "minLength": 1},
+        "jvmArguments": {"type": "array", "items": {"type": "string"}},
+        "osName": {"type": "string", "minLength": 1},
+        "osVersion": {"type": "string", "minLength": 1},
+        "osArchitecture": {"type": "string", "minLength": 1},
+        "availableProcessors": {"type": "integer", "minimum": 1},
+        "maximumHeapBytes": {"type": "integer", "minimum": 1},
+        "filesystemName": {"type": "string", "minLength": 1},
+        "filesystemType": {"type": "string", "minLength": 1},
+        "cpuModel": {"type": "string", "minLength": 1},
+        "storageDevice": {"type": "string", "minLength": 1},
+        "powerPolicy": {"type": "string", "minLength": 1},
+        "releaseEnvironmentComplete": {"const": false}
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matchingCoreUnchangedFromStart", "productionModulesDependOnBenchmarks", "localRuntimeDependsOnJmhOrTestkit", "testkitProbeOnly", "runtimeTestSeamsPackagePrivate", "coreInfrastructureFree"],
+      "properties": {
+        "matchingCoreUnchangedFromStart": {"const": true},
+        "productionModulesDependOnBenchmarks": {"const": false},
+        "localRuntimeDependsOnJmhOrTestkit": {"const": false},
+        "testkitProbeOnly": {"const": true},
+        "runtimeTestSeamsPackagePrivate": {"const": true},
+        "coreInfrastructureFree": {"const": true}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "bytes"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._/-]+$"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "io.github.lchareln.cex"
-version = "0.1.0"
+version = "0.5.0"
 
 spotless {
     format("rootMisc") {
@@ -79,11 +79,11 @@ subprojects {
 }
 
 tasks.named("assemble") {
-    dependsOn(":matching-core:assemble", ":matching-local-runtime:assemble", ":matching-reference:assemble", ":matching-testkit:assemble")
+    dependsOn(":matching-core:assemble", ":matching-local-runtime:assemble", ":matching-benchmarks:assemble", ":matching-reference:assemble", ":matching-testkit:assemble")
 }
 
 tasks.named("check") {
-    dependsOn("spotlessCheck", ":matching-core:check", ":matching-local-runtime:check", ":matching-reference:check", ":matching-testkit:check", "m09Check")
+    dependsOn("spotlessCheck", ":matching-core:check", ":matching-local-runtime:check", ":matching-benchmarks:check", ":matching-reference:check", ":matching-testkit:check", "m10Check")
 }
 
 tasks.register("m00Check") {
@@ -208,6 +208,24 @@ tasks.register("m09Evidence") {
 
 tasks.register("m10Check") {
     group = "verification"
-    description = "Runs the frozen M10 bounded-admission and performance-qualification structured RED."
+    description = "Runs the completed M10 bounded-admission and qualification-method judge."
     dependsOn(":matching-testkit:m10Check")
+}
+
+tasks.register("m10CiSmokeLoad") {
+    group = "benchmark"
+    description = "Runs the method-isomorphic M10 CI smoke load; never release evidence."
+    dependsOn(":matching-benchmarks:m10CiSmokeLoad")
+}
+
+tasks.register("m10ReleaseQualification") {
+    group = "benchmark"
+    description = "Runs the complete environment-specific M10 release qualification."
+    dependsOn(":matching-benchmarks:m10ReleaseQualification")
+}
+
+tasks.register("m10Evidence") {
+    group = "verification"
+    description = "Validates and publishes clean-tree M10 correctness and full release evidence."
+    dependsOn(":matching-testkit:m10Evidence")
 }

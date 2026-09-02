@@ -98,6 +98,10 @@ final class SegmentedWal implements AutoCloseable {
     return List.copyOf(recoveredRecords);
   }
 
+  RecoverySuffixStats recoverySuffixStats() {
+    return new RecoverySuffixStats(suffixRecordCount, suffixBytes);
+  }
+
   Optional<M09SnapshotCodec.DecodedSnapshot> recoveredSnapshot() {
     return recoveredSnapshot;
   }
@@ -176,6 +180,8 @@ final class SegmentedWal implements AutoCloseable {
     if (stateImage.lastWalSequence() != nextWalSequence - 1) {
       throw new IllegalArgumentException("checkpoint state is not at the current WAL boundary");
     }
+    long recordsBeforeCheckpoint = suffixRecordCount;
+    long bytesBeforeCheckpoint = suffixBytes;
     SnapshotAnchor anchor = snapshotStore.publish(stateImage);
     // A published snapshot remains recoverable with the old WAL if the process stops here. Before
     // any prefix retirement, make cut+1 durable as the active header.
@@ -186,7 +192,8 @@ final class SegmentedWal implements AutoCloseable {
     long prunedThrough = pruneClosedSegmentsThrough(protectedPrefix);
     suffixRecordCount = 0;
     suffixBytes = 0;
-    return new CheckpointResult(anchor, prunedThrough);
+    return new CheckpointResult(
+        anchor, prunedThrough, recordsBeforeCheckpoint, bytesBeforeCheckpoint);
   }
 
   long nextWalSequence() {
