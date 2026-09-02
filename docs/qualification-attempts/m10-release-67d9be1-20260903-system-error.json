@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "matching.m10.qualification-attempt.v2",
+  "status": "SYSTEM_ERROR",
+  "releaseQualified": false,
+  "runId": "m10-release-67d9be1-20260903",
+  "sourceCommit": "67d9be1c1b6370b8699c1241851a7f1bc5a349de",
+  "workloadSha256": "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b",
+  "profileId": "RELEASE_QUALIFICATION",
+  "qualificationRuntimePolicyId": "M10Q2",
+  "promotionPolicyId": "M10Q2_DESCENDING_FULL_DURATION_FIRST_PASS",
+  "sweepKnees": [380, 380, 331],
+  "publishedKnee": 331,
+  "qualifiedOperatingPointCandidate": 231,
+  "provisionalSoakCandidates": [231, 165, 82],
+  "attempts": [
+    {
+      "attemptNumber": 1,
+      "pointId": "qop-soak-attempt-01-rate-00000231",
+      "offeredRate": 231,
+      "outcome": "SYSTEM_ERROR",
+      "soak": {
+        "durationSeconds": 1800,
+        "evidenceBoundary": "SEALED_PHASE_CUT_REPORTED_NOT_INDEPENDENTLY_RAW_AUDITED",
+        "plannedOffers": 415800,
+        "admitted": 415800,
+        "overloaded": 0,
+        "p99QueueDepth": 3,
+        "queueCapacity": 64,
+        "endingBacklog": 1,
+        "producerLagP99Nanos": 2020598,
+        "producerLagMaxNanos": 182708628,
+        "terminalDrainNanos": 475834,
+        "terminalPending": 0,
+        "saturationReasons": []
+      },
+      "recovery": {
+        "durableOperations": 415800,
+        "freshReopenCompleted": true,
+        "duplicateReplayCompleted": true,
+        "perRecordDuplicateResultDigestExact": true,
+        "directReplayCompleted": false,
+        "recoveryVerificationPublished": false,
+        "rawAuditCompleted": false
+      },
+      "failure": {
+        "stage": "DIRECT_REPLAY",
+        "classification": "SYSTEM_ERROR",
+        "exception": "java.lang.OutOfMemoryError",
+        "message": "Java heap space",
+        "leadingDiagnosis": "RECOVERED_AND_DIRECT_REPLAY_O_N_STATES_OVERLAPPED",
+        "diagnosisBasis": "CODE_LIFETIME_AND_PARTIAL_DIRECT_REPLAY_WITHOUT_HEAP_DUMP",
+        "diagnosisStatus": "PROVISIONAL_PENDING_COMPLETE_SAME_COMMIT_REQUALIFICATION",
+        "policyDecision": "STOP_WITHOUT_FALLBACK"
+      }
+    }
+  ],
+  "runnerFailureReportPublished": false,
+  "qualifiedOperatingPointPublished": false,
+  "qualificationReportPublished": false,
+  "processEnvironmentReconstruction": {
+    "javaVersion": "25.0.4.1",
+    "javaRuntime": "Temurin-25.0.4.1+1",
+    "maximumHeapBytes": 2147483648,
+    "explicitHeapArgument": false,
+    "evidenceBasis": "SAME_JAVAEXEC_CONFIGURATION_AND_JDK_POST_FAILURE_RECONSTRUCTION"
+  },
+  "failureEvidenceBoundary": "OPERATOR_OBSERVED_PROCESS_ERROR_AND_CODE_AUDIT_NO_HEAP_DUMP",
+  "artifacts": [
+    {
+      "path": "build/reports/m10-release/raw-phase-cuts/part-00000.jsonl.gz",
+      "sha256": "f4b1148fb05e1c3335516919ee8c30cda698e627267ba005bc4d3749b70d5e5f"
+    },
+    {
+      "path": "build/reports/m10-release/recovery.json",
+      "sha256": "91d1d382eef04ee7dc9e6abfab0049fbe94ff79aec540be93fefe72c90f79084"
+    },
+    {
+      "path": "qop-soak-attempt-01-rate-00000231/recovery-trace.m10r",
+      "sha256": "2dd0c9677e71bd277df609c8f5437c185454eedaae35266a53af720c66fef815"
+    }
+  ],
+  "publicationBoundary": "LOCAL_SYSTEM_ERROR_ATTEMPT_ONLY_NO_RELEASE_EVIDENCE"
+}

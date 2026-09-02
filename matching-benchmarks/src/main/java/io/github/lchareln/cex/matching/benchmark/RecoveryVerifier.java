@@ -10,9 +10,22 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.Objects;
 
 /** Reopens the actual M09 directory and duplicate-replays every streamed accepted envelope. */
 final class RecoveryVerifier {
+  private static final RuntimeLifecycleObserver NOOP_LIFECYCLE_OBSERVER = (kind, event) -> {};
+
+  private final RuntimeLifecycleObserver lifecycleObserver;
+
+  RecoveryVerifier() {
+    this(NOOP_LIFECYCLE_OBSERVER);
+  }
+
+  RecoveryVerifier(RuntimeLifecycleObserver lifecycleObserver) {
+    this.lifecycleObserver = Objects.requireNonNull(lifecycleObserver, "lifecycleObserver");
+  }
+
   RecoveryVerification verify(
       Path walDirectory,
       Path directReplayDirectory,
@@ -22,6 +35,34 @@ final class RecoveryVerifier {
       long actualSuffixBytes)
       throws IOException {
     trace.close();
+    RecoveredReplay recoveredReplay =
+        recoverAndVerify(walDirectory, trace, profile, actualSuffixRecords, actualSuffixBytes);
+    DirectReplay direct = directReplay(directReplayDirectory, trace, recoveredReplay.records());
+    return new RecoveryVerification(
+        trace.traceId(),
+        recoveredReplay.records(),
+        recoveredReplay.duplicateCount(),
+        recoveredReplay.liveResultDigest(),
+        recoveredReplay.recoveredResultDigest(),
+        direct.resultDigest(),
+        recoveredReplay.liveSemanticStateDigest(),
+        recoveredReplay.recoveredSemanticStateDigest(),
+        direct.semanticStateDigest(),
+        trace.sha256(),
+        profile.recoveryBudgetMaxSuffixRecords(),
+        profile.recoveryBudgetMaxSuffixBytes(),
+        recoveredReplay.recoveredSuffix().records(),
+        recoveredReplay.recoveredSuffix().bytes(),
+        recoveredReplay.recoveryElapsedNanos());
+  }
+
+  private RecoveredReplay recoverAndVerify(
+      Path walDirectory,
+      RecoveryTrace trace,
+      QualificationProfile profile,
+      long actualSuffixRecords,
+      long actualSuffixBytes)
+      throws IOException {
     MessageDigest live = sha256();
     MessageDigest recovered = sha256();
     long[] duplicateCount = {0};
@@ -30,7 +71,8 @@ final class RecoveryVerifier {
     LocalMatchingRuntime recoveredRuntime =
         LocalMatchingRuntime.open(profile.qualificationWalConfig(walDirectory, 1));
     long recoveryElapsedNanos = Math.subtractExact(System.nanoTime(), recoveryStartedNanos);
-    try (LocalMatchingRuntime runtime = recoveredRuntime) {
+    try (TrackedRuntime tracked = track(recoveredRuntime, RuntimeKind.RECOVERED)) {
+      LocalMatchingRuntime runtime = tracked.runtime();
       RecoverySuffixStats recoveredSuffix = runtime.recoverySuffixStats();
       if (recoveredSuffix.records() != actualSuffixRecords
           || recoveredSuffix.bytes() != actualSuffixBytes) {
@@ -69,33 +111,27 @@ final class RecoveryVerifier {
       String recoveredSemantic = runtime.semanticStateDigest();
       String liveResultDigest = HexFormat.of().formatHex(live.digest());
       String recoveredResultDigest = HexFormat.of().formatHex(recovered.digest());
-      DirectReplay direct = directReplay(directReplayDirectory, trace, records);
-      return new RecoveryVerification(
-          trace.traceId(),
+      return new RecoveredReplay(
           records,
           duplicateCount[0],
           liveResultDigest,
           recoveredResultDigest,
-          direct.resultDigest(),
           liveSemantic[0],
           recoveredSemantic,
-          direct.semanticStateDigest(),
-          trace.sha256(),
-          profile.recoveryBudgetMaxSuffixRecords(),
-          profile.recoveryBudgetMaxSuffixBytes(),
-          recoveredSuffix.records(),
-          recoveredSuffix.bytes(),
+          recoveredSuffix,
           recoveryElapsedNanos);
     }
   }
 
-  private static DirectReplay directReplay(
+  private DirectReplay directReplay(
       Path directReplayDirectory, RecoveryTrace trace, long expectedRecords) throws IOException {
     java.nio.file.Files.createDirectory(directReplayDirectory);
     MessageDigest results = sha256();
     long[] applied = {0};
-    try (LocalMatchingRuntime runtime =
-        LocalMatchingRuntime.open(WalConfig.defaults(directReplayDirectory, 1))) {
+    LocalMatchingRuntime directRuntime =
+        LocalMatchingRuntime.open(WalConfig.defaults(directReplayDirectory, 1));
+    try (TrackedRuntime tracked = track(directRuntime, RuntimeKind.DIRECT_REPLAY)) {
+      LocalMatchingRuntime runtime = tracked.runtime();
       long records =
           RecoveryTrace.read(
               trace.path(),
@@ -132,6 +168,65 @@ final class RecoveryVerifier {
     digest.update(value.getBytes(StandardCharsets.UTF_8));
     digest.update((byte) '\n');
   }
+
+  private TrackedRuntime track(LocalMatchingRuntime runtime, RuntimeKind kind) throws IOException {
+    try {
+      lifecycleObserver.onEvent(kind, RuntimeLifecycleEvent.OPENED);
+      return new TrackedRuntime(runtime, kind);
+    } catch (RuntimeException | Error failure) {
+      try {
+        runtime.close();
+      } catch (IOException closeFailure) {
+        failure.addSuppressed(closeFailure);
+      }
+      throw failure;
+    }
+  }
+
+  enum RuntimeKind {
+    RECOVERED,
+    DIRECT_REPLAY
+  }
+
+  enum RuntimeLifecycleEvent {
+    OPENED,
+    CLOSED
+  }
+
+  @FunctionalInterface
+  interface RuntimeLifecycleObserver {
+    void onEvent(RuntimeKind kind, RuntimeLifecycleEvent event);
+  }
+
+  private final class TrackedRuntime implements AutoCloseable {
+    private final LocalMatchingRuntime runtime;
+    private final RuntimeKind kind;
+
+    private TrackedRuntime(LocalMatchingRuntime runtime, RuntimeKind kind) {
+      this.runtime = runtime;
+      this.kind = kind;
+    }
+
+    private LocalMatchingRuntime runtime() {
+      return runtime;
+    }
+
+    @Override
+    public void close() throws IOException {
+      runtime.close();
+      lifecycleObserver.onEvent(kind, RuntimeLifecycleEvent.CLOSED);
+    }
+  }
+
+  private record RecoveredReplay(
+      long records,
+      long duplicateCount,
+      String liveResultDigest,
+      String recoveredResultDigest,
+      String liveSemanticStateDigest,
+      String recoveredSemanticStateDigest,
+      RecoverySuffixStats recoveredSuffix,
+      long recoveryElapsedNanos) {}
 
   private record DirectReplay(String resultDigest, String semanticStateDigest) {}
 }
