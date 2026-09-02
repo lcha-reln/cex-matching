@@ -41,6 +41,21 @@ public final class M09CheckMain {
     } catch (IOException failure) {
       throw new IllegalStateException("cannot read course.properties", failure);
     }
+    if ("M10".equals(properties.getProperty("unit"))
+        && "0.12".equals(properties.getProperty("planVersion"))) {
+      boolean startBoundary =
+          "READY".equals(properties.getProperty("lifecycle"))
+              && "CONTRACT".equals(properties.getProperty("designDepth"))
+              && M10StartCheckRunner.STATUS.equals(
+                  properties.getProperty("m10Check.expectedStatus"));
+      boolean completionBoundary =
+          "COMPLETE".equals(properties.getProperty("lifecycle"))
+              && "IMPLEMENTED".equals(properties.getProperty("designDepth"))
+              && M09CheckRunner.PASS.equals(properties.getProperty("m10Check.expectedStatus"));
+      if (startBoundary || completionBoundary) {
+        return M09CheckRunner.PASS;
+      }
+    }
     String value = properties.getProperty("m09Check.expectedStatus");
     if (!M09StartCheckRunner.STATUS.equals(value) && !M09CheckRunner.PASS.equals(value)) {
       throw new IllegalStateException("unsupported M09 expected status: " + value);

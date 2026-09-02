@@ -205,3 +205,9 @@ tasks.register("m09Evidence") {
     description = "Generates and validates clean-tree annotated-tag M09 evidence."
     dependsOn(":matching-testkit:m09Evidence")
 }
+
+tasks.register("m10Check") {
+    group = "verification"
+    description = "Runs the frozen M10 bounded-admission and performance-qualification structured RED."
+    dependsOn(":matching-testkit:m10Check")
+}

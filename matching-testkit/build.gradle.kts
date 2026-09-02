@@ -69,6 +69,7 @@ val m08UnitTag = providers.gradleProperty("m08.unitTag").orElse("course/m08-comp
 val m09ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m09")
 val m09EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M09")
 val m09UnitTag = providers.gradleProperty("m09.unitTag").orElse("course/m09-complete")
+val m10ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m10")
 
 tasks.register<JavaExec>("m00Check") {
     group = "verification"
@@ -346,4 +347,17 @@ tasks.register<JavaExec>("m09Evidence") {
         m09UnitTag.get(),
     )
     doNotTrackState("Evidence must re-check the M09 tag and working-tree cleanliness on every invocation")
+}
+
+tasks.register<JavaExec>("m10Check") {
+    group = "verification"
+    description = "Runs the frozen M10 bounded-admission and performance-qualification structured RED."
+    dependsOn("m09Check", "classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M10CheckMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m10ReportDirectory.get().asFile.absolutePath,
+    )
+    doNotTrackState("M10 must never reuse a stale structured RED report")
 }

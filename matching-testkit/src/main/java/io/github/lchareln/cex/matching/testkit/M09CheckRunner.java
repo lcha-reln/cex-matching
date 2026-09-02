@@ -1,14 +1,11 @@
 package io.github.lchareln.cex.matching.testkit;
 
 import java.io.IOException;
-import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.Properties;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -70,7 +67,8 @@ public final class M09CheckRunner {
   }
 
   private static Artifacts execute(Path root, Path reports) {
-    verifyCompletionDeclaration(root);
+    // M09 is now an inherited semantic regression. Its evidence writer, immutable completion tag,
+    // and frozen inputs retain source identity; the current course declaration belongs to M10.
     verifyFrozenInputs(root);
     Path inheritedPath = reports.resolve(".m08-regression");
     M08CheckRunner.Result inheritedResult = new M08CheckRunner().run(root, inheritedPath);
@@ -478,35 +476,6 @@ public final class M09CheckRunner {
     release.put("verification", "M09_EVIDENCE_ONLY");
     JsonSupport.validate(failure, readString(root.resolve(CHECK_SCHEMA_PATH)), false);
     write(reports, "check.json", failure);
-  }
-
-  private static void verifyCompletionDeclaration(Path root) {
-    Properties properties = new Properties();
-    try (Reader reader = Files.newBufferedReader(root.resolve("course.properties"))) {
-      properties.load(reader);
-    } catch (IOException failure) {
-      throw new IllegalStateException("cannot read course.properties", failure);
-    }
-    Map<String, String> expected =
-        Map.ofEntries(
-            Map.entry("case", "high-availability-cex"),
-            Map.entry("profile", "SPOT-CEX-1.0"),
-            Map.entry("planVersion", "0.11"),
-            Map.entry("project", "matching"),
-            Map.entry("unit", "M09"),
-            Map.entry("lifecycle", "COMPLETE"),
-            Map.entry("designDepth", "IMPLEMENTED"),
-            Map.entry("startRef", "course/m09-start"),
-            Map.entry("completeRef", "course/m09-complete"),
-            Map.entry("m09Check.expectedStatus", PASS),
-            Map.entry("evidencePath", "build/lab-evidence/M09/manifest.json"));
-    studentRequire(
-        properties.size() == expected.size(), "M09 course declaration field set changed");
-    expected.forEach(
-        (key, value) ->
-            studentRequire(
-                value.equals(properties.getProperty(key)),
-                "M09 completion declaration changed: " + key));
   }
 
   private static void verifyFrozenInputs(Path root) {

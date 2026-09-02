@@ -1,0 +1,247 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m10.check.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "unit",
+    "status",
+    "contractPlanVersion",
+    "objective",
+    "courseDeclaration",
+    "inheritedBaseline",
+    "workloadProfile",
+    "admissionContract",
+    "measurementContract",
+    "coverageObligations",
+    "requiredMutants",
+    "tutorialPermalinks",
+    "missingCapabilities",
+    "releaseTarget"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "matching.m10.check.v1"},
+    "unit": {"const": "M10"},
+    "status": {"const": "GOAL_NOT_IMPLEMENTED"},
+    "contractPlanVersion": {"const": "0.12"},
+    "objective": {"const": "Add bounded local admission and honest open-loop performance qualification without changing durable matching semantics."},
+    "courseDeclaration": {"$ref": "#/$defs/course"},
+    "inheritedBaseline": {"$ref": "#/$defs/inherited"},
+    "workloadProfile": {"$ref": "#/$defs/workload"},
+    "admissionContract": {"$ref": "#/$defs/admission"},
+    "measurementContract": {"$ref": "#/$defs/measurement"},
+    "coverageObligations": {
+      "const": [
+        "POSITIVE_FINITE_CAPACITY",
+        "TRY_SUBMIT_NON_BLOCKING",
+        "CALLER_BYTES_OWNED",
+        "FULL_REJECTS_OVERLOADED",
+        "REJECTION_PRE_WAL",
+        "REJECTION_PRE_APPLY_IDENTITY",
+        "ENQUEUE_NOT_ACK",
+        "SINGLE_WORKER_FIFO",
+        "SUBMISSION_RESULT_UNCHANGED",
+        "CHECKPOINT_SAME_ENVELOPE_RETRY",
+        "CHECKPOINT_LATENCY_INCLUDED",
+        "FAILURE_CLOSES_ADMISSION",
+        "PENDING_EXPLICIT_FAILURE",
+        "QUIESCE_REJECTS_NEW",
+        "QUIESCE_DRAINS_ACCEPTED",
+        "QUEUE_BOUNDED",
+        "OFFER_RECONCILIATION",
+        "COMPLETION_RECONCILIATION",
+        "OPEN_LOOP_INDEPENDENT",
+        "SCHEDULED_ARRIVAL_ORIGIN",
+        "RAW_PERCENTILE_RECONCILIATION",
+        "ENVIRONMENT_FINGERPRINT",
+        "MICRO_E2E_SEPARATED",
+        "DETERMINISTIC_KNEE",
+        "ABOVE_KNEE_EXPLICIT_REJECTION",
+        "RESOURCE_DIMENSIONS_PRESENT",
+        "LOAD_REPLAY_RECOVERY_EXACT",
+        "SYSTEM_ERROR_NEVER_PASS"
+      ]
+    },
+    "requiredMutants": {
+      "const": [
+        "M10-UNBOUNDED-QUEUE",
+        "M10-BLOCKING-PUT",
+        "M10-REJECT-AFTER-WAL",
+        "M10-REJECT-BINDS-IDENTITY",
+        "M10-ENQUEUE-AS-ACK",
+        "M10-DUAL-WORKER-REORDER",
+        "M10-DROPPED-COMPLETION",
+        "M10-METRICS-UNDERCOUNT",
+        "M10-CLOSED-LOOP-GENERATOR",
+        "M10-LATENCY-FROM-ACTUAL-SEND",
+        "M10-WRONG-PERCENTILE-KNEE",
+        "M10-SKIP-LOAD-RECOVERY-CHECK"
+      ]
+    },
+    "tutorialPermalinks": {
+      "const": [
+        "performance-contract-and-open-loop-workload",
+        "bounded-admission-and-overload-semantics",
+        "percentiles-knee-point-and-capacity-envelope",
+        "allocation-gc-resource-and-soak-evidence",
+        "matching-0-5-0-release-evidence"
+      ]
+    },
+    "missingCapabilities": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"}
+    },
+    "releaseTarget": {"$ref": "#/$defs/release"}
+  },
+  "$defs": {
+    "course": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case", "profile", "planVersion", "project", "unit", "lifecycle", "designDepth", "startRef", "completeRef", "m10Check.expectedStatus", "evidencePath"],
+      "properties": {
+        "case": {"const": "high-availability-cex"},
+        "profile": {"const": "SPOT-CEX-1.0"},
+        "planVersion": {"const": "0.12"},
+        "project": {"const": "matching"},
+        "unit": {"const": "M10"},
+        "lifecycle": {"const": "READY"},
+        "designDepth": {"const": "CONTRACT"},
+        "startRef": {"const": "course/m10-start"},
+        "completeRef": {"const": "course/m10-complete"},
+        "m10Check.expectedStatus": {"const": "GOAL_NOT_IMPLEMENTED"},
+        "evidencePath": {"const": "build/lab-evidence/M10/manifest.json"}
+      }
+    },
+    "inherited": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "completeRef", "expectedStatus"],
+      "properties": {
+        "unit": {"const": "M09"},
+        "completeRef": {"const": "course/m09-complete"},
+        "expectedStatus": {"const": "PASS"}
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "seed", "fixedScenarios", "generatedHistories", "actionsPerHistory", "generatedActions", "lanes", "queueCapacity", "coverageObligations", "requiredMutants", "schemaProbes"],
+      "properties": {
+        "sha256": {"const": "dfa26aed0f41d29c3c4a1d3ad85c6a8793239e8f634100cadafaa496941a29cb"},
+        "seed": {"const": "6010"},
+        "fixedScenarios": {"const": 20},
+        "generatedHistories": {"const": 64},
+        "actionsPerHistory": {"const": 256},
+        "generatedActions": {"const": 16384},
+        "lanes": {"const": 4},
+        "queueCapacity": {"const": 64},
+        "coverageObligations": {"const": 28},
+        "requiredMutants": {"const": 12},
+        "schemaProbes": {"const": 8}
+      }
+    },
+    "admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["submission", "fullResult", "callerBytes", "workerModel", "acceptedCompletion", "failureMode", "quiesce"],
+      "properties": {
+        "submission": {"const": "TRY_SUBMIT_NON_BLOCKING"},
+        "fullResult": {"const": "OVERLOADED_BEFORE_WAL"},
+        "callerBytes": {"const": "OWNED_BEFORE_RETURN"},
+        "workerModel": {"const": "ONE_CALLER_SERIALIZED_LOCAL_RUNTIME_WORKER"},
+        "acceptedCompletion": {"const": "EXACTLY_ONE_SUBMISSION_RESULT_OR_EXPLICIT_FAILURE"},
+        "failureMode": {"const": "CLOSE_ADMISSION_AND_FAIL_PENDING"},
+        "quiesce": {"const": "REJECT_NEW_THEN_DRAIN_ACCEPTED"}
+      }
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["microbenchmark", "releaseOpenLoop", "ciSmoke", "saturation", "releaseSoak", "resourceDimensions"],
+      "properties": {
+        "microbenchmark": {"$ref": "#/$defs/micro"},
+        "releaseOpenLoop": {"$ref": "#/$defs/releaseOpenLoop"},
+        "ciSmoke": {"$ref": "#/$defs/ciSmoke"},
+        "saturation": {"$ref": "#/$defs/saturation"},
+        "releaseSoak": {"$ref": "#/$defs/releaseSoak"},
+        "resourceDimensions": {"const": ["ALLOCATION", "GC", "CPU", "MEMORY", "QUEUE_DEPTH"]}
+      }
+    },
+    "micro": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["harness", "mode", "resultScope", "releaseGate"],
+      "properties": {
+        "harness": {"const": "JMH"},
+        "mode": {"const": "SampleTime"},
+        "resultScope": {"const": "DIAGNOSTIC_ONLY"},
+        "releaseGate": {"const": false}
+      }
+    },
+    "releaseOpenLoop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["calibrationSeconds", "calibrationPurpose", "sweeps", "warmupSecondsPerRate", "measurementSecondsPerRate", "rateLadderPermille", "percentiles", "latencyOrigin", "resultScope"],
+      "properties": {
+        "calibrationSeconds": {"const": 20},
+        "calibrationPurpose": {"const": "RATE_SELECTION_ONLY"},
+        "sweeps": {"const": 3},
+        "warmupSecondsPerRate": {"const": 10},
+        "measurementSecondsPerRate": {"const": 30},
+        "rateLadderPermille": {"const": [250, 500, 700, 850, 1000, 1150, 1350, 1600]},
+        "percentiles": {"const": [0.5, 0.95, 0.99, 0.999]},
+        "latencyOrigin": {"const": "SCHEDULED_ARRIVAL"},
+        "resultScope": {"const": "RELEASE_QUALIFICATION"}
+      }
+    },
+    "ciSmoke": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileId", "resultScope", "eligibleForReleaseEvidence", "methodIsomorphic"],
+      "properties": {
+        "profileId": {"const": "CI_SMOKE"},
+        "resultScope": {"const": "METHOD_SMOKE_ONLY"},
+        "eligibleForReleaseEvidence": {"const": false},
+        "methodIsomorphic": {"const": true}
+      }
+    },
+    "saturation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overloadRejectCount", "p99QueueDepthPermilleOfCapacity", "minimumCompletedPerAdmittedPermille", "maximumEndBacklogGrowthPermilleOfCapacity", "perSweepKnee", "publishedKnee", "qualifiedOperatingPoint"],
+      "properties": {
+        "overloadRejectCount": {"const": "GREATER_THAN_ZERO"},
+        "p99QueueDepthPermilleOfCapacity": {"const": 800},
+        "minimumCompletedPerAdmittedPermille": {"const": 995},
+        "maximumEndBacklogGrowthPermilleOfCapacity": {"const": 100},
+        "perSweepKnee": {"const": "FIRST_OF_TWO_CONSECUTIVE_SATURATED_RATES"},
+        "publishedKnee": {"const": "MIN_OF_THREE_SWEEP_KNEES"},
+        "qualifiedOperatingPoint": {"const": "FLOOR_70_PERCENT_OF_PUBLISHED_KNEE"}
+      }
+    },
+    "releaseSoak": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["load", "durationSeconds", "resultScope"],
+      "properties": {
+        "load": {"const": "QUALIFIED_OPERATING_POINT"},
+        "durationSeconds": {"const": 1800},
+        "resultScope": {"const": "RELEASE_QUALIFICATION"}
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "verification"],
+      "properties": {
+        "unitTag": {"const": "course/m10-complete"},
+        "productRelease": {"const": "matching-0.5.0"},
+        "verification": {"const": "FULL_RELEASE_PROFILE_AND_CLEAN_TREE_EVIDENCE"}
+      }
+    }
+  }
+}

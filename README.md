@@ -18,19 +18,20 @@ taker-owned self-trade-prevention instruction. M08 completes the first local dur
 caller-serialized, single-shard M08C1/M08W1 runtime with durable bidirectional identity, genesis
 recovery, and an ACK that may occur only after append, force, and matching apply. M09 completes the
 next local-storage axis: one `M09S1` snapshot, a 64-record / 1-MiB WAL-suffix recovery budget, and
-whole-segment retirement after durable snapshot publication. The completion judge compares the
-snapshot runtime with a retained-genesis-WAL runtime and a separate no-I/O storage ledger; it does
-not claim a third independent implementation of all inherited matching semantics.
+whole-segment retirement after durable snapshot publication. M10 now freezes the next structured
+RED: a configurable bounded non-blocking local admission service, measured at capacity 64, and an honest machine-specific performance
+qualification method. No M10 admission service, benchmark runner, completion judge, or evidence
+exists at this start boundary.
 
 ## Current course boundary
 
 - Profile: `SPOT-CEX-1.0`
-- Plan version: `0.11`
-- Unit: `M09`
-- Declared start ref: `course/m09-start`
-- Declared complete ref: `course/m09-complete`
-- Latest product stopping point: `matching-0.1.0` at M03; M04–M09 have no product release
-- Lifecycle at this boundary: `COMPLETE / IMPLEMENTED / PASS`
+- Plan version: `0.12`
+- Unit: `M10`
+- Declared start ref: `course/m10-start`
+- Declared future complete ref: `course/m10-complete`
+- Target product release: `matching-0.5.0` at the future M10 completion ref
+- Lifecycle at this boundary: `READY / CONTRACT / GOAL_NOT_IMPLEMENTED`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -38,18 +39,38 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The root build is GREEN only after the completed M09 judge and inherited M08 boundary pass:
+The root build remains GREEN by rerunning the completed M09 and inherited boundaries:
 
 ```bash
 ./gradlew clean build --no-daemon
 ```
 
-The explicit M09 command writes the strict completion report and exits successfully:
+The explicit M10 command writes a schema-valid structured RED and intentionally exits nonzero:
 
 ```bash
-./gradlew m09Check --no-daemon
-# M09 check status: PASS
+./gradlew m10Check --no-daemon
+# M10 check status: GOAL_NOT_IMPLEMENTED
 ```
+
+The start contract freezes 20 admission and methodology scenarios, SplitMix64 seed `6010`, 64
+histories by 256 actions across four lanes, 28 proof obligations, 12 executable mutant IDs, and five
+tutorial permalinks. The release profile uses open-loop scheduled arrivals, three complete sweeps,
+p50/p95/p99/p99.9, deterministic knee selection, a 70%-of-knee qualified operating point, and a
+1,800-second soak. JMH `SampleTime` remains diagnostic. `CI_SMOKE` is short and explicitly
+ineligible for release evidence. The exact contract is in [`docs/specs/m10.md`](docs/specs/m10.md).
+Every admitted item must pass through exactly one unchanged local-runtime `SubmissionResult` or an
+explicit service failure; only the durable result variants are ACKs, and enqueue is never an ACK.
+
+Ordinary CI proves only that the method and contracts execute. It must not publish CI-run throughput
+as the `matching-0.5.0` capacity claim. The future product evidence requires the full release profile,
+raw samples, resource series, environment fingerprint, load-then-recovery equality, clean source,
+and both annotated release refs at one commit.
+
+## Inherited M09 completion
+
+The M09 completion judge compares the snapshot runtime with a retained-genesis-WAL runtime and a
+separate no-I/O storage ledger; it does not claim a third independent implementation of all
+inherited matching semantics.
 
 The frozen contract executes 22 fixed scenarios with 88 declared fixture tokens, seed `5909`, 96
 histories by 40 operations across four lanes, 32 obligation witnesses, seven child-process
