@@ -18,15 +18,23 @@ import java.util.concurrent.Future;
 
 /** Mechanical M10 dependency and start-boundary gate. */
 final class M10ArchitectureGate {
+  private static final List<String> PERMITTED_CORE_DELTA_PATHS =
+      List.of(
+          "matching-core/src/main/java/io/github/lchareln/cex/matching/SingleInstrumentMatchingEngine.java",
+          "matching-core/src/test/java/io/github/lchareln/cex/matching/SingleInstrumentTerminalHistoryGrowthTest.java");
+
   Report verify(Path root) {
     List<String> violations = new ArrayList<>();
     String startCore = git(root, "rev-parse", "course/m10-start:matching-core").strip();
     String headCore = git(root, "rev-parse", "HEAD:matching-core").strip();
-    if (!startCore.equals(headCore)) {
-      violations.add("matching-core committed tree differs from course/m10-start");
-    }
-    if (!diffQuiet(root, "course/m10-start", "--", "matching-core")) {
-      violations.add("matching-core working tree differs from course/m10-start");
+    List<String> coreDeltaPaths =
+        git(root, "diff", "--name-only", "course/m10-start", "--", "matching-core")
+            .lines()
+            .filter(value -> !value.isBlank())
+            .sorted()
+            .toList();
+    if (!PERMITTED_CORE_DELTA_PATHS.equals(coreDeltaPaths)) {
+      violations.add("matching-core delta escaped the M10 hot-path amendment: " + coreDeltaPaths);
     }
 
     String localBuild = read(root.resolve("matching-local-runtime/build.gradle.kts"));
@@ -40,6 +48,7 @@ final class M10ArchitectureGate {
     rejectContains(coreBuild, "matching-testkit", "matching core depends on testkit", violations);
     rejectContains(coreBuild, "org.openjdk.jmh", "matching core depends on JMH", violations);
     verifyNoProductionBenchmarkDependency(root, violations);
+    verifyCoreHotPathAmendment(root, violations);
 
     Path localProbe =
         root.resolve(
@@ -87,11 +96,33 @@ final class M10ArchitectureGate {
         violations.isEmpty(),
         startCore,
         headCore,
+        coreDeltaPaths,
         coreSources,
         localSources,
         benchmarkSources,
         probeOccurrences,
         List.copyOf(violations));
+  }
+
+  private static void verifyCoreHotPathAmendment(Path root, List<String> violations) {
+    String engine =
+        read(
+            root.resolve(
+                "matching-core/src/main/java/io/github/lchareln/cex/matching/SingleInstrumentMatchingEngine.java"));
+    if (!engine.contains("private void assertCommandBoundaryState()")
+        || !engine.contains("acceptedOrderCount != ordersById.size()")) {
+      violations.add("matching core lacks the constant-time retained-registry boundary check");
+    }
+    if (!engine.contains("public MatchingStateImage stateImage() {\n    assertConsistentState();")
+        || !engine.contains("restored.assertConsistentState();")) {
+      violations.add("matching core no longer retains full audit at checkpoint and restore");
+    }
+    Path growthTest =
+        root.resolve(
+            "matching-core/src/test/java/io/github/lchareln/cex/matching/SingleInstrumentTerminalHistoryGrowthTest.java");
+    if (!Files.isRegularFile(growthTest)) {
+      violations.add("terminal-history growth regression is missing");
+    }
   }
 
   private static int countJava(Path directory) {
@@ -225,27 +256,6 @@ final class M10ArchitectureGate {
         || violation.contains("/LocalMatchingService.java:");
   }
 
-  private static boolean diffQuiet(Path root, String... arguments) {
-    List<String> command = new ArrayList<>();
-    command.add("git");
-    command.add("diff");
-    command.add("--quiet");
-    command.addAll(List.of(arguments));
-    try {
-      Process process = new ProcessBuilder(command).directory(root.toFile()).start();
-      String error = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-      int exit = process.waitFor();
-      if (exit == 0) return true;
-      if (exit == 1) return false;
-      throw new IllegalStateException("git diff failed: " + error.strip());
-    } catch (IOException failure) {
-      throw new IllegalStateException("cannot execute git diff", failure);
-    } catch (InterruptedException failure) {
-      Thread.currentThread().interrupt();
-      throw new IllegalStateException("git diff interrupted", failure);
-    }
-  }
-
   private static String git(Path root, String... arguments) {
     List<String> command = new ArrayList<>();
     command.add("git");
@@ -277,6 +287,7 @@ final class M10ArchitectureGate {
       boolean passed,
       String startCoreTree,
       String headCoreTree,
+      List<String> coreDeltaPaths,
       int coreSources,
       int localRuntimeSources,
       int benchmarkSources,

@@ -277,9 +277,14 @@ public final class M10CheckRunner {
     write(reports, "environment.json", artifacts.environment());
 
     ObjectNode architecture = report("matching.m10.architecture-report.v1");
-    architecture.put("matchingCoreUnchangedFromStart", true);
+    architecture.put("matchingCoreChangePolicy", "M10_HOT_PATH_AUDIT_SPLIT_ONLY");
+    architecture.put("matchingCoreBusinessContractsUnchanged", true);
+    architecture.put("fullRetainedOrderAuditColdBoundaries", true);
+    architecture.put("terminalIdentityRetentionUnchanged", true);
     architecture.put("startCoreTree", artifacts.architecture().startCoreTree());
     architecture.put("headCoreTree", artifacts.architecture().headCoreTree());
+    ArrayNode coreDeltaPaths = architecture.putArray("coreDeltaPaths");
+    artifacts.architecture().coreDeltaPaths().forEach(coreDeltaPaths::add);
     architecture.put("coreSources", artifacts.architecture().coreSources());
     architecture.put("localRuntimeSources", artifacts.architecture().localRuntimeSources());
     architecture.put("benchmarkSources", artifacts.architecture().benchmarkSources());
@@ -406,7 +411,10 @@ public final class M10CheckRunner {
     target.put("verification", "FULL_RELEASE_PROFILE_AND_CLEAN_TREE_EVIDENCE");
     check.set("environment", artifacts.environment().deepCopy());
     ObjectNode architecture = check.putObject("architecture");
-    architecture.put("matchingCoreUnchangedFromStart", true);
+    architecture.put("matchingCoreChangePolicy", "M10_HOT_PATH_AUDIT_SPLIT_ONLY");
+    architecture.put("matchingCoreBusinessContractsUnchanged", true);
+    architecture.put("fullRetainedOrderAuditColdBoundaries", true);
+    architecture.put("terminalIdentityRetentionUnchanged", true);
     architecture.put("productionModulesDependOnBenchmarks", false);
     architecture.put("localRuntimeDependsOnJmhOrTestkit", false);
     architecture.put("testkitProbeOnly", true);

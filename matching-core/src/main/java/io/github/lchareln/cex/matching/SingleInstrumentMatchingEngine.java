@@ -26,6 +26,7 @@ public final class SingleInstrumentMatchingEngine {
   private final NavigableMap<Long, PriceLevelState> asks = new TreeMap<>();
   private final Map<OrderId, OrderState> ordersById = new HashMap<>();
 
+  private long acceptedOrderCount;
   private long nextAcceptanceSequence;
   private long nextApplicationSequence;
   private MarketRuleSetArtifact activeRuleSet = MarketRuleSetArtifact.bootstrap();
@@ -122,7 +123,7 @@ public final class SingleInstrumentMatchingEngine {
             ? selfTradePreventionValidator.validateInstruction(participantGroupId, rawStpPolicy)
             : null;
 
-    assertConsistentState();
+    assertCommandBoundaryState();
     AppliedCommand applied = nextAppliedCommand();
     if (validation instanceof ValidationResult.Invalid invalid) {
       return businessResult(List.of(new MatchingEvent.Rejected(invalid.code())), applied);
@@ -189,11 +190,18 @@ public final class SingleInstrumentMatchingEngine {
 
     long sequenceValue = nextAcceptanceSequence;
     final long followingSequence;
+    final long followingAcceptedOrderCount;
     try {
       followingSequence = Math.incrementExact(sequenceValue);
     } catch (ArithmeticException exception) {
       throw new IllegalStateException(
           "acceptance sequence exhausted before state mutation", exception);
+    }
+    try {
+      followingAcceptedOrderCount = Math.incrementExact(acceptedOrderCount);
+    } catch (ArithmeticException exception) {
+      throw new IllegalStateException(
+          "retained-order count exhausted before state mutation", exception);
     }
 
     AcceptanceSequence sequence = new AcceptanceSequence(sequenceValue);
@@ -214,6 +222,7 @@ public final class SingleInstrumentMatchingEngine {
       throw new IllegalStateException(
           "duplicate order identity appeared during single-writer apply");
     }
+    acceptedOrderCount = followingAcceptedOrderCount;
 
     List<MatchingEvent> events = new ArrayList<>();
     events.add(accepted);
@@ -255,14 +264,14 @@ public final class SingleInstrumentMatchingEngine {
     }
 
     nextAcceptanceSequence = followingSequence;
-    assertConsistentState();
+    assertCommandBoundaryState();
     return businessResult(events, applied);
   }
 
   /** Cancels the positive active remainder addressed by instrument and order identity. */
   public ExecutionBatch cancel(CancelOrderInput input) {
     Objects.requireNonNull(input, "input");
-    assertConsistentState();
+    assertCommandBoundaryState();
     AppliedCommand applied = nextAppliedCommand();
     ValidationResult validation = cancelValidator.validate(input);
     if (validation instanceof ValidationResult.Invalid invalid) {
@@ -326,14 +335,14 @@ public final class SingleInstrumentMatchingEngine {
     }
     order.markCanceled(CancellationOrigin.USER_REQUEST, applied.current());
 
-    assertConsistentState();
+    assertCommandBoundaryState();
     return businessResult(List.of(canceled), applied);
   }
 
   /** Prepares one valid newer artifact without changing current order admission. */
   public MarketControlBatch prepareRuleSet(PrepareRuleSet command) {
     Objects.requireNonNull(command, "command");
-    assertConsistentState();
+    assertCommandBoundaryState();
     AppliedCommand applied = nextAppliedCommand();
     MarketRuleSetArtifact candidate = command.artifact();
 
@@ -384,14 +393,14 @@ public final class SingleInstrumentMatchingEngine {
     MarketControlEvent.RuleSetPrepared event =
         new MarketControlEvent.RuleSetPrepared(
             applied.current(), activeRuleSet.identity(), candidate.identity(), status);
-    assertConsistentState();
+    assertCommandBoundaryState();
     return controlResult(event, applied);
   }
 
   /** Activates exactly the prepared identity at the declared serialized application boundary. */
   public MarketControlBatch activateRuleSet(ActivateRuleSet command) {
     Objects.requireNonNull(command, "command");
-    assertConsistentState();
+    assertCommandBoundaryState();
     AppliedCommand applied = nextAppliedCommand();
 
     if (!command.expectedApplicationSequence().equals(applied.current())) {
@@ -436,14 +445,14 @@ public final class SingleInstrumentMatchingEngine {
     MarketControlEvent.RuleSetActivated event =
         new MarketControlEvent.RuleSetActivated(
             applied.current(), previousActive, activated.identity(), fence);
-    assertConsistentState();
+    assertCommandBoundaryState();
     return controlResult(event, applied);
   }
 
   /** Changes the replicated-ready operating mode at the declared application boundary. */
   public MarketControlBatch changeMarketMode(ChangeMarketMode command) {
     Objects.requireNonNull(command, "command");
-    assertConsistentState();
+    assertCommandBoundaryState();
     AppliedCommand applied = nextAppliedCommand();
 
     if (!command.expectedApplicationSequence().equals(applied.current())) {
@@ -483,14 +492,14 @@ public final class SingleInstrumentMatchingEngine {
     MarketControlEvent.ModeChanged event =
         new MarketControlEvent.ModeChanged(
             applied.current(), command.operatorId(), previousMode, command.targetMode(), fence);
-    assertConsistentState();
+    assertCommandBoundaryState();
     return controlResult(event, applied);
   }
 
   /** Atomically terminates every resting order in global acceptance-sequence order. */
   public MassCancelBatch massCancel(MassCancel command) {
     Objects.requireNonNull(command, "command");
-    assertConsistentState();
+    assertCommandBoundaryState();
     AppliedCommand applied = nextAppliedCommand();
 
     if (!command.expectedApplicationSequence().equals(applied.current())) {
@@ -556,19 +565,19 @@ public final class SingleInstrumentMatchingEngine {
       order.markCanceled(CancellationOrigin.OPERATOR_MASS_CANCEL, applied.current());
     }
     lastMassCancelFence = fence;
-    assertConsistentState();
+    assertCommandBoundaryState();
     return massCancelResult(events, applied);
   }
 
   /** Returns a detached immutable full-depth snapshot. */
   public OrderBookSnapshot snapshot() {
-    assertConsistentState();
+    assertCommandBoundaryState();
     return detachedSnapshot();
   }
 
   /** Returns detached active, prepared, revision, fence, and next-sequence state. */
   public MarketControlSnapshot marketControlSnapshot() {
-    assertConsistentState();
+    assertCommandBoundaryState();
     return detachedMarketControlSnapshot(nextApplicationSequence);
   }
 
@@ -592,8 +601,48 @@ public final class SingleInstrumentMatchingEngine {
     return restored;
   }
 
-  /** Package-local correctness hook; it exposes no order lifecycle data. */
+  /**
+   * Package-local cold-path correctness hook; it exposes no order lifecycle data.
+   *
+   * <p>This audit is intentionally proportional to all retained order identities. Command
+   * processing uses {@link #assertCommandBoundaryState()} and mutation-local checks instead;
+   * checkpoints, restore, and explicit correctness tests retain this complete audit.
+   */
   void assertConsistentState() {
+    assertCommandBoundaryState();
+
+    Set<OrderId> restingIds = new HashSet<>();
+    Set<Long> acceptanceSequences = new HashSet<>();
+    verifySide(bids, Side.BUY, restingIds);
+    verifySide(asks, Side.SELL, restingIds);
+
+    for (Map.Entry<OrderId, OrderState> entry : ordersById.entrySet()) {
+      OrderState order = entry.getValue();
+      if (!entry.getKey().equals(order.orderId)) {
+        throw new IllegalStateException("order registry key and value identity disagree");
+      }
+      if (!acceptanceSequences.add(order.sequence.value())) {
+        throw new IllegalStateException("acceptance sequence is not unique");
+      }
+      if (order.sequence.value() >= nextAcceptanceSequence) {
+        throw new IllegalStateException("accepted order is not behind the next sequence");
+      }
+      if (order.admissionRuleSet == null) {
+        throw new IllegalStateException("accepted order lost its admission rule set");
+      }
+      order.assertQuantityPartition();
+      boolean inBook = restingIds.contains(order.orderId);
+      if ((order.lifecycle == Lifecycle.RESTING) != inBook) {
+        throw new IllegalStateException("order lifecycle and book membership disagree");
+      }
+      if (order.lifecycle == Lifecycle.ACCEPTED) {
+        throw new IllegalStateException("transient accepted state escaped a command boundary");
+      }
+    }
+  }
+
+  /** Constant-time command-boundary checks; touched orders are guarded by mutation-local checks. */
+  private void assertCommandBoundaryState() {
     if (nextAcceptanceSequence <= 0) {
       throw new IllegalStateException("next acceptance sequence is not positive");
     }
@@ -635,37 +684,11 @@ public final class SingleInstrumentMatchingEngine {
                 .orElse(false))) {
       throw new IllegalStateException("last Mass Cancel fence is ahead of matcher state");
     }
-
-    Set<OrderId> restingIds = new HashSet<>();
-    Set<Long> acceptanceSequences = new HashSet<>();
-    verifySide(bids, Side.BUY, restingIds);
-    verifySide(asks, Side.SELL, restingIds);
+    if (acceptedOrderCount < 0 || acceptedOrderCount != ordersById.size()) {
+      throw new IllegalStateException("accepted order count and registry size disagree");
+    }
     if (!bids.isEmpty() && !asks.isEmpty() && bids.firstKey() >= asks.firstKey()) {
       throw new IllegalStateException("active book is crossed");
-    }
-
-    for (Map.Entry<OrderId, OrderState> entry : ordersById.entrySet()) {
-      OrderState order = entry.getValue();
-      if (!entry.getKey().equals(order.orderId)) {
-        throw new IllegalStateException("order registry key and value identity disagree");
-      }
-      if (!acceptanceSequences.add(order.sequence.value())) {
-        throw new IllegalStateException("acceptance sequence is not unique");
-      }
-      if (order.sequence.value() >= nextAcceptanceSequence) {
-        throw new IllegalStateException("accepted order is not behind the next sequence");
-      }
-      if (order.admissionRuleSet == null) {
-        throw new IllegalStateException("accepted order lost its admission rule set");
-      }
-      order.assertQuantityPartition();
-      boolean inBook = restingIds.contains(order.orderId);
-      if ((order.lifecycle == Lifecycle.RESTING) != inBook) {
-        throw new IllegalStateException("order lifecycle and book membership disagree");
-      }
-      if (order.lifecycle == Lifecycle.ACCEPTED) {
-        throw new IllegalStateException("transient accepted state escaped a command boundary");
-      }
     }
   }
 
@@ -682,7 +705,7 @@ public final class SingleInstrumentMatchingEngine {
   }
 
   private ExecutionBatch businessResult(List<MatchingEvent> events, AppliedCommand applied) {
-    assertConsistentState();
+    assertCommandBoundaryState();
     ExecutionBatch result =
         new ExecutionBatch(
             events,
@@ -690,7 +713,7 @@ public final class SingleInstrumentMatchingEngine {
             new MarketExecutionContext(
                 activeRuleSet.identity(), controlRevision, applied.current(), marketMode));
     commitApplication(applied);
-    assertConsistentState();
+    assertCommandBoundaryState();
     return result;
   }
 
@@ -728,22 +751,22 @@ public final class SingleInstrumentMatchingEngine {
   }
 
   private MarketControlBatch controlResult(MarketControlEvent event, AppliedCommand applied) {
-    assertConsistentState();
+    assertCommandBoundaryState();
     MarketControlBatch result =
         new MarketControlBatch(
             List.of(event), detachedMarketControlSnapshot(applied.following()), detachedSnapshot());
     commitApplication(applied);
-    assertConsistentState();
+    assertCommandBoundaryState();
     return result;
   }
 
   private MassCancelBatch massCancelResult(List<MassCancelEvent> events, AppliedCommand applied) {
-    assertConsistentState();
+    assertCommandBoundaryState();
     MassCancelBatch result =
         new MassCancelBatch(
             events, detachedMarketControlSnapshot(applied.following()), detachedSnapshot());
     commitApplication(applied);
-    assertConsistentState();
+    assertCommandBoundaryState();
     return result;
   }
 
@@ -1017,6 +1040,7 @@ public final class SingleInstrumentMatchingEngine {
         side.computeIfAbsent(order.priceTicks.value(), ignored -> new PriceLevelState()).add(order);
       }
     }
+    acceptedOrderCount = ordersById.size();
   }
 
   private MarketControlSnapshot detachedMarketControlSnapshot(long nextApplication) {

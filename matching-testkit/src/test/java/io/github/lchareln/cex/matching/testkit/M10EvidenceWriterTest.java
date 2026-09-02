@@ -461,7 +461,10 @@ final class M10EvidenceWriterTest {
     environment.put("powerPolicy", "REQUIRED_FROM_RELEASE_RUNNER_FOR_RELEASE_EVIDENCE");
     environment.put("releaseEnvironmentComplete", false);
     root.putObject("architecture")
-        .put("matchingCoreUnchangedFromStart", true)
+        .put("matchingCoreChangePolicy", "M10_HOT_PATH_AUDIT_SPLIT_ONLY")
+        .put("matchingCoreBusinessContractsUnchanged", true)
+        .put("fullRetainedOrderAuditColdBoundaries", true)
+        .put("terminalIdentityRetentionUnchanged", true)
         .put("productionModulesDependOnBenchmarks", false)
         .put("localRuntimeDependsOnJmhOrTestkit", false)
         .put("testkitProbeOnly", true)

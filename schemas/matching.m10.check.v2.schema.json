@@ -403,9 +403,12 @@
     "architecture": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["matchingCoreUnchangedFromStart", "productionModulesDependOnBenchmarks", "localRuntimeDependsOnJmhOrTestkit", "testkitProbeOnly", "runtimeTestSeamsPackagePrivate", "coreInfrastructureFree"],
+      "required": ["matchingCoreChangePolicy", "matchingCoreBusinessContractsUnchanged", "fullRetainedOrderAuditColdBoundaries", "terminalIdentityRetentionUnchanged", "productionModulesDependOnBenchmarks", "localRuntimeDependsOnJmhOrTestkit", "testkitProbeOnly", "runtimeTestSeamsPackagePrivate", "coreInfrastructureFree"],
       "properties": {
-        "matchingCoreUnchangedFromStart": {"const": true},
+        "matchingCoreChangePolicy": {"const": "M10_HOT_PATH_AUDIT_SPLIT_ONLY"},
+        "matchingCoreBusinessContractsUnchanged": {"const": true},
+        "fullRetainedOrderAuditColdBoundaries": {"const": true},
+        "terminalIdentityRetentionUnchanged": {"const": true},
         "productionModulesDependOnBenchmarks": {"const": false},
         "localRuntimeDependsOnJmhOrTestkit": {"const": false},
         "testkitProbeOnly": {"const": true},

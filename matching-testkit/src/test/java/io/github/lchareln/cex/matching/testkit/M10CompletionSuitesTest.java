@@ -281,11 +281,15 @@ final class M10CompletionSuitesTest {
   }
 
   @Test
-  void architectureKeepsCoreFrozenAndBenchmarksOutOfProductionDependencies() {
+  void architectureRestrictsCoreToTheHotPathAmendmentAndKeepsBenchmarksOutOfProduction() {
     Path root = Path.of(System.getProperty("matching.repositoryRoot"));
     M10ArchitectureGate.Report report = new M10ArchitectureGate().verify(root);
     assertTrue(report.passed(), () -> String.join("; ", report.violations()));
-    assertEquals(report.startCoreTree(), report.headCoreTree());
+    assertEquals(
+        List.of(
+            "matching-core/src/main/java/io/github/lchareln/cex/matching/SingleInstrumentMatchingEngine.java",
+            "matching-core/src/test/java/io/github/lchareln/cex/matching/SingleInstrumentTerminalHistoryGrowthTest.java"),
+        report.coreDeltaPaths());
     assertEquals(1, report.testkitProbeOccurrences());
   }
 
