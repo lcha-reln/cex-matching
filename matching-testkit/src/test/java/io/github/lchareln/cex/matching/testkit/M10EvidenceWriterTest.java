@@ -51,6 +51,7 @@ final class M10EvidenceWriterTest {
     assertEquals(3, releaseVerifications.get());
     assertEquals(42, result.rawRecords());
     JsonNode manifest = JsonSupport.parse(read(result.manifestPath()));
+    assertEquals("cex.lab-evidence.v2", manifest.path("schemaVersion").stringValue());
     assertEquals("M10", manifest.path("unit").stringValue());
     assertEquals("matching-0.5.0", manifest.path("productRelease").stringValue());
     assertEquals("0.13", manifest.path("planVersion").stringValue());
@@ -60,6 +61,53 @@ final class M10EvidenceWriterTest {
     assertEquals(
         M10EvidenceWriter.LIMITATIONS,
         manifest.path("limitations").valueStream().map(JsonNode::stringValue).toList());
+    JsonNode manifestEnvironment = manifest.path("environment");
+    assertEquals(
+        JsonSupport.parse(
+            JsonSupport.prettyBytes(
+                M10EvidenceWriter.projectManifestEnvironment(
+                    JsonSupport.parse(read(lab.release().resolve("qualification.json")))
+                        .path("environment")))),
+        manifestEnvironment);
+    JsonNode evidenceSchema =
+        JsonSupport.parse(
+            read(
+                Path.of(System.getProperty("matching.repositoryRoot"))
+                    .resolve("schemas/cex.lab-evidence.v2.schema.json")));
+    evidenceSchema
+        .path("properties")
+        .path("environment")
+        .path("required")
+        .forEach(field -> assertTrue(manifestEnvironment.has(field.stringValue())));
+    assertEquals("25-test", manifestEnvironment.path("java").stringValue());
+    assertEquals("test-os 1", manifestEnvironment.path("os").stringValue());
+    assertEquals("test-arch", manifestEnvironment.path("arch").stringValue());
+    assertEquals("test-runtime", manifestEnvironment.path("javaRuntime").stringValue());
+    assertEquals("test-vendor", manifestEnvironment.path("javaVendor").stringValue());
+    assertEquals(8, manifestEnvironment.path("availableProcessors").intValue());
+    assertEquals(8_589_934_592L, manifestEnvironment.path("physicalMemoryBytes").longValue());
+    assertEquals(2_147_483_648L, manifestEnvironment.path("maximumHeapBytes").longValue());
+    assertEquals(
+        List.of("Test Old GC", "Test Young GC"),
+        manifestEnvironment
+            .path("garbageCollectorNames")
+            .valueStream()
+            .map(JsonNode::stringValue)
+            .toList());
+    assertEquals(
+        "operator-supplied-device", manifestEnvironment.path("storageDevice").stringValue());
+    assertEquals(
+        "operator-supplied-filesystem", manifestEnvironment.path("filesystem").stringValue());
+    assertEquals(testWalRoot(), manifestEnvironment.path("walRoot").stringValue());
+    assertEquals(testWalRootUri(), manifestEnvironment.path("walRootUri").stringValue());
+    assertEquals("test-store", manifestEnvironment.path("walFileStoreName").stringValue());
+    assertEquals("test-type", manifestEnvironment.path("walFileStoreType").stringValue());
+    assertEquals(1_000_000L, manifestEnvironment.path("walFileStoreTotalSpaceBytes").longValue());
+    assertEquals(700_000L, manifestEnvironment.path("walFileStoreUsableSpaceBytes").longValue());
+    assertEquals(
+        800_000L, manifestEnvironment.path("walFileStoreUnallocatedSpaceBytes").longValue());
+    assertEquals("2026-09-01T00:00:00Z", manifestEnvironment.path("runStartedAt").stringValue());
+    assertEquals("2026-09-01T01:00:00Z", manifestEnvironment.path("runFinishedAt").stringValue());
 
     List<String> paths = new ArrayList<>();
     for (JsonNode claim : manifest.path("claims")) {
@@ -235,6 +283,69 @@ final class M10EvidenceWriterTest {
     assertFalse(Files.exists(after.evidence().resolve("manifest.json")));
   }
 
+  @Test
+  void manifestEnvironmentTamperOrDeletionFailsClosedAtBothBoundaries(@TempDir Path temporary) {
+    Lab before = createLab(temporary.resolve("before-manifest"), true);
+    M10EvidenceWriter beforeWriter =
+        new M10EvidenceWriter(
+            checkExecutor(),
+            M10EvidenceWriterTest::releaseBundle,
+            new M10EvidenceWriter.BoundaryHook() {
+              @Override
+              public void beforeFinalVerification(Path root) {
+                Path manifestPath = stagingManifest(root);
+                ObjectNode manifest = (ObjectNode) JsonSupport.parse(read(manifestPath));
+                ((ObjectNode) manifest.path("environment")).put("maximumHeapBytes", 1L);
+                write(manifestPath, JsonSupport.prettyBytes(manifest));
+              }
+
+              @Override
+              public void beforePostPublishVerification(Path root) {}
+            });
+    IllegalStateException beforeFailure =
+        assertThrows(
+            IllegalStateException.class,
+            () ->
+                beforeWriter.write(
+                    before.root(),
+                    before.checks(),
+                    before.release(),
+                    before.evidence(),
+                    M10EvidenceWriter.UNIT_TAG,
+                    M10EvidenceWriter.PRODUCT_RELEASE));
+    assertTrue(beforeFailure.getMessage().contains("exact qualification projection"));
+    assertFalse(Files.exists(before.evidence().resolve("manifest.json")));
+
+    Lab after = createLab(temporary.resolve("after-manifest"), true);
+    M10EvidenceWriter afterWriter =
+        new M10EvidenceWriter(
+            checkExecutor(),
+            M10EvidenceWriterTest::releaseBundle,
+            new M10EvidenceWriter.BoundaryHook() {
+              @Override
+              public void beforeFinalVerification(Path root) {}
+
+              @Override
+              public void beforePostPublishVerification(Path root) {
+                Path manifestPath = root.resolve("build/lab-evidence/M10/manifest.json");
+                ObjectNode manifest = (ObjectNode) JsonSupport.parse(read(manifestPath));
+                ((ObjectNode) manifest.path("environment")).remove("walFileStoreType");
+                write(manifestPath, JsonSupport.prettyBytes(manifest));
+              }
+            });
+    assertThrows(
+        RuntimeException.class,
+        () ->
+            afterWriter.write(
+                after.root(),
+                after.checks(),
+                after.release(),
+                after.evidence(),
+                M10EvidenceWriter.UNIT_TAG,
+                M10EvidenceWriter.PRODUCT_RELEASE));
+    assertFalse(Files.exists(after.evidence().resolve("manifest.json")));
+  }
+
   private static M10EvidenceWriter writer() {
     return new M10EvidenceWriter(checkExecutor(), M10EvidenceWriterTest::releaseBundle);
   }
@@ -270,8 +381,8 @@ final class M10EvidenceWriterTest {
     Path root = temporary.resolve("repo");
     Path source = Path.of(System.getProperty("matching.repositoryRoot"));
     copy(
-        source.resolve("schemas/cex.lab-evidence.v1.schema.json"),
-        root.resolve("schemas/cex.lab-evidence.v1.schema.json"));
+        source.resolve("schemas/cex.lab-evidence.v2.schema.json"),
+        root.resolve("schemas/cex.lab-evidence.v2.schema.json"));
     copy(
         source.resolve("schemas/matching.m10.check.v2.schema.json"),
         root.resolve("schemas/matching.m10.check.v2.schema.json"));
@@ -555,11 +666,32 @@ final class M10EvidenceWriterTest {
     root.putObject("source")
         .put("commit", sourceCommit)
         .put("workloadSha256", M10CheckRunner.WORKLOAD_SHA256);
-    root.putObject("environment")
-        .put("javaVersion", "25-test")
-        .put("osName", "test-os")
-        .put("osVersion", "1")
-        .put("osArchitecture", "test-arch");
+    ObjectNode environment = root.putObject("environment");
+    environment.put("javaRuntime", "test-runtime");
+    environment.put("javaVersion", "25-test");
+    environment.put("javaVendor", "test-vendor");
+    environment.put("vmName", "test-vm");
+    environment.putArray("jvmArguments");
+    environment.put("osName", "test-os");
+    environment.put("osVersion", "1");
+    environment.put("osArchitecture", "test-arch");
+    environment.put("availableProcessors", 8);
+    environment.put("physicalMemoryBytes", 8_589_934_592L);
+    environment.put("maximumHeapBytes", 2_147_483_648L);
+    environment.putArray("garbageCollectorNames").add("Test Old GC").add("Test Young GC");
+    environment.put("cpuModel", "test-cpu");
+    environment.put("storageDevice", "operator-supplied-device");
+    environment.put("filesystem", "operator-supplied-filesystem");
+    environment.put("powerPolicy", "test-power-policy");
+    environment.put("walRoot", testWalRoot());
+    environment.put("walRootUri", testWalRootUri());
+    environment.put("walFileStoreName", "test-store");
+    environment.put("walFileStoreType", "test-type");
+    environment.put("walFileStoreTotalSpaceBytes", 1_000_000L);
+    environment.put("walFileStoreUsableSpaceBytes", 700_000L);
+    environment.put("walFileStoreUnallocatedSpaceBytes", 800_000L);
+    environment.put("runStartedAt", "2026-09-01T00:00:00Z");
+    environment.put("runFinishedAt", "2026-09-01T01:00:00Z");
     ObjectNode capacity = root.putObject("capacity");
     capacity.putArray("sweepKnees").add(300).add(300).add(300);
     capacity.put("publishedKnee", 300);
@@ -613,6 +745,31 @@ final class M10EvidenceWriterTest {
     m10Check.expectedStatus=PASS
     evidencePath=build/lab-evidence/M10/manifest.json
     """;
+  }
+
+  private static String testWalRoot() {
+    return Path.of(System.getProperty("java.io.tmpdir"), "m10-test-wal")
+        .toAbsolutePath()
+        .normalize()
+        .toString();
+  }
+
+  private static String testWalRootUri() {
+    return Path.of(testWalRoot()).toUri().toASCIIString();
+  }
+
+  private static Path stagingManifest(Path root) {
+    Path parent = root.resolve("build/lab-evidence");
+    try (var paths = Files.list(parent)) {
+      return paths
+          .filter(path -> path.getFileName().toString().startsWith(".M10-staging-"))
+          .map(path -> path.resolve("manifest.json"))
+          .filter(Files::isRegularFile)
+          .findFirst()
+          .orElseThrow(() -> new IllegalStateException("M10 staging manifest is missing"));
+    } catch (IOException failure) {
+      throw new IllegalStateException("cannot locate M10 staging manifest", failure);
+    }
   }
 
   private static byte[] read(Path path) {

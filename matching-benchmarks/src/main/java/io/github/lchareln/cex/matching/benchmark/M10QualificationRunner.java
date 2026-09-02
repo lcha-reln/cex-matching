@@ -123,6 +123,7 @@ public final class M10QualificationRunner {
       Instant finishedAt = Instant.now();
       EnvironmentFingerprint environment =
           EnvironmentFingerprint.capture(
+              config.walRoot(),
               config.cpuModel(),
               config.storageDevice(),
               config.filesystem(),
@@ -535,7 +536,7 @@ public final class M10QualificationRunner {
     node.put("referenceRate", value.referenceRateOperationsPerSecond());
   }
 
-  private static void writeEnvironment(ObjectNode node, EnvironmentFingerprint value) {
+  static void writeEnvironment(ObjectNode node, EnvironmentFingerprint value) {
     node.put("javaRuntime", value.javaRuntime());
     node.put("javaVersion", value.javaVersion());
     node.put("javaVendor", value.javaVendor());
@@ -546,10 +547,19 @@ public final class M10QualificationRunner {
     node.put("osArchitecture", value.osArchitecture());
     node.put("availableProcessors", value.availableProcessors());
     node.put("physicalMemoryBytes", value.physicalMemoryBytes());
+    node.put("maximumHeapBytes", value.maximumHeapBytes());
+    value.garbageCollectorNames().forEach(node.putArray("garbageCollectorNames")::add);
     node.put("cpuModel", value.cpuModel());
     node.put("storageDevice", value.storageDevice());
     node.put("filesystem", value.filesystem());
     node.put("powerPolicy", value.powerPolicy());
+    node.put("walRoot", value.walRoot());
+    node.put("walRootUri", value.walRootUri());
+    node.put("walFileStoreName", value.walFileStoreName());
+    node.put("walFileStoreType", value.walFileStoreType());
+    node.put("walFileStoreTotalSpaceBytes", value.walFileStoreTotalSpaceBytes());
+    node.put("walFileStoreUsableSpaceBytes", value.walFileStoreUsableSpaceBytes());
+    node.put("walFileStoreUnallocatedSpaceBytes", value.walFileStoreUnallocatedSpaceBytes());
     node.put("runStartedAt", value.runStartedAt().toString());
     node.put("runFinishedAt", value.runFinishedAt().toString());
   }

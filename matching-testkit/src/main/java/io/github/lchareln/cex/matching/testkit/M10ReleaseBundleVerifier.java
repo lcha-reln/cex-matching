@@ -19,6 +19,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.math.BigInteger;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -39,9 +40,11 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipFile;
 import tools.jackson.databind.JsonNode;
@@ -51,6 +54,7 @@ import tools.jackson.databind.node.ObjectNode;
 final class M10ReleaseBundleVerifier {
   static final String SCHEMA_PATH = "schemas/matching.m10.qualification.v2.schema.json";
   private static final String WORKLOAD_SHA256 = M10CheckRunner.WORKLOAD_SHA256;
+  private static final Pattern ENCODED_DOT = Pattern.compile("(?i)%2e");
   private static final List<String> STREAMS =
       List.of(
           "raw-phase-cuts",
@@ -1246,8 +1250,10 @@ final class M10ReleaseBundleVerifier {
             >= Math.multiplyExact((long) expectedProfile.calibrationSeconds, 1_000_000_000L),
         "qualification calibration duration changed");
     verifyCalibrationAndRateLadder(root, expectedProfile.sweeps);
-    Instant started = Instant.parse(text(root.path("environment"), "runStartedAt"));
-    Instant finished = Instant.parse(text(root.path("environment"), "runFinishedAt"));
+    JsonNode environment = root.path("environment");
+    verifyEnvironment(environment);
+    Instant started = Instant.parse(text(environment, "runStartedAt"));
+    Instant finished = Instant.parse(text(environment, "runFinishedAt"));
     long minimumRunSeconds =
         expectedProfile.calibrationSeconds
             + (long) expectedProfile.sweeps
@@ -1263,6 +1269,90 @@ final class M10ReleaseBundleVerifier {
     require(
         "PASS".equals(text(raw, "status")) && raw.path("fromDecompressedRaw").booleanValue(),
         "runner raw recomputation is not PASS");
+  }
+
+  static void verifyEnvironment(JsonNode environment) {
+    List.of(
+            "javaRuntime",
+            "javaVersion",
+            "javaVendor",
+            "vmName",
+            "osName",
+            "osVersion",
+            "osArchitecture",
+            "cpuModel",
+            "storageDevice",
+            "filesystem",
+            "powerPolicy",
+            "walFileStoreName",
+            "walFileStoreType")
+        .forEach(field -> text(environment, field));
+    require(environment.path("jvmArguments").isArray(), "jvmArguments must be an array");
+    environment
+        .path("jvmArguments")
+        .forEach(
+            argument -> {
+              String value = argument.stringValue();
+              require(value != null && !value.isBlank(), "jvmArguments contains a blank entry");
+            });
+    positiveLong(environment, "availableProcessors");
+    positiveLong(environment, "physicalMemoryBytes");
+    positiveLong(environment, "maximumHeapBytes");
+
+    JsonNode garbageCollectors = environment.path("garbageCollectorNames");
+    require(
+        garbageCollectors.isArray() && !garbageCollectors.isEmpty(),
+        "garbageCollectorNames must be a non-empty array");
+    Set<String> distinctCollectors = new LinkedHashSet<>();
+    List<String> collectorNames = new ArrayList<>();
+    garbageCollectors.forEach(
+        collector -> {
+          String name = collector.stringValue();
+          require(name != null && !name.isBlank(), "garbageCollectorNames contains a blank entry");
+          require(distinctCollectors.add(name), "garbageCollectorNames contains a duplicate entry");
+          collectorNames.add(name);
+        });
+    require(
+        collectorNames.stream().sorted().toList().equals(collectorNames),
+        "garbageCollectorNames must use natural sort order");
+
+    text(environment, "walRoot");
+    final URI walRootUri;
+    try {
+      walRootUri = URI.create(text(environment, "walRootUri"));
+    } catch (IllegalArgumentException invalidUri) {
+      throw new IllegalStateException("walRootUri is not a valid URI", invalidUri);
+    }
+    require(
+        walRootUri.isAbsolute()
+            && "file".equalsIgnoreCase(walRootUri.getScheme())
+            && !walRootUri.isOpaque()
+            && walRootUri.getRawAuthority() == null
+            && walRootUri.getRawPath() != null
+            && walRootUri.getRawPath().startsWith("/")
+            && walRootUri.normalize().equals(walRootUri)
+            && !hasUnsafeRawPath(walRootUri.getRawPath())
+            && walRootUri.getRawQuery() == null
+            && walRootUri.getRawFragment() == null,
+        "walRootUri must identify a normalized absolute file URI path");
+
+    long totalSpace = positiveLong(environment, "walFileStoreTotalSpaceBytes");
+    long usableSpace = nonNegative(environment, "walFileStoreUsableSpaceBytes");
+    long unallocatedSpace = nonNegative(environment, "walFileStoreUnallocatedSpaceBytes");
+    require(usableSpace <= totalSpace, "WAL FileStore usable space exceeds total space");
+    require(unallocatedSpace <= totalSpace, "WAL FileStore unallocated space exceeds total space");
+  }
+
+  private static boolean hasUnsafeRawPath(String rawPath) {
+    String lowercase = rawPath.toLowerCase(Locale.ROOT);
+    if (lowercase.contains("%2f") || lowercase.contains("%5c") || lowercase.contains("%00")) {
+      return true;
+    }
+    for (String segment : rawPath.split("/", -1)) {
+      String decodedDots = ENCODED_DOT.matcher(segment).replaceAll(".");
+      if (".".equals(decodedDots) || "..".equals(decodedDots)) return true;
+    }
+    return false;
   }
 
   static void verifyCalibrationAndRateLadder(JsonNode root, int expectedSweeps) {
@@ -1609,13 +1699,17 @@ final class M10ReleaseBundleVerifier {
   }
 
   private static long positiveLong(JsonNode node, String field) {
-    long value = node.path(field).longValue();
+    JsonNode number = node.path(field);
+    require(number.isIntegralNumber(), "missing integer field: " + field);
+    long value = number.longValue();
     require(value > 0, "field must be positive: " + field);
     return value;
   }
 
   private static long nonNegative(JsonNode node, String field) {
-    long value = node.path(field).longValue();
+    JsonNode number = node.path(field);
+    require(number.isIntegralNumber(), "missing integer field: " + field);
+    long value = number.longValue();
     require(value >= 0, "field must be non-negative: " + field);
     return value;
   }

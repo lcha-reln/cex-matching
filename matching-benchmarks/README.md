@@ -25,8 +25,21 @@ three complete sweeps and ten-second warmups plus thirty-second measurements. Ev
 short-window candidate at or below the 70% knee candidate is tried from highest to lowest with a
 complete 1,800-second soak; the first full-duration unsaturated point is the only QOP. Saturated
 higher attempts stay in the final evidence, while a system error stops promotion immediately.
-It requires a complete environment description supplied on the command line; a missing collector
-or dimension is an error, never a zero.
+It requires complete operator-declared labels together with runner-captured runtime dimensions; a
+missing required dimension is an error. A zero is valid only where the contract explicitly permits
+it, including WAL FileStore usable and unallocated space; total space, heap, memory, and processor
+count remain positive.
+
+The runner also captures the runtime dimensions that must not be supplied by an operator: the JVM
+maximum heap, the sorted non-empty garbage-collector name set reported by the active MXBeans, the
+WAL root resolved by `toRealPath`, its authority-free absolute `file` URI, and
+`Files.getFileStore(walRoot)` name, type, total space, usable space, and unallocated space.
+`storageDevice` and `filesystem` remain explicit operator labels because they can carry
+physical-device and mount-policy context that `FileStore` does not expose. The verifier binds both
+views but deliberately does not require their strings to match across operating systems. It checks
+the URI as portable evidence and does not reinterpret a copied report's human path using the
+verifier host's path syntax. URI authorities, dot segments (including percent-encoded forms),
+encoded path separators, and encoded NUL bytes fail closed.
 
 The frozen percentile rule is nearest-rank: for sorted `n` samples and quantile `q`, select index
 `ceil(q * n) - 1`, clamped to `[0, n - 1]`. End-to-end latency always starts at the planned arrival,
@@ -47,6 +60,11 @@ accounting instead of becoming a latency sample or a business result.
 -Pm10.powerPolicy=<exact policy>
 -Pm10.runId=<stable run id>
 ```
+
+`walRoot` must be a new directory outside the immutable output tree. Its real path, canonical file
+URI, and actual `FileStore` are resolved only after the runner creates the directory, so the report
+describes the path that held the WAL rather than the filesystem of a parent guessed before
+execution.
 
 The application can also be called through `gradlew :matching-benchmarks:run --args='...'`.
 `qualification.json` is written only after all compressed raw shards have been closed, hashed,

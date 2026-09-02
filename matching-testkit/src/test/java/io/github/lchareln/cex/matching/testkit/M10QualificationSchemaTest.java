@@ -249,6 +249,121 @@ final class M10QualificationSchemaTest {
         () -> JsonSupport.validate(nonPositive, capacitySchema, true));
   }
 
+  @Test
+  void environmentSchemaRequiresJvmAndActualWalFileStoreDimensions() throws Exception {
+    Path root = Path.of(System.getProperty("matching.repositoryRoot"));
+    JsonNode schema =
+        JsonSupport.parse(Files.readAllBytes(root.resolve(QUALIFICATION_SCHEMA_PATH)));
+    String environmentSchema = fragment(schema, "environment");
+    ObjectNode environment = releaseEnvironmentFixture();
+
+    JsonSupport.validate(environment, environmentSchema, true);
+    for (JsonNode field : schema.path("$defs").path("environment").path("required")) {
+      ObjectNode missingRequiredField = environment.deepCopy();
+      missingRequiredField.remove(field.stringValue());
+      assertThrows(
+          FixtureSchemaException.class,
+          () -> JsonSupport.validate(missingRequiredField, environmentSchema, true),
+          () -> "environment schema accepted missing required field " + field.stringValue());
+    }
+    ObjectNode zeroFreeSpace = environment.deepCopy();
+    zeroFreeSpace.put("walFileStoreUsableSpaceBytes", 0);
+    zeroFreeSpace.put("walFileStoreUnallocatedSpaceBytes", 0);
+    assertDoesNotThrow(() -> JsonSupport.validate(zeroFreeSpace, environmentSchema, true));
+
+    ObjectNode missingHeap = environment.deepCopy();
+    missingHeap.remove("maximumHeapBytes");
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(missingHeap, environmentSchema, true));
+    ObjectNode emptyCollectors = environment.deepCopy();
+    ((ArrayNode) emptyCollectors.path("garbageCollectorNames")).removeAll();
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(emptyCollectors, environmentSchema, true));
+    ObjectNode duplicateCollectors = environment.deepCopy();
+    ((ArrayNode) duplicateCollectors.path("garbageCollectorNames")).add("Test Young GC");
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(duplicateCollectors, environmentSchema, true));
+    ObjectNode blankJvmArgument = environment.deepCopy();
+    ((ArrayNode) blankJvmArgument.path("jvmArguments")).add("");
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(blankJvmArgument, environmentSchema, true));
+    ObjectNode zeroHeap = environment.deepCopy();
+    zeroHeap.put("maximumHeapBytes", 0);
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(zeroHeap, environmentSchema, true));
+    ObjectNode zeroTotal = environment.deepCopy();
+    zeroTotal.put("walFileStoreTotalSpaceBytes", 0);
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(zeroTotal, environmentSchema, true));
+    ObjectNode negativeUsable = environment.deepCopy();
+    negativeUsable.put("walFileStoreUsableSpaceBytes", -1);
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(negativeUsable, environmentSchema, true));
+    ObjectNode negativeUnallocated = environment.deepCopy();
+    negativeUnallocated.put("walFileStoreUnallocatedSpaceBytes", -1);
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(negativeUnallocated, environmentSchema, true));
+    ObjectNode missingWalStore = environment.deepCopy();
+    missingWalStore.remove("walFileStoreType");
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(missingWalStore, environmentSchema, true));
+    ObjectNode missingWalRootUri = environment.deepCopy();
+    missingWalRootUri.remove("walRootUri");
+    assertThrows(
+        FixtureSchemaException.class,
+        () -> JsonSupport.validate(missingWalRootUri, environmentSchema, true));
+  }
+
+  private static ObjectNode releaseEnvironmentFixture() {
+    ObjectNode environment = JsonSupport.MAPPER.createObjectNode();
+    environment.put("javaRuntime", "test-runtime");
+    environment.put("javaVersion", "25-test");
+    environment.put("javaVendor", "test-vendor");
+    environment.put("vmName", "test-vm");
+    environment.putArray("jvmArguments");
+    environment.put("osName", "test-os");
+    environment.put("osVersion", "1");
+    environment.put("osArchitecture", "test-arch");
+    environment.put("availableProcessors", 8);
+    environment.put("physicalMemoryBytes", 8_589_934_592L);
+    environment.put("maximumHeapBytes", 2_147_483_648L);
+    environment.putArray("garbageCollectorNames").add("Test Old GC").add("Test Young GC");
+    environment.put("cpuModel", "test-cpu");
+    environment.put("storageDevice", "operator-device-label");
+    environment.put("filesystem", "operator-filesystem-label");
+    environment.put("powerPolicy", "test-power-policy");
+    environment.put(
+        "walRoot",
+        Path.of(System.getProperty("java.io.tmpdir"), "m10-schema-wal")
+            .toAbsolutePath()
+            .normalize()
+            .toString());
+    environment.put(
+        "walRootUri",
+        Path.of(System.getProperty("java.io.tmpdir"), "m10-schema-wal")
+            .toAbsolutePath()
+            .normalize()
+            .toUri()
+            .toASCIIString());
+    environment.put("walFileStoreName", "actual-store-name");
+    environment.put("walFileStoreType", "actual-store-type");
+    environment.put("walFileStoreTotalSpaceBytes", 1_000_000L);
+    environment.put("walFileStoreUsableSpaceBytes", 700_000L);
+    environment.put("walFileStoreUnallocatedSpaceBytes", 800_000L);
+    environment.put("runStartedAt", "2026-09-01T00:00:00Z");
+    environment.put("runFinishedAt", "2026-09-01T01:00:00Z");
+    return environment;
+  }
+
   private static ObjectNode soakAttempt(int attemptNumber, String outcome) {
     ObjectNode attempt = JsonSupport.MAPPER.createObjectNode();
     attempt.put("attemptNumber", attemptNumber);

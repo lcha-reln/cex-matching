@@ -32,7 +32,7 @@ public final class M10EvidenceWriter {
   private static final String RELEASE_DIRECTORY = "build/reports/m10-release";
   private static final String EVIDENCE_DIRECTORY = "build/lab-evidence/M10";
   private static final String CHECK_SCHEMA = "schemas/matching.m10.check.v2.schema.json";
-  private static final String EVIDENCE_SCHEMA = "schemas/cex.lab-evidence.v1.schema.json";
+  private static final String EVIDENCE_SCHEMA = "schemas/cex.lab-evidence.v2.schema.json";
   private static final Pattern FULL_COMMIT = Pattern.compile("^[a-f0-9]{40}(?:[a-f0-9]{24})?$");
 
   static final List<String> REQUIRED_CLAIMS =
@@ -56,9 +56,10 @@ public final class M10EvidenceWriter {
               + " machine-specific performance claim; this writer verifies and copies that bundle"
               + " but never starts or abbreviates its roughly 46-minute minimum runtime. Each"
               + " saturated higher provisional candidate adds another full 30-minute soak.",
-          "The published knee and qualified operating point apply only to the recorded JVM, flags,"
-              + " CPU, storage, filesystem, operating system, and power policy; they are not a"
-              + " portable SLA or universal production capacity.",
+          "The published knee and qualified operating point apply only to the recorded JVM input"
+              + " arguments, maximum heap, garbage-collector identity, CPU, operator storage"
+              + " labels, actual WAL FileStore path/identity/space, operating system, and power"
+              + " policy; they are not a portable SLA or universal production capacity.",
           "The two frozen JMH SampleTime results are required diagnostic artifacts, remain separate"
               + " from end-to-end scheduled-arrival latency, and are never used to derive the"
               + " capacity envelope.",
@@ -170,7 +171,8 @@ public final class M10EvidenceWriter {
       verifySourceArtifacts(artifacts);
 
       ObjectNode manifest = manifest(sourceCommit, check, verifiedRelease, staging, artifacts);
-      verifyManifest(root, manifest, staging, artifacts);
+      verifyManifest(
+          root, manifest, staging, artifacts, verifiedRelease.qualification().path("environment"));
       AtomicFiles.write(staging.resolve("manifest.json"), JsonSupport.prettyBytes(manifest));
 
       boundaryHook.beforeFinalVerification(root);
@@ -245,7 +247,7 @@ public final class M10EvidenceWriter {
       Path staging,
       List<SourceArtifact> artifacts) {
     ObjectNode root = JsonSupport.MAPPER.createObjectNode();
-    root.put("schemaVersion", "cex.lab-evidence.v1");
+    root.put("schemaVersion", "cex.lab-evidence.v2");
     root.put("case", "high-availability-cex");
     root.put("project", "matching");
     root.put("unit", "M10");
@@ -255,15 +257,8 @@ public final class M10EvidenceWriter {
     ObjectNode source = root.putObject("source");
     source.put("commit", sourceCommit);
     source.put("dirty", false);
-    JsonNode releaseEnvironment = release.qualification().path("environment");
-    ObjectNode environment = root.putObject("environment");
-    environment.put("java", requiredText(releaseEnvironment, "javaVersion"));
-    environment.put(
-        "os",
-        requiredText(releaseEnvironment, "osName")
-            + " "
-            + requiredText(releaseEnvironment, "osVersion"));
-    environment.put("arch", requiredText(releaseEnvironment, "osArchitecture"));
+    root.set(
+        "environment", projectManifestEnvironment(release.qualification().path("environment")));
 
     Map<String, SourceArtifact> byPath = new LinkedHashMap<>();
     artifacts.forEach(artifact -> byPath.put(portable(artifact.evidencePath()), artifact));
@@ -466,7 +461,12 @@ public final class M10EvidenceWriter {
     requireSameRelease(expectedRelease, release, "published release bundle changed");
     JsonNode manifest = JsonSupport.parse(readBytes(evidence.resolve("manifest.json")));
     require(manifest instanceof ObjectNode, "M10 evidence manifest is not an object");
-    verifyManifest(root, (ObjectNode) manifest, evidence, artifacts);
+    verifyManifest(
+        root,
+        (ObjectNode) manifest,
+        evidence,
+        artifacts,
+        release.qualification().path("environment"));
     Set<String> expected = new LinkedHashSet<>();
     artifacts.forEach(artifact -> expected.add(portable(artifact.evidencePath())));
     expected.add("manifest.json");
@@ -474,8 +474,16 @@ public final class M10EvidenceWriter {
   }
 
   private static void verifyManifest(
-      Path root, ObjectNode manifest, Path evidence, List<SourceArtifact> artifacts) {
+      Path root,
+      ObjectNode manifest,
+      Path evidence,
+      List<SourceArtifact> artifacts,
+      JsonNode qualificationEnvironment) {
     JsonSupport.validate(manifest, readString(root.resolve(EVIDENCE_SCHEMA)), true);
+    require(
+        jsonRoundTrip(projectManifestEnvironment(qualificationEnvironment))
+            .equals(jsonRoundTrip(manifest.path("environment"))),
+        "evidence environment is not the exact qualification projection");
     require("M10".equals(manifest.path("unit").stringValue()), "evidence unit changed");
     require(UNIT_TAG.equals(manifest.path("unitTag").stringValue()), "evidence unit tag changed");
     require(
@@ -849,6 +857,57 @@ public final class M10EvidenceWriter {
     String value = object.path(field).stringValue();
     require(value != null && !value.isBlank(), "qualification environment lacks " + field);
     return value;
+  }
+
+  static ObjectNode projectManifestEnvironment(JsonNode releaseEnvironment) {
+    M10ReleaseBundleVerifier.verifyEnvironment(releaseEnvironment);
+    ObjectNode environment = JsonSupport.MAPPER.createObjectNode();
+    environment.put("java", requiredText(releaseEnvironment, "javaVersion"));
+    environment.put(
+        "os",
+        requiredText(releaseEnvironment, "osName")
+            + " "
+            + requiredText(releaseEnvironment, "osVersion"));
+    environment.put("arch", requiredText(releaseEnvironment, "osArchitecture"));
+    environment.put("javaRuntime", requiredText(releaseEnvironment, "javaRuntime"));
+    environment.put("javaVersion", requiredText(releaseEnvironment, "javaVersion"));
+    environment.put("javaVendor", requiredText(releaseEnvironment, "javaVendor"));
+    environment.put("vmName", requiredText(releaseEnvironment, "vmName"));
+    environment.set("jvmArguments", releaseEnvironment.path("jvmArguments").deepCopy());
+    environment.put("osName", requiredText(releaseEnvironment, "osName"));
+    environment.put("osVersion", requiredText(releaseEnvironment, "osVersion"));
+    environment.put("osArchitecture", requiredText(releaseEnvironment, "osArchitecture"));
+    environment.put(
+        "availableProcessors", releaseEnvironment.path("availableProcessors").intValue());
+    environment.put(
+        "physicalMemoryBytes", releaseEnvironment.path("physicalMemoryBytes").longValue());
+    environment.put("maximumHeapBytes", releaseEnvironment.path("maximumHeapBytes").longValue());
+    environment.set(
+        "garbageCollectorNames", releaseEnvironment.path("garbageCollectorNames").deepCopy());
+    environment.put("cpuModel", requiredText(releaseEnvironment, "cpuModel"));
+    environment.put("storageDevice", requiredText(releaseEnvironment, "storageDevice"));
+    environment.put("filesystem", requiredText(releaseEnvironment, "filesystem"));
+    environment.put("powerPolicy", requiredText(releaseEnvironment, "powerPolicy"));
+    environment.put("walRoot", requiredText(releaseEnvironment, "walRoot"));
+    environment.put("walRootUri", requiredText(releaseEnvironment, "walRootUri"));
+    environment.put("walFileStoreName", requiredText(releaseEnvironment, "walFileStoreName"));
+    environment.put("walFileStoreType", requiredText(releaseEnvironment, "walFileStoreType"));
+    environment.put(
+        "walFileStoreTotalSpaceBytes",
+        releaseEnvironment.path("walFileStoreTotalSpaceBytes").longValue());
+    environment.put(
+        "walFileStoreUsableSpaceBytes",
+        releaseEnvironment.path("walFileStoreUsableSpaceBytes").longValue());
+    environment.put(
+        "walFileStoreUnallocatedSpaceBytes",
+        releaseEnvironment.path("walFileStoreUnallocatedSpaceBytes").longValue());
+    environment.put("runStartedAt", requiredText(releaseEnvironment, "runStartedAt"));
+    environment.put("runFinishedAt", requiredText(releaseEnvironment, "runFinishedAt"));
+    return environment;
+  }
+
+  private static JsonNode jsonRoundTrip(JsonNode value) {
+    return JsonSupport.parse(JsonSupport.prettyBytes(value));
   }
 
   private static String portable(Path path) {

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "matching.m10.qualification-attempt.v2",
+  "status": "EVIDENCE_CONTRACT_GAP",
+  "releaseQualified": false,
+  "runId": "m10-release-8d13c40-20260903",
+  "sourceCommit": "8d13c40367bd2854a67abca9ad820d01cb30abf5",
+  "workloadSha256": "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b",
+  "profileId": "RELEASE_QUALIFICATION",
+  "qualificationRuntimePolicyId": "M10Q2",
+  "promotionPolicyId": "M10Q2_DESCENDING_FULL_DURATION_FIRST_PASS",
+  "runnerStatus": "PASS",
+  "sweepKnees": [380, 446, 446],
+  "publishedKnee": 380,
+  "qualifiedOperatingPointCandidate": 266,
+  "provisionalSoakCandidates": [231, 165, 82],
+  "attempts": [
+    {
+      "attemptNumber": 1,
+      "pointId": "qop-soak-attempt-01-rate-00000231",
+      "offeredRate": 231,
+      "outcome": "QUALIFIED",
+      "durationSeconds": 1800,
+      "plannedOffers": 415800,
+      "admitted": 415800,
+      "terminalCompletions": 415800,
+      "overloaded": 0,
+      "checkpointRequired": 0,
+      "freshRecoveryExact": true,
+      "directReplayExact": true
+    }
+  ],
+  "publicationAudit": {
+    "status": "REJECTED_BEFORE_TAG_PUSH",
+    "stage": "CONTENT_AND_EVIDENCE_CONTRACT_RECONCILIATION",
+    "classification": "EVIDENCE_CONTRACT_GAP",
+    "missingReleaseEnvironmentFields": [
+      "maximumHeapBytes",
+      "garbageCollectorNames",
+      "walRoot",
+      "walRootUri",
+      "walFileStoreName",
+      "walFileStoreType",
+      "walFileStoreTotalSpaceBytes",
+      "walFileStoreUsableSpaceBytes",
+      "walFileStoreUnallocatedSpaceBytes"
+    ],
+    "ciSmokeEnvironmentSubstitutionAllowed": false,
+    "reason": "The release report recorded explicit JVM input arguments and operator storage labels, but did not bind the running JVM heap/GC identity or the actual WAL FileStore path and space dimensions required by the M10 release contract. METHOD_SMOKE_ONLY environment fields cannot be promoted into RELEASE_QUALIFICATION evidence.",
+    "policyDecision": "PATCH_SCHEMA_RUNNER_VERIFIER_AND_MANIFEST_THEN_RERUN_FULL_QUALIFICATION"
+  },
+  "qualifiedOperatingPointPublished": false,
+  "qualificationReportPublished": false,
+  "tagPushPerformed": false,
+  "publicationBoundary": "LOCAL_SUPERSEDED_ATTEMPT_ONLY_NO_RELEASE_EVIDENCE"
+}
