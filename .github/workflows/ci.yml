@@ -96,7 +96,7 @@ jobs:
               "expectedStatus": "PASS"
             } and
             .workloadProfile == {
-              "sha256": "992882b78caef35c35680d0073921ae8bb0df71d59c21c4236ebfc056f7f8ace",
+              "sha256": "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b",
               "seed": "6010",
               "fixedScenarios": 20,
               "generatedHistories": 64,
@@ -126,10 +126,17 @@ jobs:
             .measurementContract.qualificationRuntime.m09Default == {"maxSuffixRecords": 64, "maxSuffixBytes": 1048576} and
             .measurementContract.qualificationRuntime.finiteRecoveryBudget == {"maxSuffixRecords": 1000000, "maxSuffixBytes": 1073741824} and
             .measurementContract.qualificationRuntime.proactiveCheckpointOffsetNanos == 100000000 and
+            .measurementContract.qualificationRuntime.proactiveCheckpointAdmissionLagMaxNanos == 10000000 and
             .measurementContract.qualificationRuntime.plannedRecordCeilingBytes == 1024 and
             .measurementContract.qualificationRuntime.phaseBudgetPreflight.validatePrefixAndSuffixSeparately == true and
-            .measurementContract.qualificationRuntime.scheduler.allInitialOffersBeforeScheduledWindowEnd == true and
-            .measurementContract.qualificationRuntime.observationCut == "SCHEDULED_WINDOW_END_BEFORE_TERMINAL_DRAIN" and
+            .measurementContract.qualificationRuntime.scheduler.producerClosureGraceMaxNanos == 250000000 and
+            .measurementContract.qualificationRuntime.scheduler.scheduledObservationCutDoesNotMove == true and
+            .measurementContract.qualificationRuntime.scheduler.allScheduledArrivalsMaterialized == true and
+            .measurementContract.qualificationRuntime.scheduler.allAdmissionDecisionsWithinLagLimits == true and
+            .measurementContract.qualificationRuntime.scheduler.observationCutLagMaxNanos == 10000000 and
+            .measurementContract.qualificationRuntime.observationCut == "IMMUTABLE_SCHEDULED_WINDOW_END_RAW_RECONSTRUCTED_BEFORE_PRODUCER_CLOSURE_AND_TERMINAL_DRAIN" and
+            .measurementContract.qualificationRuntime.rawTimeContract.admissionTimestamp == "admissionDecisionNanos" and
+            .measurementContract.qualificationRuntime.rawTimeContract.completionTimestamp == "ownerCompletedNanos" and
             .measurementContract.qualificationRuntime.terminalDrain == "ZERO_PENDING_BEFORE_RECOVERY" and
             .measurementContract.releaseOpenLoop.calibrationSeconds == 20 and
             .measurementContract.releaseOpenLoop.sweeps == 3 and

@@ -19,7 +19,7 @@ import tools.jackson.databind.node.ObjectNode;
 public final class M10StartCheckRunner {
   public static final String STATUS = "GOAL_NOT_IMPLEMENTED";
   public static final String WORKLOAD_SHA256 =
-      "992882b78caef35c35680d0073921ae8bb0df71d59c21c4236ebfc056f7f8ace";
+      "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b";
 
   static final String WORKLOAD_PATH = "matching-testkit/src/test/resources/m10/workload-v1.json";
   static final String WORKLOAD_SCHEMA_PATH = "schemas/matching.m10.workload.v1.schema.json";
@@ -184,22 +184,34 @@ public final class M10StartCheckRunner {
     qualificationBudget.put("maxSuffixRecords", 1_000_000);
     qualificationBudget.put("maxSuffixBytes", 1_073_741_824);
     runtime.put("proactiveCheckpointOffsetNanos", 100_000_000);
+    runtime.put("proactiveCheckpointAdmissionLagMaxNanos", 10_000_000);
     runtime.put("plannedRecordCeilingBytes", 1_024);
     ObjectNode preflight = runtime.putObject("phaseBudgetPreflight");
     preflight.put(
         "prefixRecords",
-        "START_SUFFIX_PLUS_PRE_OFFSET_ARRIVALS_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER");
+        "START_SUFFIX_PLUS_ARRIVALS_SCHEDULED_BEFORE_CHECKPOINT_ADMISSION_DEADLINE_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER");
     preflight.put(
         "postCheckpointSuffixRecords",
-        "POST_OFFSET_PLANNED_DURABLE_ARRIVALS_PLUS_CONSERVATIVE_RETRY_BOUND");
+        "ALL_PLANNED_DURABLE_ARRIVALS_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER");
     preflight.put("validatePrefixAndSuffixSeparately", true);
     ObjectNode scheduler = runtime.putObject("scheduler");
     scheduler.put("initialArrivalThread", "DEDICATED_NO_COMPLETION_CHECKPOINT_OR_ARTIFACT_IO");
     scheduler.put("coordinator", "ASYNC_COMPLETION_CHECKPOINT_RETRY_AND_ARTIFACT_IO");
-    scheduler.put("allInitialOffersBeforeScheduledWindowEnd", true);
+    scheduler.put("scheduledObservationCutDoesNotMove", true);
+    scheduler.put("producerClosureGraceMaxNanos", 250_000_000);
+    scheduler.put("allScheduledArrivalsMaterialized", true);
+    scheduler.put("allAdmissionDecisionsWithinLagLimits", true);
     scheduler.put("p99ProducerLagMaxNanos", 50_000_000);
     scheduler.put("maxProducerLagMaxNanos", 250_000_000);
-    runtime.put("observationCut", "SCHEDULED_WINDOW_END_BEFORE_TERMINAL_DRAIN");
+    scheduler.put("observationCutLagMaxNanos", 10_000_000);
+    runtime.put(
+        "observationCut",
+        "IMMUTABLE_SCHEDULED_WINDOW_END_RAW_RECONSTRUCTED_BEFORE_PRODUCER_CLOSURE_AND_TERMINAL_DRAIN");
+    ObjectNode rawTime = runtime.putObject("rawTimeContract");
+    rawTime.put("admissionTimestamp", "admissionDecisionNanos");
+    rawTime.put("admissionObservationKind", "ADMISSION_GATE_DECISION");
+    rawTime.put("completionTimestamp", "ownerCompletedNanos");
+    rawTime.put("completionTimeOrigin", "OWNER_COMPLETED_UNDER_GATE");
     runtime.put("terminalDrain", "ZERO_PENDING_BEFORE_RECOVERY");
     ObjectNode release = measurement.putObject("releaseOpenLoop");
     release.put("calibrationSeconds", 20);
@@ -223,9 +235,14 @@ public final class M10StartCheckRunner {
     saturation.put("p99QueueDepthPermilleOfCapacity", 800);
     saturation.put("minimumCompletedPerAdmittedPermille", 995);
     saturation.put("maximumEndBacklogGrowthPermilleOfCapacity", 100);
+    saturation.put("endingBacklog", "SCHEDULED_DECISION_BACKLOG_PLUS_SERVICE_PENDING_AT_CUT");
+    saturation.put("postCutRule", "MAY_ADD_SATURATION_OR_FAILURE_NEVER_CLEAR_CUT");
     saturation.put("perSweepKnee", "FIRST_OF_TWO_CONSECUTIVE_SATURATED_RATES");
     saturation.put("publishedKnee", "MIN_OF_THREE_SWEEP_KNEES");
-    saturation.put("qualifiedOperatingPoint", "FLOOR_70_PERCENT_OF_PUBLISHED_KNEE");
+    saturation.put("qualifiedOperatingPointCandidate", "FLOOR_70_PERCENT_OF_PUBLISHED_KNEE");
+    saturation.put(
+        "qualifiedOperatingPoint",
+        "HIGHEST_ALL_SWEEP_UNSATURATED_MEASURED_RATE_AT_OR_BELOW_CANDIDATE");
     ObjectNode soak = measurement.putObject("releaseSoak");
     soak.put("load", "QUALIFIED_OPERATING_POINT");
     soak.put("durationSeconds", 1800);
@@ -366,7 +383,13 @@ public final class M10StartCheckRunner {
             .booleanValue(),
         "M10 prefix/suffix preflight separation changed");
     require(
-        runtime.path("scheduler").path("allInitialOffersBeforeScheduledWindowEnd").booleanValue(),
+        runtime.path("scheduler").path("allScheduledArrivalsMaterialized").booleanValue()
+            && runtime.path("scheduler").path("allAdmissionDecisionsWithinLagLimits").booleanValue()
+            && runtime.path("scheduler").path("scheduledObservationCutDoesNotMove").booleanValue()
+            && runtime.path("scheduler").path("producerClosureGraceMaxNanos").longValue()
+                == 250_000_000L
+            && runtime.path("scheduler").path("observationCutLagMaxNanos").longValue()
+                == 10_000_000L,
         "M10 scheduled arrival fidelity changed");
     require(
         workload.path("releaseSoak").path("durationSeconds").intValue() == 1800,

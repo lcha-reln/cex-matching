@@ -131,20 +131,31 @@
       "maxSuffixBytes": 1073741824
     },
     "proactiveCheckpointOffsetNanos": 100000000,
+    "proactiveCheckpointAdmissionLagMaxNanos": 10000000,
     "plannedRecordCeilingBytes": 1024,
     "phaseBudgetPreflight": {
-      "prefixRecords": "START_SUFFIX_PLUS_PRE_OFFSET_ARRIVALS_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER",
-      "postCheckpointSuffixRecords": "POST_OFFSET_PLANNED_DURABLE_ARRIVALS_PLUS_CONSERVATIVE_RETRY_BOUND",
+      "prefixRecords": "START_SUFFIX_PLUS_ARRIVALS_SCHEDULED_BEFORE_CHECKPOINT_ADMISSION_DEADLINE_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER",
+      "postCheckpointSuffixRecords": "ALL_PLANNED_DURABLE_ARRIVALS_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER",
       "validatePrefixAndSuffixSeparately": true
     },
     "scheduler": {
       "initialArrivalThread": "DEDICATED_NO_COMPLETION_CHECKPOINT_OR_ARTIFACT_IO",
       "coordinator": "ASYNC_COMPLETION_CHECKPOINT_RETRY_AND_ARTIFACT_IO",
-      "allInitialOffersBeforeScheduledWindowEnd": true,
+      "scheduledObservationCutDoesNotMove": true,
+      "producerClosureGraceMaxNanos": 250000000,
+      "allScheduledArrivalsMaterialized": true,
+      "allAdmissionDecisionsWithinLagLimits": true,
       "p99ProducerLagMaxNanos": 50000000,
-      "maxProducerLagMaxNanos": 250000000
+      "maxProducerLagMaxNanos": 250000000,
+      "observationCutLagMaxNanos": 10000000
     },
-    "observationCut": "SCHEDULED_WINDOW_END_BEFORE_TERMINAL_DRAIN",
+    "observationCut": "IMMUTABLE_SCHEDULED_WINDOW_END_RAW_RECONSTRUCTED_BEFORE_PRODUCER_CLOSURE_AND_TERMINAL_DRAIN",
+    "rawTimeContract": {
+      "admissionTimestamp": "admissionDecisionNanos",
+      "admissionObservationKind": "ADMISSION_GATE_DECISION",
+      "completionTimestamp": "ownerCompletedNanos",
+      "completionTimeOrigin": "OWNER_COMPLETED_UNDER_GATE"
+    },
     "terminalDrain": "ZERO_PENDING_BEFORE_RECOVERY",
     "resourceSampling": {
       "targetCadenceNanos": 1000000000,
@@ -193,9 +204,12 @@
     "p99QueueDepthPermilleOfCapacity": 800,
     "minimumCompletedPerAdmittedPermille": 995,
     "maximumEndBacklogGrowthPermilleOfCapacity": 100,
+    "endingBacklog": "SCHEDULED_DECISION_BACKLOG_PLUS_SERVICE_PENDING_AT_CUT",
+    "postCutRule": "MAY_ADD_SATURATION_OR_FAILURE_NEVER_CLEAR_CUT",
     "perSweepKnee": "FIRST_OF_TWO_CONSECUTIVE_SATURATED_RATES",
     "publishedKnee": "MIN_OF_THREE_SWEEP_KNEES",
-    "qualifiedOperatingPoint": "FLOOR_70_PERCENT_OF_PUBLISHED_KNEE"
+    "qualifiedOperatingPointCandidate": "FLOOR_70_PERCENT_OF_PUBLISHED_KNEE",
+    "qualifiedOperatingPoint": "HIGHEST_ALL_SWEEP_UNSATURATED_MEASURED_RATE_AT_OR_BELOW_CANDIDATE"
   },
   "releaseSoak": {
     "load": "QUALIFIED_OPERATING_POINT",
