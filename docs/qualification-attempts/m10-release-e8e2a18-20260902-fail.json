@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "matching.m10.qualification-attempt.v1",
+  "status": "FAIL",
+  "releaseQualified": false,
+  "runId": "m10-release-e8e2a18-20260902",
+  "sourceCommit": "e8e2a18bc85d3d8bb7ccee4b7b8722c74cf45bf1",
+  "workloadSha256": "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b",
+  "profileId": "RELEASE_QUALIFICATION",
+  "qualificationRuntimePolicyId": "M10Q1",
+  "sweepKnees": [227, 192, 192],
+  "publishedKnee": 192,
+  "qualifiedOperatingPointCandidate": 134,
+  "shortWindowCandidate": 113,
+  "soak": {
+    "durationSeconds": 1800,
+    "offeredRate": 113,
+    "plannedOffers": 203400,
+    "admitted": 76903,
+    "overloaded": 126497,
+    "p99QueueDepth": 64,
+    "queueCapacity": 64,
+    "endingBacklog": 65,
+    "terminalDrainNanos": 3444131417,
+    "saturationReasons": [
+      "OVERLOAD_REJECTION",
+      "P99_QUEUE_DEPTH_AT_LEAST_80_PERCENT",
+      "END_BACKLOG_GROWTH_ABOVE_10_PERCENT"
+    ]
+  },
+  "recovery": {
+    "actualSuffixRecords": 76891,
+    "actualSuffixBytes": 16147110,
+    "recoveryElapsedNanos": 1629550380959,
+    "exactResultDigest": true,
+    "exactSemanticStateDigest": true
+  },
+  "artifacts": [
+    {
+      "path": "build/reports/m10-release/raw-phase-cuts/part-00000.jsonl.gz",
+      "sha256": "062bb94f4f80d02c758b504a135b8628b30e9f62b510c15715bdd85ea06b8603"
+    },
+    {
+      "path": "build/reports/m10-release/recovery.json",
+      "sha256": "a975e5e7325a94e2474319d70b9f91fec30285273417b7e27034957eb75f74bc"
+    }
+  ],
+  "publicationBoundary": "LOCAL_FAILED_ATTEMPT_ONLY_NO_RELEASE_EVIDENCE"
+}
