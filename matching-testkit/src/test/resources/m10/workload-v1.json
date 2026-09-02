@@ -112,8 +112,51 @@
   "microbenchmark": {
     "harness": "JMH",
     "mode": "SampleTime",
+    "benchmarks": [
+      "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.restingMakerThenMatchingTaker",
+      "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.canonicalEnvelopeDecode"
+    ],
     "resultScope": "DIAGNOSTIC_ONLY",
     "releaseGate": false
+  },
+  "qualificationRuntime": {
+    "policyId": "M10Q1",
+    "scope": "M10_DEDICATED_NOT_M09_DEFAULT",
+    "m09Default": {
+      "maxSuffixRecords": 64,
+      "maxSuffixBytes": 1048576
+    },
+    "finiteRecoveryBudget": {
+      "maxSuffixRecords": 1000000,
+      "maxSuffixBytes": 1073741824
+    },
+    "proactiveCheckpointOffsetNanos": 100000000,
+    "plannedRecordCeilingBytes": 1024,
+    "phaseBudgetPreflight": {
+      "prefixRecords": "START_SUFFIX_PLUS_PRE_OFFSET_ARRIVALS_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER",
+      "postCheckpointSuffixRecords": "POST_OFFSET_PLANNED_DURABLE_ARRIVALS_PLUS_CONSERVATIVE_RETRY_BOUND",
+      "validatePrefixAndSuffixSeparately": true
+    },
+    "scheduler": {
+      "initialArrivalThread": "DEDICATED_NO_COMPLETION_CHECKPOINT_OR_ARTIFACT_IO",
+      "coordinator": "ASYNC_COMPLETION_CHECKPOINT_RETRY_AND_ARTIFACT_IO",
+      "allInitialOffersBeforeScheduledWindowEnd": true,
+      "p99ProducerLagMaxNanos": 50000000,
+      "maxProducerLagMaxNanos": 250000000
+    },
+    "observationCut": "SCHEDULED_WINDOW_END_BEFORE_TERMINAL_DRAIN",
+    "terminalDrain": "ZERO_PENDING_BEFORE_RECOVERY",
+    "resourceSampling": {
+      "targetCadenceNanos": 1000000000,
+      "maximumScheduledGapNanos": 2000000000,
+      "scope": "SCHEDULED_WINDOW_THROUGH_TERMINAL_DRAIN",
+      "cumulativeCounters": "MONOTONIC_NON_DECREASING",
+      "gauges": "NON_NEGATIVE_NOT_CUMULATIVE"
+    },
+    "directReplay": {
+      "runtimeConfig": "M08_LEGACY_UNBOUNDED_NO_SNAPSHOT",
+      "purpose": "FRESH_ORDERED_APPLY_DIAGNOSTIC_ONLY"
+    }
   },
   "releaseOpenLoop": {
     "profileId": "RELEASE_QUALIFICATION",
@@ -164,6 +207,8 @@
     "acceptedCommands": "PASS_THROUGH_SUBMISSION_RESULT_AND_MATCH_DURABLE_TRANSCRIPT",
     "overloadRejections": "NEVER_MUTATE_WAL_IDENTITY_OR_MATCHING_STATE",
     "loadThenRecovery": "EXACT_CANONICAL_RESULT_AND_STATE_DIGEST",
+    "rawAttemptJoin": "POINT_LOGICAL_ID_AND_ATTEMPT_EXACTLY_ONCE",
+    "recoveryTrace": "RECONSTRUCT_BINARY_HASH_FROM_ACCEPTED_TRACE",
     "systemError": "NEVER_PASS_OR_MUTANT_KILL"
   },
   "coverageRequirements": [

@@ -61,6 +61,13 @@ ineligible for release evidence. The exact contract is in [`docs/specs/m10.md`](
 Every admitted item must pass through exactly one unchanged local-runtime `SubmissionResult` or an
 explicit service failure; only the durable result variants are ACKs, and enqueue is never an ACK.
 
+The qualification does not pretend to measure the unchanged M09 default of 64 suffix records / 1
+MiB. It freezes and publishes `M10Q1` instead: a finite 1,000,000-record / 1-GiB suffix budget, a
+proactive same-FIFO checkpoint 100 ms into each scheduled phase, strict producer-lag gates, and a
+scheduled-window observation cut that is preserved separately from the later zero-pending drain.
+The default and qualification settings both remain visible in every eligible report; an `M10Q1`
+capacity envelope is not evidence for the M09 default.
+
 Ordinary CI proves only that the method and contracts execute. It must not publish CI-run throughput
 as the `matching-0.5.0` capacity claim. The future product evidence requires the full release profile,
 raw samples, resource series, environment fingerprint, load-then-recovery equality, clean source,

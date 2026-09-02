@@ -131,7 +131,7 @@
       "additionalProperties": false,
       "required": ["sha256", "seed", "fixedScenarios", "generatedHistories", "actionsPerHistory", "generatedActions", "lanes", "queueCapacity", "coverageObligations", "requiredMutants", "schemaProbes"],
       "properties": {
-        "sha256": {"const": "dfa26aed0f41d29c3c4a1d3ad85c6a8793239e8f634100cadafaa496941a29cb"},
+        "sha256": {"const": "992882b78caef35c35680d0073921ae8bb0df71d59c21c4236ebfc056f7f8ace"},
         "seed": {"const": "6010"},
         "fixedScenarios": {"const": 20},
         "generatedHistories": {"const": 64},
@@ -161,9 +161,10 @@
     "measurement": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["microbenchmark", "releaseOpenLoop", "ciSmoke", "saturation", "releaseSoak", "resourceDimensions"],
+      "required": ["microbenchmark", "qualificationRuntime", "releaseOpenLoop", "ciSmoke", "saturation", "releaseSoak", "resourceDimensions"],
       "properties": {
         "microbenchmark": {"$ref": "#/$defs/micro"},
+        "qualificationRuntime": {"$ref": "#/$defs/qualificationRuntime"},
         "releaseOpenLoop": {"$ref": "#/$defs/releaseOpenLoop"},
         "ciSmoke": {"$ref": "#/$defs/ciSmoke"},
         "saturation": {"$ref": "#/$defs/saturation"},
@@ -174,12 +175,71 @@
     "micro": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["harness", "mode", "resultScope", "releaseGate"],
+      "required": ["harness", "mode", "benchmarks", "resultScope", "releaseGate"],
       "properties": {
         "harness": {"const": "JMH"},
         "mode": {"const": "SampleTime"},
+        "benchmarks": {
+          "const": [
+            "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.restingMakerThenMatchingTaker",
+            "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.canonicalEnvelopeDecode"
+          ]
+        },
         "resultScope": {"const": "DIAGNOSTIC_ONLY"},
         "releaseGate": {"const": false}
+      }
+    },
+    "qualificationRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyId", "scope", "m09Default", "finiteRecoveryBudget", "proactiveCheckpointOffsetNanos", "plannedRecordCeilingBytes", "phaseBudgetPreflight", "scheduler", "observationCut", "terminalDrain"],
+      "properties": {
+        "policyId": {"const": "M10Q1"},
+        "scope": {"const": "M10_DEDICATED_NOT_M09_DEFAULT"},
+        "m09Default": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxSuffixRecords", "maxSuffixBytes"],
+          "properties": {
+            "maxSuffixRecords": {"const": 64},
+            "maxSuffixBytes": {"const": 1048576}
+          }
+        },
+        "finiteRecoveryBudget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxSuffixRecords", "maxSuffixBytes"],
+          "properties": {
+            "maxSuffixRecords": {"const": 1000000},
+            "maxSuffixBytes": {"const": 1073741824}
+          }
+        },
+        "proactiveCheckpointOffsetNanos": {"const": 100000000},
+        "plannedRecordCeilingBytes": {"const": 1024},
+        "phaseBudgetPreflight": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prefixRecords", "postCheckpointSuffixRecords", "validatePrefixAndSuffixSeparately"],
+          "properties": {
+            "prefixRecords": {"const": "START_SUFFIX_PLUS_PRE_OFFSET_ARRIVALS_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER"},
+            "postCheckpointSuffixRecords": {"const": "POST_OFFSET_PLANNED_DURABLE_ARRIVALS_PLUS_CONSERVATIVE_RETRY_BOUND"},
+            "validatePrefixAndSuffixSeparately": {"const": true}
+          }
+        },
+        "scheduler": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["initialArrivalThread", "coordinator", "allInitialOffersBeforeScheduledWindowEnd", "p99ProducerLagMaxNanos", "maxProducerLagMaxNanos"],
+          "properties": {
+            "initialArrivalThread": {"const": "DEDICATED_NO_COMPLETION_CHECKPOINT_OR_ARTIFACT_IO"},
+            "coordinator": {"const": "ASYNC_COMPLETION_CHECKPOINT_RETRY_AND_ARTIFACT_IO"},
+            "allInitialOffersBeforeScheduledWindowEnd": {"const": true},
+            "p99ProducerLagMaxNanos": {"const": 50000000},
+            "maxProducerLagMaxNanos": {"const": 250000000}
+          }
+        },
+        "observationCut": {"const": "SCHEDULED_WINDOW_END_BEFORE_TERMINAL_DRAIN"},
+        "terminalDrain": {"const": "ZERO_PENDING_BEFORE_RECOVERY"}
       }
     },
     "releaseOpenLoop": {

@@ -96,7 +96,7 @@ jobs:
               "expectedStatus": "PASS"
             } and
             .workloadProfile == {
-              "sha256": "dfa26aed0f41d29c3c4a1d3ad85c6a8793239e8f634100cadafaa496941a29cb",
+              "sha256": "992882b78caef35c35680d0073921ae8bb0df71d59c21c4236ebfc056f7f8ace",
               "seed": "6010",
               "fixedScenarios": 20,
               "generatedHistories": 64,
@@ -114,9 +114,23 @@ jobs:
             .measurementContract.microbenchmark == {
               "harness": "JMH",
               "mode": "SampleTime",
+              "benchmarks": [
+                "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.restingMakerThenMatchingTaker",
+                "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.canonicalEnvelopeDecode"
+              ],
               "resultScope": "DIAGNOSTIC_ONLY",
               "releaseGate": false
             } and
+            .measurementContract.qualificationRuntime.policyId == "M10Q1" and
+            .measurementContract.qualificationRuntime.scope == "M10_DEDICATED_NOT_M09_DEFAULT" and
+            .measurementContract.qualificationRuntime.m09Default == {"maxSuffixRecords": 64, "maxSuffixBytes": 1048576} and
+            .measurementContract.qualificationRuntime.finiteRecoveryBudget == {"maxSuffixRecords": 1000000, "maxSuffixBytes": 1073741824} and
+            .measurementContract.qualificationRuntime.proactiveCheckpointOffsetNanos == 100000000 and
+            .measurementContract.qualificationRuntime.plannedRecordCeilingBytes == 1024 and
+            .measurementContract.qualificationRuntime.phaseBudgetPreflight.validatePrefixAndSuffixSeparately == true and
+            .measurementContract.qualificationRuntime.scheduler.allInitialOffersBeforeScheduledWindowEnd == true and
+            .measurementContract.qualificationRuntime.observationCut == "SCHEDULED_WINDOW_END_BEFORE_TERMINAL_DRAIN" and
+            .measurementContract.qualificationRuntime.terminalDrain == "ZERO_PENDING_BEFORE_RECOVERY" and
             .measurementContract.releaseOpenLoop.calibrationSeconds == 20 and
             .measurementContract.releaseOpenLoop.sweeps == 3 and
             .measurementContract.releaseOpenLoop.warmupSecondsPerRate == 10 and

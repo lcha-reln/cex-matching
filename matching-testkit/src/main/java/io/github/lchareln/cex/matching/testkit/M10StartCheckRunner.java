@@ -19,7 +19,7 @@ import tools.jackson.databind.node.ObjectNode;
 public final class M10StartCheckRunner {
   public static final String STATUS = "GOAL_NOT_IMPLEMENTED";
   public static final String WORKLOAD_SHA256 =
-      "dfa26aed0f41d29c3c4a1d3ad85c6a8793239e8f634100cadafaa496941a29cb";
+      "992882b78caef35c35680d0073921ae8bb0df71d59c21c4236ebfc056f7f8ace";
 
   static final String WORKLOAD_PATH = "matching-testkit/src/test/resources/m10/workload-v1.json";
   static final String WORKLOAD_SCHEMA_PATH = "schemas/matching.m10.workload.v1.schema.json";
@@ -167,8 +167,40 @@ public final class M10StartCheckRunner {
     ObjectNode micro = measurement.putObject("microbenchmark");
     micro.put("harness", "JMH");
     micro.put("mode", "SampleTime");
+    writeStrings(
+        micro.putArray("benchmarks"),
+        List.of(
+            "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.restingMakerThenMatchingTaker",
+            "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.canonicalEnvelopeDecode"));
     micro.put("resultScope", "DIAGNOSTIC_ONLY");
     micro.put("releaseGate", false);
+    ObjectNode runtime = measurement.putObject("qualificationRuntime");
+    runtime.put("policyId", "M10Q1");
+    runtime.put("scope", "M10_DEDICATED_NOT_M09_DEFAULT");
+    ObjectNode inheritedBudget = runtime.putObject("m09Default");
+    inheritedBudget.put("maxSuffixRecords", 64);
+    inheritedBudget.put("maxSuffixBytes", 1_048_576);
+    ObjectNode qualificationBudget = runtime.putObject("finiteRecoveryBudget");
+    qualificationBudget.put("maxSuffixRecords", 1_000_000);
+    qualificationBudget.put("maxSuffixBytes", 1_073_741_824);
+    runtime.put("proactiveCheckpointOffsetNanos", 100_000_000);
+    runtime.put("plannedRecordCeilingBytes", 1_024);
+    ObjectNode preflight = runtime.putObject("phaseBudgetPreflight");
+    preflight.put(
+        "prefixRecords",
+        "START_SUFFIX_PLUS_PRE_OFFSET_ARRIVALS_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER");
+    preflight.put(
+        "postCheckpointSuffixRecords",
+        "POST_OFFSET_PLANNED_DURABLE_ARRIVALS_PLUS_CONSERVATIVE_RETRY_BOUND");
+    preflight.put("validatePrefixAndSuffixSeparately", true);
+    ObjectNode scheduler = runtime.putObject("scheduler");
+    scheduler.put("initialArrivalThread", "DEDICATED_NO_COMPLETION_CHECKPOINT_OR_ARTIFACT_IO");
+    scheduler.put("coordinator", "ASYNC_COMPLETION_CHECKPOINT_RETRY_AND_ARTIFACT_IO");
+    scheduler.put("allInitialOffersBeforeScheduledWindowEnd", true);
+    scheduler.put("p99ProducerLagMaxNanos", 50_000_000);
+    scheduler.put("maxProducerLagMaxNanos", 250_000_000);
+    runtime.put("observationCut", "SCHEDULED_WINDOW_END_BEFORE_TERMINAL_DRAIN");
+    runtime.put("terminalDrain", "ZERO_PENDING_BEFORE_RECOVERY");
     ObjectNode release = measurement.putObject("releaseOpenLoop");
     release.put("calibrationSeconds", 20);
     release.put("calibrationPurpose", "RATE_SELECTION_ONLY");
@@ -314,6 +346,28 @@ public final class M10StartCheckRunner {
     require(
         "DIAGNOSTIC_ONLY".equals(workload.path("microbenchmark").path("resultScope").stringValue()),
         "M10 microbenchmark scope changed");
+    JsonNode runtime = workload.path("qualificationRuntime");
+    require(
+        "M10_DEDICATED_NOT_M09_DEFAULT".equals(runtime.path("scope").stringValue()),
+        "M10 qualification runtime scope changed");
+    require(
+        runtime.path("m09Default").path("maxSuffixRecords").longValue() == 64
+            && runtime.path("m09Default").path("maxSuffixBytes").longValue() == 1_048_576,
+        "M09 default recovery boundary changed");
+    require(
+        runtime.path("finiteRecoveryBudget").path("maxSuffixRecords").longValue() == 1_000_000
+            && runtime.path("finiteRecoveryBudget").path("maxSuffixBytes").longValue()
+                == 1_073_741_824,
+        "M10 qualification recovery budget changed");
+    require(
+        runtime
+            .path("phaseBudgetPreflight")
+            .path("validatePrefixAndSuffixSeparately")
+            .booleanValue(),
+        "M10 prefix/suffix preflight separation changed");
+    require(
+        runtime.path("scheduler").path("allInitialOffersBeforeScheduledWindowEnd").booleanValue(),
+        "M10 scheduled arrival fidelity changed");
     require(
         workload.path("releaseSoak").path("durationSeconds").intValue() == 1800,
         "M10 release soak duration changed");
@@ -344,9 +398,10 @@ public final class M10StartCheckRunner {
     ObjectNode missingPercentile = (ObjectNode) valid.deepCopy();
     ((ArrayNode) missingPercentile.path("releaseOpenLoop").path("percentiles")).remove(3);
     probes.add(missingPercentile);
-    ObjectNode absoluteThroughput = (ObjectNode) valid.deepCopy();
-    absoluteThroughput.put("minimumOrdersPerSecond", 1_000_000);
-    probes.add(absoluteThroughput);
+    ObjectNode wrongRecoveryBudget = (ObjectNode) valid.deepCopy();
+    ((ObjectNode) wrongRecoveryBudget.path("qualificationRuntime").path("finiteRecoveryBudget"))
+        .put("maxSuffixRecords", 64);
+    probes.add(wrongRecoveryBudget);
     probes.forEach(value -> expectSchemaFailure(value, schema));
     return probes.size();
   }

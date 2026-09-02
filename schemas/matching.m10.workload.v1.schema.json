@@ -10,6 +10,7 @@
     "generatedAdmissionModel",
     "admissionContract",
     "microbenchmark",
+    "qualificationRuntime",
     "releaseOpenLoop",
     "ciSmoke",
     "saturation",
@@ -46,6 +47,7 @@
     "generatedAdmissionModel": {"$ref": "#/$defs/generated"},
     "admissionContract": {"$ref": "#/$defs/admission"},
     "microbenchmark": {"$ref": "#/$defs/micro"},
+    "qualificationRuntime": {"$ref": "#/$defs/qualificationRuntime"},
     "releaseOpenLoop": {"$ref": "#/$defs/releaseOpenLoop"},
     "ciSmoke": {"$ref": "#/$defs/ciSmoke"},
     "saturation": {"$ref": "#/$defs/saturation"},
@@ -194,12 +196,94 @@
     "micro": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["harness", "mode", "resultScope", "releaseGate"],
+      "required": ["harness", "mode", "benchmarks", "resultScope", "releaseGate"],
       "properties": {
         "harness": {"const": "JMH"},
         "mode": {"const": "SampleTime"},
+        "benchmarks": {
+          "const": [
+            "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.restingMakerThenMatchingTaker",
+            "io.github.lchareln.cex.matching.benchmark.CoreMatchingBenchmark.canonicalEnvelopeDecode"
+          ]
+        },
         "resultScope": {"const": "DIAGNOSTIC_ONLY"},
         "releaseGate": {"const": false}
+      }
+    },
+    "qualificationRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyId", "scope", "m09Default", "finiteRecoveryBudget", "proactiveCheckpointOffsetNanos", "plannedRecordCeilingBytes", "phaseBudgetPreflight", "scheduler", "observationCut", "terminalDrain", "resourceSampling", "directReplay"],
+      "properties": {
+        "policyId": {"const": "M10Q1"},
+        "scope": {"const": "M10_DEDICATED_NOT_M09_DEFAULT"},
+        "m09Default": {"$ref": "#/$defs/m09DefaultBudget"},
+        "finiteRecoveryBudget": {"$ref": "#/$defs/m10QualificationBudget"},
+        "proactiveCheckpointOffsetNanos": {"const": 100000000},
+        "plannedRecordCeilingBytes": {"const": 1024},
+        "phaseBudgetPreflight": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prefixRecords", "postCheckpointSuffixRecords", "validatePrefixAndSuffixSeparately"],
+          "properties": {
+            "prefixRecords": {"const": "START_SUFFIX_PLUS_PRE_OFFSET_ARRIVALS_PLUS_QUEUE_CAPACITY_PLUS_ONE_OWNER"},
+            "postCheckpointSuffixRecords": {"const": "POST_OFFSET_PLANNED_DURABLE_ARRIVALS_PLUS_CONSERVATIVE_RETRY_BOUND"},
+            "validatePrefixAndSuffixSeparately": {"const": true}
+          }
+        },
+        "scheduler": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["initialArrivalThread", "coordinator", "allInitialOffersBeforeScheduledWindowEnd", "p99ProducerLagMaxNanos", "maxProducerLagMaxNanos"],
+          "properties": {
+            "initialArrivalThread": {"const": "DEDICATED_NO_COMPLETION_CHECKPOINT_OR_ARTIFACT_IO"},
+            "coordinator": {"const": "ASYNC_COMPLETION_CHECKPOINT_RETRY_AND_ARTIFACT_IO"},
+            "allInitialOffersBeforeScheduledWindowEnd": {"const": true},
+            "p99ProducerLagMaxNanos": {"const": 50000000},
+            "maxProducerLagMaxNanos": {"const": 250000000}
+          }
+        },
+        "observationCut": {"const": "SCHEDULED_WINDOW_END_BEFORE_TERMINAL_DRAIN"},
+        "terminalDrain": {"const": "ZERO_PENDING_BEFORE_RECOVERY"},
+        "resourceSampling": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["targetCadenceNanos", "maximumScheduledGapNanos", "scope", "cumulativeCounters", "gauges"],
+          "properties": {
+            "targetCadenceNanos": {"const": 1000000000},
+            "maximumScheduledGapNanos": {"const": 2000000000},
+            "scope": {"const": "SCHEDULED_WINDOW_THROUGH_TERMINAL_DRAIN"},
+            "cumulativeCounters": {"const": "MONOTONIC_NON_DECREASING"},
+            "gauges": {"const": "NON_NEGATIVE_NOT_CUMULATIVE"}
+          }
+        },
+        "directReplay": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runtimeConfig", "purpose"],
+          "properties": {
+            "runtimeConfig": {"const": "M08_LEGACY_UNBOUNDED_NO_SNAPSHOT"},
+            "purpose": {"const": "FRESH_ORDERED_APPLY_DIAGNOSTIC_ONLY"}
+          }
+        }
+      }
+    },
+    "m09DefaultBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxSuffixRecords", "maxSuffixBytes"],
+      "properties": {
+        "maxSuffixRecords": {"const": 64},
+        "maxSuffixBytes": {"const": 1048576}
+      }
+    },
+    "m10QualificationBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxSuffixRecords", "maxSuffixBytes"],
+      "properties": {
+        "maxSuffixRecords": {"const": 1000000},
+        "maxSuffixBytes": {"const": 1073741824}
       }
     },
     "releaseOpenLoop": {
@@ -274,11 +358,13 @@
     "correctness": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["acceptedCommands", "overloadRejections", "loadThenRecovery", "systemError"],
+      "required": ["acceptedCommands", "overloadRejections", "loadThenRecovery", "rawAttemptJoin", "recoveryTrace", "systemError"],
       "properties": {
         "acceptedCommands": {"const": "PASS_THROUGH_SUBMISSION_RESULT_AND_MATCH_DURABLE_TRANSCRIPT"},
         "overloadRejections": {"const": "NEVER_MUTATE_WAL_IDENTITY_OR_MATCHING_STATE"},
         "loadThenRecovery": {"const": "EXACT_CANONICAL_RESULT_AND_STATE_DIGEST"},
+        "rawAttemptJoin": {"const": "POINT_LOGICAL_ID_AND_ATTEMPT_EXACTLY_ONCE"},
+        "recoveryTrace": {"const": "RECONSTRUCT_BINARY_HASH_FROM_ACCEPTED_TRACE"},
         "systemError": {"const": "NEVER_PASS_OR_MUTANT_KILL"}
       }
     }
