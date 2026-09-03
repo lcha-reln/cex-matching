@@ -191,8 +191,12 @@ public final class M11SingleNodeCluster implements AutoCloseable {
               baseline.completionCount(),
               completionCount,
               toggle,
+              baseline.serviceRecordingId(),
+              baseline.consensusRecordingId(),
               serviceEntry.leadershipTermId,
+              consensusEntry.leadershipTermId,
               serviceEntry.logPosition,
+              consensusEntry.logPosition,
               serviceEntry.recordingId,
               consensusEntry.recordingId);
         }

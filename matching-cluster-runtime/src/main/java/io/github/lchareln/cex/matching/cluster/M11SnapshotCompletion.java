@@ -7,8 +7,12 @@ public record M11SnapshotCompletion(
     long completionCountBefore,
     long completionCountAfter,
     ClusterControl.ToggleState controlToggleState,
-    long leadershipTermId,
-    long logPosition,
+    long previousServiceRecordingId,
+    long previousConsensusRecordingId,
+    long serviceLeadershipTermId,
+    long consensusLeadershipTermId,
+    long serviceLogPosition,
+    long consensusLogPosition,
     long serviceRecordingId,
     long consensusRecordingId) {
   public M11SnapshotCompletion {
@@ -18,11 +22,42 @@ public record M11SnapshotCompletion(
     if (controlToggleState != ClusterControl.ToggleState.NEUTRAL) {
       throw new IllegalArgumentException("snapshot control toggle did not reset to NEUTRAL");
     }
-    if (leadershipTermId < 0
-        || logPosition < 0
+    if (serviceLeadershipTermId < 0
+        || consensusLeadershipTermId < 0
+        || serviceLogPosition < 0
+        || consensusLogPosition < 0
         || serviceRecordingId < 0
         || consensusRecordingId < 0) {
       throw new IllegalArgumentException("snapshot RecordingLog witness is incomplete");
     }
+    if (serviceRecordingId == previousServiceRecordingId
+        || consensusRecordingId == previousConsensusRecordingId) {
+      throw new IllegalArgumentException("snapshot RecordingLog entries did not advance");
+    }
+    if (serviceLeadershipTermId != consensusLeadershipTermId
+        || serviceLogPosition != consensusLogPosition) {
+      throw new IllegalArgumentException(
+          "consensus and service snapshot entries do not share a term and log position");
+    }
+  }
+
+  public boolean recordingIdsChanged() {
+    return serviceRecordingId != previousServiceRecordingId
+        && consensusRecordingId != previousConsensusRecordingId;
+  }
+
+  public boolean sameTermAndLogPosition() {
+    return serviceLeadershipTermId == consensusLeadershipTermId
+        && serviceLogPosition == consensusLogPosition;
+  }
+
+  /** Shared term retained as a compatibility convenience for existing M11 report code. */
+  public long leadershipTermId() {
+    return serviceLeadershipTermId;
+  }
+
+  /** Shared log position retained as a compatibility convenience for existing M11 report code. */
+  public long logPosition() {
+    return serviceLogPosition;
   }
 }

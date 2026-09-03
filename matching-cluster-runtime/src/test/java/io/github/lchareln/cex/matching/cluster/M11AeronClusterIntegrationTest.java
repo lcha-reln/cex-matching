@@ -66,6 +66,8 @@ class M11AeronClusterIntegrationTest {
       assertEquals(digestAtSnapshot, snapshot.applicationSnapshot().semanticStateDigest());
       assertTrue(snapshot.completion().serviceRecordingId() >= 0);
       assertTrue(snapshot.completion().consensusRecordingId() >= 0);
+      assertTrue(snapshot.completion().recordingIdsChanged());
+      assertTrue(snapshot.completion().sameTermAndLogPosition());
 
       harness.restartFromSnapshot();
       harness.restartFromSnapshot();
