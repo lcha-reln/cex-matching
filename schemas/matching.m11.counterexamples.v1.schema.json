@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m11.counterexamples.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "seed",
+    "required",
+    "persisted",
+    "replayInterpreter",
+    "minimalityScope",
+    "globalMinimumClaim",
+    "invalidHistoryCountedAsKill",
+    "systemErrorCountedAsKill",
+    "witnesses"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "matching.m11.counterexamples.v1" },
+    "seed": { "const": "6111" },
+    "required": { "const": 10 },
+    "persisted": { "const": 10 },
+    "replayInterpreter": { "const": "M11_DECLARED_STEP_GRAMMAR_V1" },
+    "minimalityScope": { "const": "ONE_MINIMAL_WITHIN_DECLARED_STEP_DELETION_GRAMMAR" },
+    "globalMinimumClaim": { "const": false },
+    "invalidHistoryCountedAsKill": { "const": false },
+    "systemErrorCountedAsKill": { "const": false },
+    "witnesses": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/witness" }
+    }
+  },
+  "$defs": {
+    "witness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "mutant",
+        "classification",
+        "fingerprint",
+        "rawActions",
+        "minimalActions",
+        "shrinkTrials",
+        "minimalityScope",
+        "globalMinimumClaim",
+        "steps"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^cex-m11-[a-z0-9-]+$" },
+        "mutant": { "type": "string", "pattern": "^M11-[A-Z0-9-]+$" },
+        "classification": { "const": "STUDENT_FAILURE" },
+        "fingerprint": { "type": "string", "pattern": "^[A-Z0-9_]+$" },
+        "rawActions": { "type": "integer", "minimum": 1 },
+        "minimalActions": { "type": "integer", "minimum": 1 },
+        "shrinkTrials": { "type": "integer", "minimum": 1 },
+        "minimalityScope": { "const": "ONE_MINIMAL_WITHIN_DECLARED_STEP_DELETION_GRAMMAR" },
+        "globalMinimumClaim": { "const": false },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "encoded"],
+            "properties": {
+              "kind": { "type": "string", "pattern": "^[A-Z_]+$" },
+              "encoded": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

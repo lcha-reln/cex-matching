@@ -1,0 +1,352 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lcha-reln/cex-matching/main/schemas/matching.m11.check.v2.schema.json",
+  "oneOf": [
+    { "$ref": "#/$defs/pass" },
+    { "$ref": "#/$defs/failure" }
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": ["schemaVersion", "unit", "status", "contractPlanVersion", "releaseTarget"],
+      "properties": {
+        "schemaVersion": { "const": "matching.m11.check.v2" },
+        "unit": { "const": "M11" },
+        "status": { "enum": ["PASS", "STUDENT_FAILURE", "SYSTEM_ERROR"] },
+        "contractPlanVersion": { "const": "0.14" },
+        "releaseTarget": { "$ref": "#/$defs/releaseTarget" }
+      }
+    },
+    "pass": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "unit",
+            "status",
+            "contractPlanVersion",
+            "objective",
+            "source",
+            "courseDeclaration",
+            "inheritedM10",
+            "workloadProfile",
+            "fixed",
+            "generator",
+            "protocol",
+            "clusterRuntime",
+            "snapshotRestart",
+            "coverage",
+            "mutants",
+            "architecture",
+            "environment",
+            "artifactBindings",
+            "releaseTarget"
+          ],
+          "properties": {
+            "schemaVersion": { "const": "matching.m11.check.v2" },
+            "unit": { "const": "M11" },
+            "status": { "const": "PASS" },
+            "contractPlanVersion": { "const": "0.14" },
+            "objective": {
+              "const": "Prove one deterministic matcher is business-equivalent through direct, uninterrupted single-member Aeron Cluster, and snapshot-restart single-member Aeron Cluster paths."
+            },
+            "source": { "$ref": "#/$defs/source" },
+            "courseDeclaration": { "$ref": "#/$defs/course" },
+            "inheritedM10": { "$ref": "#/$defs/inherited" },
+            "workloadProfile": { "$ref": "#/$defs/workload" },
+            "fixed": { "$ref": "#/$defs/fixed" },
+            "generator": { "$ref": "#/$defs/generator" },
+            "protocol": { "$ref": "#/$defs/protocol" },
+            "clusterRuntime": { "$ref": "#/$defs/clusterRuntime" },
+            "snapshotRestart": { "$ref": "#/$defs/snapshotRestart" },
+            "coverage": { "$ref": "#/$defs/coverage" },
+            "mutants": { "$ref": "#/$defs/mutants" },
+            "architecture": { "$ref": "#/$defs/architecture" },
+            "environment": { "$ref": "#/$defs/environment" },
+            "artifactBindings": {
+              "type": "array",
+              "minItems": 11,
+              "maxItems": 11,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/artifact" }
+            },
+            "releaseTarget": { "$ref": "#/$defs/releaseTarget" }
+          }
+        }
+      ]
+    },
+    "failure": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "unit", "status", "contractPlanVersion", "failure", "releaseTarget"],
+          "properties": {
+            "schemaVersion": { "const": "matching.m11.check.v2" },
+            "unit": { "const": "M11" },
+            "status": { "enum": ["STUDENT_FAILURE", "SYSTEM_ERROR"] },
+            "contractPlanVersion": { "const": "0.14" },
+            "failure": { "type": "string", "minLength": 1 },
+            "releaseTarget": { "$ref": "#/$defs/releaseTarget" }
+          }
+        }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "dirty"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[a-f0-9]{40}(?:[a-f0-9]{24})?$" },
+        "dirty": { "type": "boolean" }
+      }
+    },
+    "course": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case", "profile", "planVersion", "project", "unit", "lifecycle", "designDepth", "startRef", "completeRef", "m11Check.expectedStatus", "evidencePath"],
+      "properties": {
+        "case": { "const": "high-availability-cex" },
+        "profile": { "const": "SPOT-CEX-1.0" },
+        "planVersion": { "const": "0.14" },
+        "project": { "const": "matching" },
+        "unit": { "const": "M11" },
+        "lifecycle": { "const": "COMPLETE" },
+        "designDepth": { "const": "IMPLEMENTED" },
+        "startRef": { "const": "course/m11-start" },
+        "completeRef": { "const": "course/m11-complete" },
+        "m11Check.expectedStatus": { "const": "PASS" },
+        "evidencePath": { "const": "build/lab-evidence/M11/manifest.json" }
+      }
+    },
+    "inherited": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "completeRef", "productRelease", "status", "fixedScenarios", "generatedActions", "mutantsKilled", "methodSmoke", "currentCompiledClasses", "baselineCommit"],
+      "properties": {
+        "unit": { "const": "M10" },
+        "completeRef": { "const": "course/m10-complete" },
+        "productRelease": { "const": "matching-0.5.0" },
+        "status": { "const": "PASS" },
+        "fixedScenarios": { "const": 20 },
+        "generatedActions": { "const": 16384 },
+        "mutantsKilled": { "const": 12 },
+        "methodSmoke": { "const": "PASS" },
+        "currentCompiledClasses": { "const": true },
+        "baselineCommit": { "type": "string", "pattern": "^[a-f0-9]{40}(?:[a-f0-9]{24})?$" }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "seed", "fixedScenarios", "histories", "actionsPerHistory", "actionsPerPath", "clusterRuns", "totalActualClusterIngress", "lanes", "snapshotAfterAction", "coverageObligations", "requiredMutants", "systemErrorControls", "goldens"],
+      "properties": {
+        "sha256": { "const": "b85c3d2c50a35b4ef7bca6fc64450f7a78f599103c4f8bcd09d783f92731c132" },
+        "seed": { "const": "6111" },
+        "fixedScenarios": { "const": 22 },
+        "histories": { "const": 32 },
+        "actionsPerHistory": { "const": 128 },
+        "actionsPerPath": { "const": 4096 },
+        "clusterRuns": { "const": 2 },
+        "totalActualClusterIngress": { "const": 8192 },
+        "lanes": { "const": 4 },
+        "snapshotAfterAction": { "const": 2048 },
+        "coverageObligations": { "const": 28 },
+        "requiredMutants": { "const": 10 },
+        "systemErrorControls": { "const": 3 },
+        "goldens": { "const": 6 }
+      }
+    },
+    "fixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarios", "passed", "status"],
+      "properties": {
+        "scenarios": { "const": 22 },
+        "passed": { "const": 22 },
+        "status": { "const": "PASS" }
+      }
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "seed", "histories", "actionsPerHistory", "actionsPerPath", "clusterRuns", "totalActualClusterIngress", "freshGenerations", "byteExactRegeneration", "canonicalSha256", "newApplied", "duplicateReplayed", "identityRejected", "commandIdConflicts", "slotConflicts", "directClusterComparisons", "clusterClusterComparisons", "threePathFullBusinessEquivalent", "finalIdentityBindings", "finalNextApplicationSequence"],
+      "properties": {
+        "algorithm": { "const": "splitmix64-v1" },
+        "seed": { "const": "6111" },
+        "histories": { "const": 32 },
+        "actionsPerHistory": { "const": 128 },
+        "actionsPerPath": { "const": 4096 },
+        "clusterRuns": { "const": 2 },
+        "totalActualClusterIngress": { "const": 8192 },
+        "freshGenerations": { "const": 2 },
+        "byteExactRegeneration": { "const": true },
+        "canonicalSha256": { "$ref": "#/$defs/sha256" },
+        "newApplied": { "const": 2048 },
+        "duplicateReplayed": { "const": 1024 },
+        "identityRejected": { "const": 1024 },
+        "commandIdConflicts": { "const": 512 },
+        "slotConflicts": { "const": 512 },
+        "directClusterComparisons": { "const": 8192 },
+        "clusterClusterComparisons": { "const": 4096 },
+        "threePathFullBusinessEquivalent": { "const": true },
+        "finalIdentityBindings": { "const": 2048 },
+        "finalNextApplicationSequence": { "const": 2049 }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["goldens", "requestV1Readable", "requestV2Current", "responseV1DownEncoded", "responseV2Current", "snapshotS1ReadableAndRestorable", "snapshotS2Current", "nMinusOneIdempotencyPreserved", "malformedFailsClosed", "unsupportedFailsClosed", "boundedResponse", "fullEventStreamInResponse"],
+      "properties": {
+        "goldens": { "const": 6 },
+        "requestV1Readable": { "const": true },
+        "requestV2Current": { "const": true },
+        "responseV1DownEncoded": { "const": true },
+        "responseV2Current": { "const": true },
+        "snapshotS1ReadableAndRestorable": { "const": true },
+        "snapshotS2Current": { "const": true },
+        "nMinusOneIdempotencyPreserved": { "const": true },
+        "malformedFailsClosed": { "const": true },
+        "unsupportedFailsClosed": { "const": true },
+        "boundedResponse": { "const": true },
+        "fullEventStreamInResponse": { "const": false }
+      }
+    },
+    "clusterRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["implementation", "memberCount", "memberId", "appointedLeaderId", "clusterRuns", "actionsPerRun", "acceptedIngressOffers", "correlatedResponses", "serviceObservations", "componentErrors", "singleMemberOnly", "highAvailabilityClaim", "performanceClaim", "dockerRequired", "externalServices"],
+      "properties": {
+        "implementation": { "const": "REAL_AERON_CLUSTER" },
+        "memberCount": { "const": 1 },
+        "memberId": { "const": 0 },
+        "appointedLeaderId": { "const": 0 },
+        "clusterRuns": { "const": 2 },
+        "actionsPerRun": { "const": 4096 },
+        "acceptedIngressOffers": { "const": 8192 },
+        "correlatedResponses": { "const": 8192 },
+        "serviceObservations": { "const": 8192 },
+        "componentErrors": { "const": 0 },
+        "singleMemberOnly": { "const": true },
+        "highAvailabilityClaim": { "const": false },
+        "performanceClaim": { "const": false },
+        "dockerRequired": { "const": false },
+        "externalServices": { "const": false }
+      }
+    },
+    "snapshotRestart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestedAfterAction", "adminRequestAccepted", "completionBounded", "controlToggleResetOrActive", "recordingLogNewSnapshotEntry", "closedOnlyAfterCompletion", "restartCount", "directoriesPreserved", "loadedSnapshot", "identityDigestExact", "semanticDigestExact", "nextApplicationSequenceExact", "duplicateOriginalResultsSurvived", "conflictsRemainNonMutating"],
+      "properties": {
+        "requestedAfterAction": { "const": 2048 },
+        "adminRequestAccepted": { "const": true },
+        "completionBounded": { "const": true },
+        "controlToggleResetOrActive": { "const": true },
+        "recordingLogNewSnapshotEntry": { "const": true },
+        "closedOnlyAfterCompletion": { "const": true },
+        "restartCount": { "const": 1 },
+        "directoriesPreserved": { "const": true },
+        "loadedSnapshot": { "const": true },
+        "identityDigestExact": { "const": true },
+        "semanticDigestExact": { "const": true },
+        "nextApplicationSequenceExact": { "const": true },
+        "duplicateOriginalResultsSurvived": { "const": 1024 },
+        "conflictsRemainNonMutating": { "const": 1024 }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "observed", "allWitnessed"],
+      "properties": {
+        "required": { "const": 28 },
+        "observed": { "const": 28 },
+        "allWitnessed": { "const": true }
+      }
+    },
+    "mutants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "killed", "classification", "executableCandidates", "systemErrorControls", "systemErrorsObserved", "systemErrorCountedAsKill", "counterexampleSha256"],
+      "properties": {
+        "required": { "const": 10 },
+        "killed": { "const": 10 },
+        "classification": { "const": "STUDENT_FAILURE" },
+        "executableCandidates": { "const": 10 },
+        "systemErrorControls": { "const": 3 },
+        "systemErrorsObserved": { "const": 3 },
+        "systemErrorCountedAsKill": { "const": false },
+        "counterexampleSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["m10CoreTree", "headCoreTree", "matchingCoreByteIdentical", "coreInfrastructureFree", "aeronProductionModule", "aeronJavaImportViolations", "aeronDependencyViolations", "clusterServiceLocalWalViolations", "clusterServiceExternalIoViolations", "standaloneWalWrites", "runtimeMetadataInBusinessDigest", "violations"],
+      "properties": {
+        "m10CoreTree": { "$ref": "#/$defs/gitObject" },
+        "headCoreTree": { "$ref": "#/$defs/gitObject" },
+        "matchingCoreByteIdentical": { "const": true },
+        "coreInfrastructureFree": { "const": true },
+        "aeronProductionModule": { "const": "matching-cluster-runtime" },
+        "aeronJavaImportViolations": { "const": 0 },
+        "aeronDependencyViolations": { "const": 0 },
+        "clusterServiceLocalWalViolations": { "const": 0 },
+        "clusterServiceExternalIoViolations": { "const": 0 },
+        "standaloneWalWrites": { "const": 0 },
+        "runtimeMetadataInBusinessDigest": { "const": false },
+        "violations": { "type": "array", "maxItems": 0 }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["javaRuntime", "javaVersion", "javaVendor", "vmName", "jvmArguments", "osName", "osVersion", "osArchitecture", "availableProcessors", "maximumHeapBytes", "clusterRoot", "fileStoreName", "fileStoreType", "runStartedAt", "runFinishedAt"],
+      "properties": {
+        "javaRuntime": { "type": "string", "minLength": 1 },
+        "javaVersion": { "type": "string", "minLength": 1 },
+        "javaVendor": { "type": "string", "minLength": 1 },
+        "vmName": { "type": "string", "minLength": 1 },
+        "jvmArguments": { "type": "array", "items": { "type": "string" } },
+        "osName": { "type": "string", "minLength": 1 },
+        "osVersion": { "type": "string", "minLength": 1 },
+        "osArchitecture": { "type": "string", "minLength": 1 },
+        "availableProcessors": { "type": "integer", "minimum": 1 },
+        "maximumHeapBytes": { "type": "integer", "minimum": 1 },
+        "clusterRoot": { "type": "string", "minLength": 1 },
+        "fileStoreName": { "type": "string", "minLength": 1 },
+        "fileStoreType": { "type": "string", "minLength": 1 },
+        "runStartedAt": { "type": "string", "format": "date-time" },
+        "runFinishedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "bytes"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^[a-z0-9][a-z0-9./-]*$" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "bytes": { "type": "integer", "minimum": 1, "maximum": 2097152 }
+      }
+    },
+    "releaseTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unitTag", "productRelease", "verification"],
+      "properties": {
+        "unitTag": { "const": "course/m11-complete" },
+        "productRelease": { "type": "null" },
+        "verification": { "const": "CLEAN_TREE_ANNOTATED_TAG_EVIDENCE" }
+      }
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "gitObject": { "type": "string", "pattern": "^[a-f0-9]{40}(?:[a-f0-9]{24})?$" }
+  }
+}
