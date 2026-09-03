@@ -29,8 +29,6 @@ import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.node.StringNode;
 
 final class M11EvidenceWriterTest {
-  private static final String EVIDENCE_SCHEMA = "schemas/cex.lab-evidence.v2.schema.json";
-
   @Test
   void cleanAnnotatedTopologyPublishesTheDynamicInventoryExactlyOnce(@TempDir Path temporary) {
     Lab lab = createLab(temporary, Topology.VALID);
@@ -213,16 +211,9 @@ final class M11EvidenceWriterTest {
   private static Lab createLab(Path temporary, Topology topology) {
     Path root = temporary.resolve("repo");
     Path source = Path.of(System.getProperty("matching.repositoryRoot"));
-    copy(source.resolve(EVIDENCE_SCHEMA), root.resolve(EVIDENCE_SCHEMA));
-    copy(
-        source.resolve(M11CheckRunner.CHECK_SCHEMA_PATH),
-        root.resolve(M11CheckRunner.CHECK_SCHEMA_PATH));
-    copy(
-        source.resolve(M11CheckRunner.COUNTEREXAMPLE_SCHEMA_PATH),
-        root.resolve(M11CheckRunner.COUNTEREXAMPLE_SCHEMA_PATH));
-    copy(
-        source.resolve(M11StartCheckRunner.WORKLOAD_SCHEMA_PATH),
-        root.resolve(M11StartCheckRunner.WORKLOAD_SCHEMA_PATH));
+    for (String schema : M11EvidenceWriter.EVIDENCE_SCHEMAS) {
+      copy(source.resolve(schema), root.resolve(schema));
+    }
     copy(
         source.resolve(M11StartCheckRunner.WORKLOAD_PATH),
         root.resolve(M11StartCheckRunner.WORKLOAD_PATH));
@@ -435,12 +426,7 @@ final class M11EvidenceWriterTest {
     for (JsonNode golden : workload.path("goldenFixtures")) {
       expected.add("inputs/goldens/" + Path.of(golden.path("path").stringValue()).getFileName());
     }
-    for (String schema :
-        List.of(
-            M11StartCheckRunner.WORKLOAD_SCHEMA_PATH,
-            M11CheckRunner.CHECK_SCHEMA_PATH,
-            M11CheckRunner.COUNTEREXAMPLE_SCHEMA_PATH,
-            EVIDENCE_SCHEMA)) {
+    for (String schema : M11EvidenceWriter.EVIDENCE_SCHEMAS) {
       expected.add("schemas/" + Path.of(schema).getFileName());
     }
     M11CheckRunner.OUTPUTS.forEach(name -> expected.add("reports/check/" + name));

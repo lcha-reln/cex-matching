@@ -44,6 +44,16 @@ public final class M11EvidenceWriter {
 
   static final List<String> REPORT_ARTIFACTS = List.copyOf(M11CheckRunner.OUTPUTS);
 
+  static final List<String> EVIDENCE_SCHEMAS =
+      List.of(
+          M11StartCheckRunner.WORKLOAD_SCHEMA_PATH,
+          CHECK_SCHEMA,
+          COUNTEREXAMPLE_SCHEMA,
+          M11CheckRunner.REPLAY_SCHEMA_PATH,
+          M11CheckRunner.COVERAGE_SCHEMA_PATH,
+          M11CheckRunner.MUTANTS_SCHEMA_PATH,
+          EVIDENCE_SCHEMA);
+
   static final List<String> REQUIRED_CLAIMS =
       List.of(
           "m00-m10-semantic-regression",
@@ -169,12 +179,7 @@ public final class M11EvidenceWriter {
               root.resolve(golden.path()),
               Path.of("inputs/goldens").resolve(golden.path().getFileName())));
     }
-    for (String schema :
-        List.of(
-            M11StartCheckRunner.WORKLOAD_SCHEMA_PATH,
-            CHECK_SCHEMA,
-            COUNTEREXAMPLE_SCHEMA,
-            EVIDENCE_SCHEMA)) {
+    for (String schema : EVIDENCE_SCHEMAS) {
       Path path = Path.of(schema);
       artifacts.add(
           SourceArtifact.capture(
@@ -189,7 +194,7 @@ public final class M11EvidenceWriter {
         SourceArtifact.capture(
             root, reports.resolve("check.json"), Path.of("reports/check/check.json")));
     require(
-        artifacts.size() == 12 + REPORT_ARTIFACTS.size(), "M11 evidence source inventory changed");
+        artifacts.size() == 15 + REPORT_ARTIFACTS.size(), "M11 evidence source inventory changed");
     Set<Path> unique = new LinkedHashSet<>();
     artifacts.forEach(
         artifact -> require(unique.add(artifact.evidencePath()), "duplicate M11 evidence path"));
@@ -271,7 +276,7 @@ public final class M11EvidenceWriter {
         claims,
         "protocol-compatibility-and-mutants",
         "mutation-testing",
-        "Six byte-exact current and N-1 fixtures fail closed outside the bounded protocol contract, while all ten executable semantic candidates produce persisted STUDENT_FAILURE witnesses and three SYSTEM_ERROR controls never count as kills.",
+        "Six byte-exact current and N-1 fixtures fail closed outside the bounded protocol contract, while all ten executable semantic candidates produce persisted, schema-valid, fresh-production replayed STUDENT_FAILURE witnesses and three SYSTEM_ERROR controls never count as kills.",
         object(
             "protocol", check.path("protocol"),
             "mutants", check.path("mutants")),
@@ -287,15 +292,19 @@ public final class M11EvidenceWriter {
             "schemas/matching.m11.workload.v1.schema.json",
             "schemas/matching.m11.check.v2.schema.json",
             "schemas/matching.m11.counterexamples.v1.schema.json",
+            "schemas/matching.m11.replay.v1.schema.json",
+            "schemas/matching.m11.coverage.v2.schema.json",
+            "schemas/matching.m11.mutants.v1.schema.json",
             "reports/check/protocol-goldens.json",
             "reports/check/mutants.json",
-            "reports/check/counterexamples.json"),
+            "reports/check/counterexamples.json",
+            "reports/check/replay.json"),
         CHECK_COMMAND);
     addClaim(
         claims,
         "architecture-and-unit-identity",
         "architecture",
-        "matching-core remains byte-identical to M10 and infrastructure-free; Aeron is confined to matching-cluster-runtime, the Cluster service writes no standalone WAL, and the annotated M11 unit tag identifies this exact clean commit without a product release.",
+        "matching-core remains byte-identical to M10 and infrastructure-free; Aeron is confined to matching-cluster-runtime, the complete production ClusteredService callback-reachable source graph contains no standalone-WAL or external-I/O reference, and the annotated M11 unit tag identifies this exact clean commit without a product release.",
         object(
             "architecture", check.path("architecture"),
             "releaseTarget", check.path("releaseTarget")),
@@ -950,12 +959,7 @@ public final class M11EvidenceWriter {
   private record SchemaSnapshot(Map<Path, String> hashes) {
     static SchemaSnapshot capture(Path root) {
       Map<Path, String> hashes = new LinkedHashMap<>();
-      for (String value :
-          List.of(
-              M11StartCheckRunner.WORKLOAD_SCHEMA_PATH,
-              CHECK_SCHEMA,
-              COUNTEREXAMPLE_SCHEMA,
-              EVIDENCE_SCHEMA)) {
+      for (String value : EVIDENCE_SCHEMAS) {
         Path path = Path.of(value);
         hashes.put(path, Hashing.sha256Hex(readBytes(root.resolve(path))));
       }
