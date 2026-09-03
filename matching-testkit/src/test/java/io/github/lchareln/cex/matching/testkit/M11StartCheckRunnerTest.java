@@ -25,8 +25,22 @@ final class M11StartCheckRunnerTest {
     assertEquals(M11StartCheckRunner.STATUS, result.status());
     assertEquals(22, report.path("workloadProfile").path("fixedScenarios").intValue());
     assertEquals(4096, report.path("workloadProfile").path("generatedActions").intValue());
+    assertEquals(
+        M11StartCheckRunner.SEGMENT_SCHEDULE,
+        strings(report.path("workloadProfile").path("segmentSchedule")));
     assertFalse(report.path("workloadProfile").path("stateResetBetweenSegments").booleanValue());
     assertEquals(8192, report.path("clusterContract").path("totalActualClusterIngress").intValue());
+    assertEquals(
+        1536, report.path("clusterContract").path("snapshotApplicationSequence").intValue());
+    assertEquals(
+        1537, report.path("clusterContract").path("snapshotNextApplicationSequence").intValue());
+    assertEquals(
+        "PREVIOUS_NEW", report.path("clusterContract").path("firstPostRestartLane").stringValue());
+    assertEquals(
+        "NEW_APPLIED",
+        report.path("clusterContract").path("firstPostRestartExpectedStatus").stringValue());
+    assertEquals(
+        512, report.path("clusterContract").path("postRestartCrossSnapshotDuplicates").intValue());
     assertEquals(5, report.path("clusterContract").path("snapshotCompletionWitnesses").size());
     assertEquals(28, report.path("coverageObligations").size());
     assertEquals(6, report.path("goldenFixtures").size());
@@ -44,6 +58,9 @@ final class M11StartCheckRunnerTest {
         Hashing.sha256Hex(Files.readAllBytes(root.resolve(M11StartCheckRunner.WORKLOAD_PATH))));
     JsonNode workload =
         JsonSupport.parse(Files.readAllBytes(root.resolve(M11StartCheckRunner.WORKLOAD_PATH)));
+    assertEquals(
+        M11StartCheckRunner.SEGMENT_SCHEDULE,
+        strings(workload.path("generatedDifferential").path("segmentSchedule")));
     for (int index = 0; index < M11ContractGoldens.fixtures().size(); index++) {
       M11ContractGoldens.Fixture fixture = M11ContractGoldens.fixtures().get(index);
       JsonNode binding = workload.path("goldenFixtures").get(index);
@@ -67,5 +84,11 @@ final class M11StartCheckRunnerTest {
 
   private static Path root() {
     return Path.of(System.getProperty("matching.repositoryRoot")).toAbsolutePath().normalize();
+  }
+
+  private static java.util.List<String> strings(JsonNode values) {
+    java.util.List<String> result = new java.util.ArrayList<>();
+    values.forEach(value -> result.add(value.stringValue()));
+    return java.util.List.copyOf(result);
   }
 }

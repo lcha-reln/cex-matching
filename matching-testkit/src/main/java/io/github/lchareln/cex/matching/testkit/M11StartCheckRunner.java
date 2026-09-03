@@ -20,7 +20,7 @@ import tools.jackson.databind.node.ObjectNode;
 public final class M11StartCheckRunner {
   public static final String STATUS = "GOAL_NOT_IMPLEMENTED";
   public static final String WORKLOAD_SHA256 =
-      "ec19d23ab95973dca8f5b9c41d773d0f7fe47db679f659bc3e776dd95739b7e7";
+      "f856c8dcf2e902add248a59cdb97525083bae469745682eed0ea7ae9169033b6";
 
   static final String WORKLOAD_PATH = "matching-testkit/src/test/resources/m11/workload-v1.json";
   static final String WORKLOAD_SCHEMA_PATH = "schemas/matching.m11.workload.v1.schema.json";
@@ -52,7 +52,42 @@ public final class M11StartCheckRunner {
           "CURRENT_DOWN_ENCODES_PREVIOUS_RESPONSE");
 
   static final List<String> LANE_IDS =
-      List.of("CURRENT_NEW", "PREVIOUS_NEW", "DUPLICATE_REPLAY", "IDENTITY_CONFLICT");
+      List.of("CURRENT_NEW", "DUPLICATE_REPLAY", "PREVIOUS_NEW", "IDENTITY_CONFLICT");
+
+  static final List<String> SEGMENT_SCHEDULE =
+      List.of(
+          "CURRENT_NEW[0]",
+          "CURRENT_NEW[1]",
+          "CURRENT_NEW[2]",
+          "CURRENT_NEW[3]",
+          "CURRENT_NEW[4]",
+          "CURRENT_NEW[5]",
+          "CURRENT_NEW[6]",
+          "CURRENT_NEW[7]",
+          "DUPLICATE_REPLAY[0]",
+          "DUPLICATE_REPLAY[1]",
+          "DUPLICATE_REPLAY[2]",
+          "DUPLICATE_REPLAY[3]",
+          "PREVIOUS_NEW[0]",
+          "PREVIOUS_NEW[1]",
+          "PREVIOUS_NEW[2]",
+          "PREVIOUS_NEW[3]",
+          "PREVIOUS_NEW[4]",
+          "PREVIOUS_NEW[5]",
+          "PREVIOUS_NEW[6]",
+          "PREVIOUS_NEW[7]",
+          "DUPLICATE_REPLAY[4]",
+          "DUPLICATE_REPLAY[5]",
+          "DUPLICATE_REPLAY[6]",
+          "DUPLICATE_REPLAY[7]",
+          "IDENTITY_CONFLICT[0]",
+          "IDENTITY_CONFLICT[1]",
+          "IDENTITY_CONFLICT[2]",
+          "IDENTITY_CONFLICT[3]",
+          "IDENTITY_CONFLICT[4]",
+          "IDENTITY_CONFLICT[5]",
+          "IDENTITY_CONFLICT[6]",
+          "IDENTITY_CONFLICT[7]");
 
   static final List<String> COVERAGE_IDS =
       List.of(
@@ -146,7 +181,8 @@ public final class M11StartCheckRunner {
     profile.put("actionsPerHistory", 128);
     profile.put("generatedActions", 4096);
     profile.put("composition", "ONE_CONTINUOUS_CORPUS_OF_32_ORDERED_SEGMENTS");
-    profile.put("segmentOrder", "LANE_MAJOR_AS_DECLARED_THEN_SEGMENT_INDEX");
+    profile.put("segmentOrder", "FIXED_DECLARED_32_SEGMENT_SCHEDULE");
+    writeStrings(profile.putArray("segmentSchedule"), SEGMENT_SCHEDULE);
     profile.put("stateResetBetweenSegments", false);
     profile.put("sequenceContinuity", "APPLICATION_AND_PRODUCER_CURSORS_CONTINUE_ACROSS_SEGMENTS");
     profile.put("snapshotCutScope", "GLOBAL_ACTION_BOUNDARY_AFTER_2048");
@@ -200,6 +236,13 @@ public final class M11StartCheckRunner {
         cluster.putArray("comparisonPaths"),
         List.of("DIRECT", "UNINTERRUPTED_CLUSTER", "SNAPSHOT_RESTART_CLUSTER"));
     cluster.put("snapshotAfterAction", 2048);
+    cluster.put("snapshotPrefixNewApplied", 1536);
+    cluster.put("snapshotPrefixDuplicateReplayed", 512);
+    cluster.put("snapshotApplicationSequence", 1536);
+    cluster.put("snapshotNextApplicationSequence", 1537);
+    cluster.put("firstPostRestartLane", "PREVIOUS_NEW");
+    cluster.put("firstPostRestartExpectedStatus", "NEW_APPLIED");
+    cluster.put("postRestartCrossSnapshotDuplicates", 512);
     cluster.put("adminSnapshotAcceptance", "OK_REQUIRED_NOT_COMPLETION");
     writeStrings(
         cluster.putArray("snapshotCompletionWitnesses"),
@@ -328,6 +371,12 @@ public final class M11StartCheckRunner {
         "ONE_CONTINUOUS_CORPUS_OF_32_ORDERED_SEGMENTS"
             .equals(generated.path("composition").stringValue()),
         "M11 corpus composition changed");
+    require(
+        "FIXED_DECLARED_32_SEGMENT_SCHEDULE".equals(generated.path("segmentOrder").stringValue()),
+        "M11 segment order changed");
+    require(
+        SEGMENT_SCHEDULE.equals(strings(generated.path("segmentSchedule"))),
+        "M11 segment schedule changed");
     require(
         !generated.path("stateResetBetweenSegments").booleanValue(), "M11 segment reset changed");
     require(

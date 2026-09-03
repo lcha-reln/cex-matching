@@ -65,11 +65,15 @@ not exist at the start ref:
 ```
 
 M11 freezes 22 fixed scenarios, SplitMix64 seed `6111`, one continuous 32-segment-by-128-action
-corpus (not 32 fresh-state histories), four equal lane-major groups,
+corpus (not 32 fresh-state histories), and the exact declared schedule `CURRENT_NEW[0..7]`,
+`DUPLICATE_REPLAY[0..3]`, `PREVIOUS_NEW[0..7]`, `DUPLICATE_REPLAY[4..7]`,
+`IDENTITY_CONFLICT[0..7]`,
 and three complete comparison paths: Direct plus two real Cluster runs of 4,096 actions each. The
 application sequence and producer cursors continue across segment boundaries. The second Cluster
 run performs a controlled snapshot/restart after global action 2,048, for 8,192 actual
-Cluster ingress actions in total. `AdminResponseCode.OK` is only request acceptance; shutdown must
+Cluster ingress actions in total. At that cut, 1,536 new results and 512 duplicates have run; the
+first post-restart Aeron command must be `NEW_APPLIED` at application sequence 1,537, followed later
+by 512 cross-snapshot duplicate replays. `AdminResponseCode.OK` is only request acceptance; shutdown must
 wait for the snapshot counter, neutral control toggle, new consensus (`-1`) and service (`0`)
 Recording Log entries at one term/position with new recording IDs, and a payload digest that the
 restarted service proves it actually loaded. The contract also freezes 28 proof obligations, ten

@@ -53,7 +53,7 @@ jobs:
             test "$(git rev-parse 'course/m11-start^{}')" = "$(git rev-parse HEAD)"
           fi
 
-          test "$(sha256sum matching-testkit/src/test/resources/m11/workload-v1.json | cut -d ' ' -f 1)" = ec19d23ab95973dca8f5b9c41d773d0f7fe47db679f659bc3e776dd95739b7e7
+          test "$(sha256sum matching-testkit/src/test/resources/m11/workload-v1.json | cut -d ' ' -f 1)" = f856c8dcf2e902add248a59cdb97525083bae469745682eed0ea7ae9169033b6
           mapfile -t resources < <(find schemas matching-testkit/src/test/resources -type f -name '*.json' -print | sort)
           jq empty "${resources[@]}"
           test "$(jq '.goldenFixtures | length' matching-testkit/src/test/resources/m11/workload-v1.json)" = 6
@@ -86,12 +86,20 @@ jobs:
             .unit == "M11" and
             .status == "GOAL_NOT_IMPLEMENTED" and
             .contractPlanVersion == "0.14" and
-            .workloadProfile.sha256 == "ec19d23ab95973dca8f5b9c41d773d0f7fe47db679f659bc3e776dd95739b7e7" and
+            .workloadProfile.sha256 == "f856c8dcf2e902add248a59cdb97525083bae469745682eed0ea7ae9169033b6" and
+            .workloadProfile.segmentOrder == "FIXED_DECLARED_32_SEGMENT_SCHEDULE" and
+            (.workloadProfile.segmentSchedule | length) == 32 and
             .workloadProfile.generatedActions == 4096 and
             .workloadProfile.composition == "ONE_CONTINUOUS_CORPUS_OF_32_ORDERED_SEGMENTS" and
             .workloadProfile.stateResetBetweenSegments == false and
             .clusterContract.memberCount == 1 and
             .clusterContract.totalActualClusterIngress == 8192 and
+            .clusterContract.snapshotPrefixNewApplied == 1536 and
+            .clusterContract.snapshotPrefixDuplicateReplayed == 512 and
+            .clusterContract.snapshotNextApplicationSequence == 1537 and
+            .clusterContract.firstPostRestartLane == "PREVIOUS_NEW" and
+            .clusterContract.firstPostRestartExpectedStatus == "NEW_APPLIED" and
+            .clusterContract.postRestartCrossSnapshotDuplicates == 512 and
             .clusterContract.adminSnapshotAcceptance == "OK_REQUIRED_NOT_COMPLETION" and
             (.clusterContract.snapshotCompletionWitnesses | length) == 5 and
             .protocolContract.requestV1ResponseVersion == 1 and
