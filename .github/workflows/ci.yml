@@ -1,4 +1,4 @@
-name: Matching M11 single-member Aeron adapter
+name: Matching M11/M12 Aeron correctness
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
       - "unit/**"
     tags:
       - "course/**"
+      - "matching-*"
   pull_request:
 
 permissions:
@@ -119,6 +120,110 @@ jobs:
         with:
           name: matching-m11-start-structured-red
           path: build/reports/m11/
+          if-no-files-found: error
+
+  m12-structured-red:
+    if: github.ref == 'refs/tags/course/m12-start'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Validate M12 declaration and frozen workload
+        shell: bash
+        run: |
+          test "$(sed -n 's/^unit=//p' course.properties)" = M12
+          test "$(sed -n 's/^planVersion=//p' course.properties)" = 0.15
+          test "$(sed -n 's/^lifecycle=//p' course.properties)" = READY
+          test "$(sed -n 's/^designDepth=//p' course.properties)" = CONTRACT
+          test "$(sed -n 's/^m12Check.expectedStatus=//p' course.properties)" = GOAL_NOT_IMPLEMENTED
+          test "$(sed -n 's/^startRef=//p' course.properties)" = course/m12-start
+          test "$(sed -n 's/^completeRef=//p' course.properties)" = course/m12-complete
+          test "$(sed -n 's/^productRelease=//p' course.properties)" = matching-0.8.0
+
+          test "$(git cat-file -t course/m11-complete)" = tag
+          test "$(git rev-parse 'course/m11-complete^{}')" = 6997e05cea81cb93b883e882c8d75887d0622a22
+          git merge-base --is-ancestor "$(git rev-parse 'course/m11-complete^{}')" HEAD
+          test "$(git rev-parse 'course/m11-complete:matching-core')" = "$(git rev-parse 'HEAD:matching-core')"
+          test "$(git rev-parse 'course/m11-complete:matching-cluster-runtime')" = "$(git rev-parse 'HEAD:matching-cluster-runtime')"
+          test "$(git rev-parse 'course/m11-complete:matching-testkit/src/test/resources/m11/goldens')" = "$(git rev-parse 'HEAD:matching-testkit/src/test/resources/m11/goldens')"
+          test "${GITHUB_REF_NAME}" = course/m12-start
+          test "$(git rev-parse 'course/m12-start^{}')" = "$(git rev-parse HEAD)"
+
+          test "$(sha256sum matching-testkit/src/test/resources/m12/workload-v1.json | cut -d ' ' -f 1)" = 20ed1e75cd3cd86dc15a7f1f64465524a5638757abe676eb51f20bc5423b89a1
+          mapfile -t resources < <(find schemas matching-testkit/src/test/resources -type f -name '*.json' -print | sort)
+          jq empty "${resources[@]}"
+          test "$(jq '.fixedScenarios | length' matching-testkit/src/test/resources/m12/workload-v1.json)" = 14
+          test "$(jq '.coverageRequirements | length' matching-testkit/src/test/resources/m12/workload-v1.json)" = 25
+          test "$(jq '.faultSchedule.phaseOrder | length' matching-testkit/src/test/resources/m12/workload-v1.json)" = 14
+
+      - name: Run inherited M00-M11 green build
+        shell: bash
+        run: |
+          ./gradlew clean build \
+            -Pm10.cpuModel="GitHub-hosted-${RUNNER_ARCH}" \
+            -Pm10.storageDevice="GitHub-hosted-ephemeral" \
+            -Pm10.filesystem="runner-temp" \
+            -Pm10.powerPolicy="GITHUB_HOSTED_RUNNER_DEFAULT" \
+            -Pm10.runId="m12-start-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --no-daemon --max-workers=1
+
+      - name: Run and verify intentional M12 structured RED
+        shell: bash
+        run: |
+          set +e
+          ./gradlew m12Check --no-daemon --max-workers=1
+          check_exit=$?
+          set -e
+          test "${check_exit}" = 1
+          jq -e '
+            .schemaVersion == "matching.m12.check.v1" and
+            .unit == "M12" and
+            .status == "GOAL_NOT_IMPLEMENTED" and
+            .contractPlanVersion == "0.15" and
+            .inheritedBaseline.commit == "6997e05cea81cb93b883e882c8d75887d0622a22" and
+            .inheritedBaseline.matchingCoreTreeUnchanged == true and
+            .inheritedBaseline.m11ClusterRuntimeTreeUnchanged == true and
+            .inheritedBaseline.m11ApplicationGoldensUnchanged == true and
+            .workloadProfile.sha256 == "20ed1e75cd3cd86dc15a7f1f64465524a5638757abe676eb51f20bc5423b89a1" and
+            .workloadProfile.fixedScenarios == 14 and
+            .workloadProfile.coverageObligations == 25 and
+            (.workloadProfile.phaseOrder | length) == 14 and
+            .clusterContract.memberCount == 3 and
+            .clusterContract.memberIds == [0, 1, 2] and
+            .clusterContract.quorumSize == 2 and
+            .clusterContract.processIsolationClaim == true and
+            .clusterContract.twoMemberFailureAck == false and
+            .clusterContract.matchingCoreChanges == 0 and
+            .clusterContract.m11WireVersionChanges == 0 and
+            .clientOutcomeContract.afterAcceptanceWithoutResponse == "UNKNOWN" and
+            .clientOutcomeContract.unknownRetry == "SAME_DURABLE_COMMAND_IDENTITY_FRESH_CORRELATION" and
+            .clientOutcomeContract.timeoutIsBusinessRejection == false and
+            .releaseTarget.productRelease == "matching-0.8.0" and
+            .executionContract.structuredRedExitCode == 1
+          ' build/reports/m12/check.json
+          exit 1
+
+      - name: Upload M12 structured RED report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: matching-m12-start-structured-red
+          path: build/reports/m12/
           if-no-files-found: error
 
   completion-green:

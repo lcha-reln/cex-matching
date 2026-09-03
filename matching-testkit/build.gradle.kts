@@ -89,6 +89,7 @@ val m10ProductRelease = providers.gradleProperty("m10.productRelease").orElse("m
 val m11ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m11")
 val m11EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M11")
 val m11UnitTag = providers.gradleProperty("m11.unitTag").orElse("course/m11-complete")
+val m12ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m12")
 val m11GoldenOutput =
     providers.gradleProperty("m11.goldenOutput").orElse(
         rootProject.layout.buildDirectory.dir("generated/m11-contract-goldens").map { it.asFile.absolutePath },
@@ -464,4 +465,18 @@ tasks.register<JavaExec>("m11Evidence") {
         m11UnitTag.get(),
     )
     doNotTrackState("Evidence must re-check M11 tags and working-tree cleanliness on every invocation")
+}
+
+tasks.register<JavaExec>("m12Check") {
+    group = "verification"
+    description = "Runs the frozen M12 three-member Leader-failure contract."
+    dependsOn("test", ":matching-core:test", ":matching-local-runtime:test", ":matching-cluster-runtime:test", ":matching-reference:check", "classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    jvmArgs("--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED")
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M12CheckMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m12ReportDirectory.get().asFile.absolutePath,
+    )
+    doNotTrackState("M12 must never reuse a stale report")
 }

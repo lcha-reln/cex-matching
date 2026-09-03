@@ -241,3 +241,9 @@ tasks.register("m11Evidence") {
     description = "Generates and validates clean-tree annotated-tag M11 evidence."
     dependsOn(":matching-testkit:m11Evidence")
 }
+
+tasks.register("m12Check") {
+    group = "verification"
+    description = "Runs the M12 three-member Leader-failure correctness contract."
+    dependsOn(":matching-testkit:m12Check")
+}

@@ -25,18 +25,21 @@ M11 completes the first Cluster axis: one real single-member Aeron Cluster adapt
 ingress/response/snapshot codecs, correlated post-apply responses, controlled Cluster
 snapshot/restart, and direct-versus-two-Cluster-path semantic equivalence. Its finite judge executes
 8,192 actual Cluster ingress actions and publishes replayable mutation and architecture evidence.
-One member is still not high availability; quorum, election, leader failover, fencing, catch-up, and
-`UNKNOWN` retry remain M12 work.
+M11 is the last completed implementation. M12 now freezes the next deliberately narrow contract:
+one localhost shard with three real voting-member JVMs, quorum commit/apply, observed-Leader
+fail-stop, same-durable-identity retry after `UNKNOWN`, former-Leader catch-up, and bounded
+no-quorum recovery. The M12 implementation and completion evidence do not exist at the start ref.
 
 ## Current course boundary
 
 - Profile: `SPOT-CEX-1.0`
-- Plan version: `0.14`
-- Unit: `M11`
-- Declared start ref: `course/m11-start`
-- Declared complete ref: `course/m11-complete`
-- Product release: `matching-0.5.0` at the M10 completion ref
-- Lifecycle at this boundary: `COMPLETE / IMPLEMENTED / PASS`
+- Plan version: `0.15`
+- Current frozen contract: `M12`
+- Last completed implementation: `M11` at `6997e05cea81cb93b883e882c8d75887d0622a22`
+- Declared start ref: `course/m12-start`
+- Declared complete ref: `course/m12-complete`
+- Target product release: `matching-0.8.0`
+- Lifecycle at this boundary: `READY / CONTRACT / GOAL_NOT_IMPLEMENTED`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -50,6 +53,19 @@ inherited boundary:
 ```bash
 ./gradlew clean build --no-daemon
 ```
+
+The explicit M12 command validates the immutable start contract, workload, schemas, protected M11
+trees, and six-ref release identity. At `course/m12-start` it intentionally exits non-zero only
+after writing a schema-valid structured-RED report:
+
+```bash
+./gradlew m12Check --no-daemon
+# M12 check status: GOAL_NOT_IMPLEMENTED
+```
+
+That status is a precise stop point, not a degraded implementation claim: no M12 three-member
+runtime, fault-injection judge, or completion evidence is present yet. The frozen boundary and
+explicit exclusions are in [`docs/specs/m12.md`](docs/specs/m12.md).
 
 The explicit M10 command writes a schema-valid completion report:
 
