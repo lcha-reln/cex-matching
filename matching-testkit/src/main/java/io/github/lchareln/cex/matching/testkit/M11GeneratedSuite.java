@@ -55,7 +55,9 @@ final class M11GeneratedSuite {
     createDirectories(workingRoot);
     Corpus first = generate();
     Corpus second = generate();
-    require(Arrays.equals(first.canonicalBytes(), second.canonicalBytes()), "M11 corpus is not byte-exact");
+    require(
+        Arrays.equals(first.canonicalBytes(), second.canonicalBytes()),
+        "M11 corpus is not byte-exact");
     require(first.actions().size() == ACTIONS_PER_PATH, "M11 corpus action count changed");
 
     DirectRun direct = runDirect(first);
@@ -66,8 +68,11 @@ final class M11GeneratedSuite {
     require(
         uninterrupted.applicationResults().equals(restarted.applicationResults()),
         "the two Cluster paths diverged");
-    require(direct.finalState().equals(uninterrupted.finalState()), "direct and uninterrupted state diverged");
-    require(direct.finalState().equals(restarted.finalState()), "direct and restarted state diverged");
+    require(
+        direct.finalState().equals(uninterrupted.finalState()),
+        "direct and uninterrupted state diverged");
+    require(
+        direct.finalState().equals(restarted.finalState()), "direct and restarted state diverged");
 
     M11HarnessReport uninterruptedHarness = uninterrupted.harnessReport();
     M11HarnessReport restartedHarness = restarted.harnessReport();
@@ -123,8 +128,7 @@ final class M11GeneratedSuite {
         uninterruptedHarness.correlatedEgressResponses()
             + restartedHarness.correlatedEgressResponses());
     cluster.put(
-        "serviceObservations",
-        uninterrupted.observationCount() + restarted.observationCount());
+        "serviceObservations", uninterrupted.observationCount() + restarted.observationCount());
     cluster.put(
         "newBusinessApplications",
         uninterruptedHarness.newBusinessApplications()
@@ -201,7 +205,14 @@ final class M11GeneratedSuite {
         int source = (segment - 16) * ACTIONS_PER_SEGMENT + action;
         M11CommandRequest duplicate = originals.get(source).withCorrelationId(uuid(random));
         actions.add(
-            new Action(global, segment, action, Lane.DUPLICATE_REPLAY, Expected.DUPLICATE, duplicate, "SOURCE_" + source));
+            new Action(
+                global,
+                segment,
+                action,
+                Lane.DUPLICATE_REPLAY,
+                Expected.DUPLICATE,
+                duplicate,
+                "SOURCE_" + source));
       }
     }
     for (int segment = 24; segment < 32; segment++) {
@@ -221,10 +232,16 @@ final class M11GeneratedSuite {
                 commandConflict ? 1 : original.slot().producerSequence(),
                 commandConflict ? original.commandId() : uuid(random),
                 conflictingPlace(global + 1L, random));
-        String detail =
-            commandConflict ? "COMMAND_ID_SLOT_CONFLICT" : "SLOT_IDENTITY_CONFLICT";
+        String detail = commandConflict ? "COMMAND_ID_SLOT_CONFLICT" : "SLOT_IDENTITY_CONFLICT";
         actions.add(
-            new Action(global, segment, action, Lane.IDENTITY_CONFLICT, Expected.CONFLICT, conflict, detail));
+            new Action(
+                global,
+                segment,
+                action,
+                Lane.IDENTITY_CONFLICT,
+                Expected.CONFLICT,
+                conflict,
+                detail));
       }
     }
     require(actions.size() == ACTIONS_PER_PATH, "M11 generator did not fill the corpus");
@@ -251,7 +268,11 @@ final class M11GeneratedSuite {
     require(runtime.nextApplicationSequence() == 2049, "direct application sequence changed");
     require(runtime.stateImage().identityBindings().size() == 2048, "direct identity size changed");
     return new DirectRun(
-        List.copyOf(results), runtime.stateImage(), Map.copyOf(counts), commandConflicts, slotConflicts);
+        List.copyOf(results),
+        runtime.stateImage(),
+        Map.copyOf(counts),
+        commandConflicts,
+        slotConflicts);
   }
 
   private static ClusterRun runCluster(
@@ -279,7 +300,8 @@ final class M11GeneratedSuite {
           beforeSnapshot = harness.stateImage();
           beforeIdentityDigest =
               new M11RuntimeStateCodec().identityTableDigest(beforeSnapshot.identityBindings());
-          beforeSnapshotDigest = Hashing.sha256Hex(new M11SnapshotCodec().encodeCurrent(beforeSnapshot));
+          beforeSnapshotDigest =
+              Hashing.sha256Hex(new M11SnapshotCodec().encodeCurrent(beforeSnapshot));
           beforeSemanticDigest = harness.semanticStateDigest();
           beforeNextSequence = beforeSnapshot.nextApplicationSequence();
           completedSnapshot = harness.takeSnapshot(SNAPSHOT_TIMEOUT);
@@ -305,26 +327,65 @@ final class M11GeneratedSuite {
                   new M11RuntimeStateCodec().identityTableDigest(restored.identityBindings())),
               "Cluster restart identity digest changed");
           require(
-              beforeSnapshotDigest.equals(Hashing.sha256Hex(new M11SnapshotCodec().encodeCurrent(restored))),
+              beforeSnapshotDigest.equals(
+                  Hashing.sha256Hex(new M11SnapshotCodec().encodeCurrent(restored))),
               "Cluster restart snapshot digest changed");
-          require(beforeSemanticDigest.equals(harness.semanticStateDigest()), "Cluster restart semantic digest changed");
-          require(beforeNextSequence == restored.nextApplicationSequence(), "Cluster restart sequence changed");
+          require(
+              beforeSemanticDigest.equals(harness.semanticStateDigest()),
+              "Cluster restart semantic digest changed");
+          require(
+              beforeNextSequence == restored.nextApplicationSequence(),
+              "Cluster restart sequence changed");
           M11HarnessReport afterRestart = harness.report();
-          require(afterRestart.restartDirectoriesPreserved(), "Aeron directories were not preserved");
+          require(
+              afterRestart.restartDirectoriesPreserved(), "Aeron directories were not preserved");
           require(afterRestart.completedSnapshotLoaded(), "completed snapshot was not loaded");
           require(afterRestart.restarts() == 1, "Cluster restart count changed");
           require(
-              afterRestart.lastLoadedSnapshot().orElseThrow().equals(completedSnapshot.applicationSnapshot()),
+              afterRestart
+                  .lastLoadedSnapshot()
+                  .orElseThrow()
+                  .equals(completedSnapshot.applicationSnapshot()),
               "restart loaded a different application snapshot");
         }
         Action action = corpus.actions().get(index);
         M11CommandResponse response = harness.submit(action.request(), RESPONSE_TIMEOUT);
         verifyExpected(action, response);
-        require(response.equals(expected.get(index).response()), "Cluster response diverged at action " + index);
+        require(
+            response.equals(expected.get(index).response()),
+            "Cluster response diverged at action " + index);
         responses.add(response);
       }
       List<M11ServiceObservation> observations = harness.observations();
       require(observations.size() == ACTIONS_PER_PATH, "Cluster observation count changed");
+      List<Long> sessionIds =
+          observations.stream().map(M11ServiceObservation::clusterSessionId).distinct().toList();
+      long preSnapshotSessionId = observations.getFirst().clusterSessionId();
+      long postRestartSessionId =
+          restart
+              ? observations.get(SNAPSHOT_AFTER_ACTION).clusterSessionId()
+              : preSnapshotSessionId;
+      boolean identityReplayedAcrossSessions = false;
+      if (restart) {
+        identityReplayedAcrossSessions =
+            preSnapshotSessionId != postRestartSessionId
+                && corpus
+                    .actions()
+                    .getFirst()
+                    .request()
+                    .commandId()
+                    .equals(corpus.actions().get(SNAPSHOT_AFTER_ACTION).request().commandId())
+                && observations
+                    .getFirst()
+                    .applicationResult()
+                    .fullResult()
+                    .equals(
+                        observations.get(SNAPSHOT_AFTER_ACTION).applicationResult().fullResult());
+        require(sessionIds.size() >= 2, "restart path did not observe a new client session");
+        require(
+            identityReplayedAcrossSessions,
+            "same durable identity was not replayed across client sessions");
+      }
       List<M11ApplicationResult> applications =
           observations.stream().map(M11ServiceObservation::applicationResult).toList();
       require(applications.equals(expected), "Cluster full business observations diverged");
@@ -352,9 +413,12 @@ final class M11GeneratedSuite {
             "controlToggleResetToNeutral",
             "NEUTRAL".equals(completedSnapshot.completion().controlToggleState().name()));
         snapshot.put(
-            "recordingLogNewSnapshotEntry",
-            completedSnapshot.completion().serviceRecordingId() >= 0
-                && completedSnapshot.completion().consensusRecordingId() >= 0);
+            "recordingLogNewSnapshotEntry", completedSnapshot.completion().recordingIdsChanged());
+        snapshot.put(
+            "acceptanceDistinctFromCompletion",
+            completedSnapshot.adminAcceptance().correlationId() > 0
+                && completedSnapshot.completion().completionCountAfter()
+                    > completedSnapshot.completion().completionCountBefore());
         snapshot.put("closedOnlyAfterCompletion", harnessReport.snapshotsCompleted() == 1);
         snapshot.put("restartCount", harnessReport.restarts());
         snapshot.put(
@@ -363,24 +427,42 @@ final class M11GeneratedSuite {
                 && directoriesPresentAfter
                 && harnessReport.restartDirectoriesPreserved());
         snapshot.put("loadedSnapshot", harnessReport.completedSnapshotLoaded());
-        snapshot.put("identityDigestExact", application.identityTableDigest().equals(beforeIdentityDigest));
-        snapshot.put("semanticDigestExact", application.semanticStateDigest().equals(beforeSemanticDigest));
         snapshot.put(
-            "nextApplicationSequenceExact", application.nextApplicationSequence() == beforeNextSequence);
+            "identityDigestExact", application.identityTableDigest().equals(beforeIdentityDigest));
+        snapshot.put(
+            "semanticDigestExact", application.semanticStateDigest().equals(beforeSemanticDigest));
+        snapshot.put(
+            "nextApplicationSequenceExact",
+            application.nextApplicationSequence() == beforeNextSequence);
         snapshot.put("duplicateOriginalResultsSurvived", 1024);
         snapshot.put("conflictsRemainNonMutating", 1024);
+        snapshot.put("distinctClientSessionIds", sessionIds.size());
+        snapshot.put("preSnapshotSessionId", preSnapshotSessionId);
+        snapshot.put("postRestartSessionId", postRestartSessionId);
+        snapshot.put("identityReplayedAcrossSessions", identityReplayedAcrossSessions);
         snapshot.put("adminCorrelationId", completedSnapshot.adminAcceptance().correlationId());
         snapshot.put(
             "completionCountBefore", completedSnapshot.completion().completionCountBefore());
+        snapshot.put("completionCountAfter", completedSnapshot.completion().completionCountAfter());
+        snapshot.put("controlToggleState", "NEUTRAL");
         snapshot.put(
-            "completionCountAfter", completedSnapshot.completion().completionCountAfter());
+            "previousServiceRecordingId",
+            completedSnapshot.completion().previousServiceRecordingId());
         snapshot.put(
-            "controlToggleState", completedSnapshot.completion().controlToggleState().name());
-        snapshot.put("leadershipTermId", completedSnapshot.completion().leadershipTermId());
-        snapshot.put("logPosition", completedSnapshot.completion().logPosition());
+            "previousConsensusRecordingId",
+            completedSnapshot.completion().previousConsensusRecordingId());
+        snapshot.put(
+            "serviceLeadershipTermId", completedSnapshot.completion().serviceLeadershipTermId());
+        snapshot.put(
+            "consensusLeadershipTermId",
+            completedSnapshot.completion().consensusLeadershipTermId());
+        snapshot.put("serviceLogPosition", completedSnapshot.completion().serviceLogPosition());
+        snapshot.put("consensusLogPosition", completedSnapshot.completion().consensusLogPosition());
         snapshot.put("serviceRecordingId", completedSnapshot.completion().serviceRecordingId());
+        snapshot.put("consensusRecordingId", completedSnapshot.completion().consensusRecordingId());
+        snapshot.put("recordingIdsChanged", completedSnapshot.completion().recordingIdsChanged());
         snapshot.put(
-            "consensusRecordingId", completedSnapshot.completion().consensusRecordingId());
+            "sameTermAndLogPosition", completedSnapshot.completion().sameTermAndLogPosition());
         snapshot.put("snapshotSequence", application.snapshotSequence());
         snapshot.put("snapshotStateSha256", beforeSnapshotDigest);
         snapshot.put("identityTableSha256", beforeIdentityDigest);
@@ -406,28 +488,37 @@ final class M11GeneratedSuite {
     require(witness.adminAcceptance().correlationId() > 0, "snapshot admin correlation is missing");
     require(
         "SNAPSHOT".equals(witness.adminAcceptance().requestType().name()),
-        "wrong Aeron admin request type");
-    require("OK".equals(witness.adminAcceptance().responseCode().name()), "snapshot was not accepted");
+        "wrong snapshot admin request type");
     require(
-        witness.completion().completionCountAfter()
-            > witness.completion().completionCountBefore(),
+        "OK".equals(witness.adminAcceptance().responseCode().name()), "snapshot was not accepted");
+    require(
+        witness.completion().completionCountAfter() > witness.completion().completionCountBefore(),
         "snapshot completion counter did not advance");
     require(
         "NEUTRAL".equals(witness.completion().controlToggleState().name()),
         "snapshot control toggle did not reset");
     require(witness.completion().leadershipTermId() >= 0, "snapshot term witness is missing");
     require(witness.completion().logPosition() >= 0, "snapshot log position is missing");
-    require(witness.completion().serviceRecordingId() >= 0, "service snapshot recording is missing");
+    require(
+        witness.completion().serviceRecordingId() >= 0, "service snapshot recording is missing");
     require(
         witness.completion().consensusRecordingId() >= 0,
         "consensus snapshot recording is missing");
+    require(witness.completion().recordingIdsChanged(), "snapshot recording IDs did not change");
+    require(
+        witness.completion().sameTermAndLogPosition(),
+        "service and consensus snapshots do not share term/log position");
     M11ApplicationSnapshotWitness application = witness.applicationSnapshot();
     require(
         application.snapshotSequence() == expectedNextSequence - 1,
         "application snapshot sequence changed");
     require(application.snapshotDigest().equals(expectedSnapshotDigest), "snapshot digest changed");
-    require(application.identityTableDigest().equals(expectedIdentityDigest), "identity digest changed");
-    require(application.semanticStateDigest().equals(expectedSemanticDigest), "semantic digest changed");
+    require(
+        application.identityTableDigest().equals(expectedIdentityDigest),
+        "identity digest changed");
+    require(
+        application.semanticStateDigest().equals(expectedSemanticDigest),
+        "semantic digest changed");
     require(
         application.nextApplicationSequence() == expectedNextSequence,
         "snapshot next application sequence changed");
@@ -439,9 +530,12 @@ final class M11GeneratedSuite {
     require(report.newBusinessApplications() == 2048, "Cluster NEW count changed");
     require(report.duplicateReplays() == 1024, "Cluster duplicate count changed");
     require(report.rejectedApplications() == 1024, "Cluster rejection count changed");
-    infrastructureRequire(report.componentErrorCount() == 0, "Cluster component error count changed");
-    require(report.snapshotAdminAccepted() == (restarted ? 1 : 0), "snapshot acceptance count changed");
-    require(report.snapshotsCompleted() == (restarted ? 1 : 0), "snapshot completion count changed");
+    infrastructureRequire(
+        report.componentErrorCount() == 0, "Cluster component error count changed");
+    require(
+        report.snapshotAdminAccepted() == (restarted ? 1 : 0), "snapshot acceptance count changed");
+    require(
+        report.snapshotsCompleted() == (restarted ? 1 : 0), "snapshot completion count changed");
     require(report.restarts() == (restarted ? 1 : 0), "restart count changed");
     if (restarted) {
       require(report.restartDirectoriesPreserved(), "restart did not preserve directories");
@@ -449,7 +543,10 @@ final class M11GeneratedSuite {
       require(report.lastSnapshot().isPresent(), "completed snapshot report is missing");
       require(report.lastLoadedSnapshot().isPresent(), "loaded snapshot report is missing");
       require(
-          report.lastSnapshot().orElseThrow().applicationSnapshot()
+          report
+              .lastSnapshot()
+              .orElseThrow()
+              .applicationSnapshot()
               .equals(report.lastLoadedSnapshot().orElseThrow()),
           "loaded snapshot witness differs from completed snapshot");
     }
@@ -457,15 +554,22 @@ final class M11GeneratedSuite {
 
   private static void verifyExpected(Action action, M11CommandResponse response) {
     switch (action.expected()) {
-      case NEW -> require(response.status() == M11ResponseStatus.NEW_APPLIED, "new action was not applied");
+      case NEW ->
+          require(response.status() == M11ResponseStatus.NEW_APPLIED, "new action was not applied");
       case DUPLICATE ->
-          require(response.status() == M11ResponseStatus.DUPLICATE_REPLAYED, "duplicate was not replayed");
+          require(
+              response.status() == M11ResponseStatus.DUPLICATE_REPLAYED,
+              "duplicate was not replayed");
       case CONFLICT -> {
-        require(response.status() == M11ResponseStatus.REJECTED, "identity conflict was not rejected");
-        require(response.rejectionCode().orElseThrow().equals(action.detail()), "wrong identity rejection");
+        require(
+            response.status() == M11ResponseStatus.REJECTED, "identity conflict was not rejected");
+        require(
+            response.rejectionCode().orElseThrow().equals(action.detail()),
+            "wrong identity rejection");
       }
     }
-    require(response.correlationId().equals(action.request().correlationId()), "correlation changed");
+    require(
+        response.correlationId().equals(action.request().correlationId()), "correlation changed");
   }
 
   private static M11CommandRequest create(

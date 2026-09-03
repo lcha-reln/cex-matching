@@ -9,7 +9,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Binds the 22 frozen scenario identities to executed protocol, runtime, and architecture facts. */
+/**
+ * Binds the 22 frozen scenario identities to executed protocol, runtime, and architecture facts.
+ */
 final class M11FixedSuite {
   Result run(
       Path repositoryRoot,
@@ -30,8 +32,7 @@ final class M11FixedSuite {
     require(
         generated.snapshotReport().path("loadedSnapshot").booleanValue(),
         "M11 restart did not load a completed snapshot");
-    require(
-        architecture.path("violations").isEmpty(), "M11 architecture gate has violations");
+    require(architecture.path("violations").isEmpty(), "M11 architecture gate has violations");
 
     ArrayNode results = JsonSupport.MAPPER.createArrayNode();
     List<String> ids = new ArrayList<>();
@@ -49,7 +50,9 @@ final class M11FixedSuite {
       observations.put("source", source(id));
       observations.put("detail", detail(id));
     }
-    require(ids.equals(M11StartCheckRunner.SCENARIO_IDS), "M11 fixed scenario identity or order changed");
+    require(
+        ids.equals(M11StartCheckRunner.SCENARIO_IDS),
+        "M11 fixed scenario identity or order changed");
     require(results.size() == 22, "M11 fixed scenario count changed");
 
     ObjectNode report = JsonSupport.MAPPER.createObjectNode();
@@ -113,7 +116,11 @@ final class M11FixedSuite {
       case "SESSION_NOT_BUSINESS_IDENTITY" ->
           require(
               snapshot.path("duplicateOriginalResultsSurvived").intValue() == 1024
-                  && snapshot.path("restartCount").intValue() == 1,
+                  && snapshot.path("restartCount").intValue() == 1
+                  && snapshot.path("distinctClientSessionIds").intValue() >= 2
+                  && snapshot.path("preSnapshotSessionId").longValue()
+                      != snapshot.path("postRestartSessionId").longValue()
+                  && snapshot.path("identityReplayedAcrossSessions").booleanValue(),
               id);
       case "NEW_RESPONSE_AFTER_APPLY" ->
           require(
@@ -130,13 +137,13 @@ final class M11FixedSuite {
       case "DUPLICATE_REPLAYS_ORIGINAL" ->
           require(
               generated.directResults().stream()
-                      .filter(
-                          result ->
-                              result.response().status()
-                                  == io.github.lchareln.cex.matching.cluster.M11ResponseStatus
-                                      .DUPLICATE_REPLAYED)
-                      .count()
-                  == 1024
+                          .filter(
+                              result ->
+                                  result.response().status()
+                                      == io.github.lchareln.cex.matching.cluster.M11ResponseStatus
+                                          .DUPLICATE_REPLAYED)
+                          .count()
+                      == 1024
                   && generated.directResults().stream()
                       .filter(
                           result ->
@@ -181,8 +188,11 @@ final class M11FixedSuite {
                   && snapshot.path("completionBounded").booleanValue()
                   && snapshot.path("completionCountAfter").longValue()
                       > snapshot.path("completionCountBefore").longValue()
+                  && snapshot.path("acceptanceDistinctFromCompletion").booleanValue()
                   && snapshot.path("controlToggleResetToNeutral").booleanValue()
-                  && snapshot.path("recordingLogNewSnapshotEntry").booleanValue(),
+                  && snapshot.path("recordingLogNewSnapshotEntry").booleanValue()
+                  && snapshot.path("recordingIdsChanged").booleanValue()
+                  && snapshot.path("sameTermAndLogPosition").booleanValue(),
               id);
       case "SNAPSHOT_STATE_EXACT_AFTER_RESTART" ->
           require(
@@ -231,12 +241,18 @@ final class M11FixedSuite {
 
   private static String source(String id) {
     return switch (id) {
-      case "CODEC_V1_GOLDENS", "CODEC_V2_GOLDENS", "MALFORMED_FAILS_CLOSED",
-          "UNSUPPORTED_VERSION_FAILS_CLOSED", "CURRENT_READS_PREVIOUS_SNAPSHOT",
-          "CURRENT_DOWN_ENCODES_PREVIOUS_RESPONSE" -> "protocol-goldens.json";
+      case "CODEC_V1_GOLDENS",
+          "CODEC_V2_GOLDENS",
+          "MALFORMED_FAILS_CLOSED",
+          "UNSUPPORTED_VERSION_FAILS_CLOSED",
+          "CURRENT_READS_PREVIOUS_SNAPSHOT",
+          "CURRENT_DOWN_ENCODES_PREVIOUS_RESPONSE" ->
+          "protocol-goldens.json";
       case "NO_STANDALONE_WAL_WRITE", "RUNTIME_METADATA_EXCLUDED" -> "architecture.json";
-      case "SNAPSHOT_ACCEPTANCE_AND_COMPLETION_DISTINCT", "SNAPSHOT_STATE_EXACT_AFTER_RESTART",
-          "SNAPSHOT_IDENTITY_RESULT_SURVIVES", "SNAPSHOT_SEQUENCE_CONTINUES" ->
+      case "SNAPSHOT_ACCEPTANCE_AND_COMPLETION_DISTINCT",
+          "SNAPSHOT_STATE_EXACT_AFTER_RESTART",
+          "SNAPSHOT_IDENTITY_RESULT_SURVIVES",
+          "SNAPSHOT_SEQUENCE_CONTINUES" ->
           "cluster-runtime.json";
       default -> "generated-differential.json+cluster-runtime.json";
     };

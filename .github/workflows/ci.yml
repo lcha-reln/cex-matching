@@ -1,4 +1,4 @@
-name: Matching M11 start contract (intentional RED)
+name: Matching M11 single-member Aeron adapter
 
 on:
   push:
@@ -14,6 +14,7 @@ permissions:
 
 jobs:
   structured-red:
+    if: github.ref == 'refs/tags/course/m11-start'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -118,4 +119,124 @@ jobs:
         with:
           name: matching-m11-start-structured-red
           path: build/reports/m11/
+          if-no-files-found: error
+
+  completion-green:
+    if: github.ref != 'refs/tags/course/m11-start'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Validate M11 completion declaration and frozen inputs
+        shell: bash
+        run: |
+          test "$(sed -n 's/^unit=//p' course.properties)" = M11
+          test "$(sed -n 's/^planVersion=//p' course.properties)" = 0.14
+          test "$(sed -n 's/^lifecycle=//p' course.properties)" = COMPLETE
+          test "$(sed -n 's/^designDepth=//p' course.properties)" = IMPLEMENTED
+          test "$(sed -n 's/^m11Check.expectedStatus=//p' course.properties)" = PASS
+          test "$(sed -n 's/^startRef=//p' course.properties)" = course/m11-start
+          test "$(sed -n 's/^completeRef=//p' course.properties)" = course/m11-complete
+
+          test "$(git cat-file -t course/m11-start)" = tag
+          test "$(git cat-file -t course/m11-complete)" = tag
+          test "$(git cat-file -t course/m10-complete)" = tag
+          test "$(git cat-file -t matching-0.5.0)" = tag
+          git merge-base --is-ancestor "$(git rev-parse 'course/m11-start^{}')" HEAD
+          git merge-base --is-ancestor "$(git rev-parse 'course/m10-complete^{}')" HEAD
+          git merge-base --is-ancestor "$(git rev-parse 'matching-0.5.0^{}')" HEAD
+          test "$(git rev-parse 'course/m11-complete^{}')" = "$(git rev-parse HEAD)"
+          test -z "$(git tag --points-at HEAD --list 'matching-*')"
+          if [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+            test "${GITHUB_REF_NAME}" = course/m11-complete
+          fi
+
+          test "$(sha256sum matching-testkit/src/test/resources/m11/workload-v1.json | cut -d ' ' -f 1)" = ec19d23ab95973dca8f5b9c41d773d0f7fe47db679f659bc3e776dd95739b7e7
+          mapfile -t resources < <(find schemas matching-testkit/src/test/resources -type f -name '*.json' -print | sort)
+          jq empty "${resources[@]}"
+          test "$(jq '.goldenFixtures | length' matching-testkit/src/test/resources/m11/workload-v1.json)" = 6
+          while IFS=$'\t' read -r path expected_bytes expected_sha; do
+            test "$(wc -c < "${path}" | tr -d ' ')" = "${expected_bytes}"
+            test "$(sha256sum "${path}" | cut -d ' ' -f 1)" = "${expected_sha}"
+          done < <(jq -r '.goldenFixtures[] | [.path, (.bytes | tostring), .sha256] | @tsv' matching-testkit/src/test/resources/m11/workload-v1.json)
+
+      - name: Run inherited and M11 green build
+        shell: bash
+        run: |
+          ./gradlew clean build \
+            -Pm10.cpuModel="GitHub-hosted-${RUNNER_ARCH}" \
+            -Pm10.storageDevice="GitHub-hosted-ephemeral" \
+            -Pm10.filesystem="runner-temp" \
+            -Pm10.powerPolicy="GITHUB_HOSTED_RUNNER_DEFAULT" \
+            -Pm10.runId="m11-complete-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --no-daemon --max-workers=1
+
+      - name: Run and verify M11 strict PASS
+        shell: bash
+        run: |
+          ./gradlew m11Check --no-daemon --max-workers=1
+          jq -e --arg commit "$(git rev-parse HEAD)" '
+            .schemaVersion == "matching.m11.check.v2" and
+            .unit == "M11" and
+            .status == "PASS" and
+            .source.commit == $commit and
+            .source.dirty == false and
+            .workloadProfile.sha256 == "ec19d23ab95973dca8f5b9c41d773d0f7fe47db679f659bc3e776dd95739b7e7" and
+            .generator.actionsPerPath == 4096 and
+            .generator.continuousCorpus == true and
+            .generator.clusterRuns == 2 and
+            .generator.totalActualClusterIngress == 8192 and
+            .clusterRuntime.implementation == "REAL_AERON_CLUSTER" and
+            .clusterRuntime.acceptedIngressOffers == 8192 and
+            .snapshotRestart.adminRequestAccepted == true and
+            .snapshotRestart.acceptanceDistinctFromCompletion == true and
+            .snapshotRestart.controlToggleResetToNeutral == true and
+            .snapshotRestart.recordingIdsChanged == true and
+            .snapshotRestart.sameTermAndLogPosition == true and
+            .snapshotRestart.loadedSnapshot == true and
+            .protocol.responseV1OutcomesCovered == 4 and
+            .protocol.payloadHashOuterInvariant == true and
+            .protocol.forgedPayloadHashPreApplyRejected == true and
+            .protocol.forgedPayloadHashStateMutations == 0 and
+            .fixed.scenarios == 22 and
+            .fixed.passed == 22 and
+            .coverage.observed == 28 and
+            .mutants.killed == 10 and
+            .mutants.systemErrorsObserved == 3 and
+            .mutants.systemErrorCountedAsKill == false and
+            (.artifactBindings | length) == 11 and
+            .clusterRuntime.highAvailabilityClaim == false and
+            .clusterRuntime.performanceClaim == false and
+            .clusterRuntime.externalServices == false and
+            .releaseTarget.productRelease == null
+          ' build/reports/m11/check.json
+
+      - name: Publish complete-tag evidence
+        if: github.ref == 'refs/tags/course/m11-complete'
+        shell: bash
+        run: ./gradlew m11Evidence --no-daemon --max-workers=1
+
+      - name: Upload M11 reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: matching-m11-completion-reports
+          path: |
+            build/reports/m11/
+            build/lab-evidence/M11/
           if-no-files-found: error

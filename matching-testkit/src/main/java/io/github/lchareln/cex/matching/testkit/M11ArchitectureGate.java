@@ -5,7 +5,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -32,7 +31,7 @@ final class M11ArchitectureGate {
         }
         if (portable.endsWith(".java")) {
           String source = Files.readString(path);
-          if (source.contains("import io.aeron")
+          if (containsAeronImport(source)
               && !portable.startsWith("matching-cluster-runtime/src/main/java/")) {
             aeronImports++;
             violations.add("Aeron Java import outside cluster runtime: " + portable);
@@ -57,9 +56,21 @@ final class M11ArchitectureGate {
     require(Files.isRegularFile(service), "M11 ClusteredService source is missing");
     String serviceSource = read(service);
     List<String> walTokens =
-        List.of("LocalMatchingRuntime", "LocalMatchingService", "SegmentedWal", "SnapshotStore", "WalConfig");
+        List.of(
+            "LocalMatchingRuntime",
+            "LocalMatchingService",
+            "SegmentedWal",
+            "SnapshotStore",
+            "WalConfig");
     List<String> externalTokens =
-        List.of("java.net.http", "java.sql", "javax.sql", "Files.", "FileChannel", "Socket", "HttpClient");
+        List.of(
+            "java.net.http",
+            "java.sql",
+            "javax.sql",
+            "Files.",
+            "FileChannel",
+            "Socket",
+            "HttpClient");
     int walViolations = countTokens(serviceSource, walTokens);
     int externalViolations = countTokens(serviceSource, externalTokens);
     if (walViolations > 0) {
@@ -97,6 +108,13 @@ final class M11ArchitectureGate {
       }
     }
     return count;
+  }
+
+  private static boolean containsAeronImport(String source) {
+    return source
+        .lines()
+        .map(String::stripLeading)
+        .anyMatch(line -> line.startsWith("import io.aeron."));
   }
 
   private static String read(Path path) {

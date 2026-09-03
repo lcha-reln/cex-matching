@@ -18,10 +18,13 @@ final class M11Coverage {
         JsonSupport.parse(read(repositoryRoot.resolve(M11StartCheckRunner.WORKLOAD_PATH)));
     Map<String, List<String>> witnesses = new LinkedHashMap<>();
     for (JsonNode scenario : fixed.report().path("results")) {
-      require(M11CheckRunner.PASS.equals(scenario.path("status").stringValue()), "non-PASS scenario");
+      require(
+          M11CheckRunner.PASS.equals(scenario.path("status").stringValue()), "non-PASS scenario");
       String scenarioId = scenario.path("id").stringValue();
       for (JsonNode obligation : scenario.path("proofObligations")) {
-        witnesses.computeIfAbsent(obligation.stringValue(), ignored -> new ArrayList<>()).add(scenarioId);
+        witnesses
+            .computeIfAbsent(obligation.stringValue(), ignored -> new ArrayList<>())
+            .add(scenarioId);
       }
     }
     List<String> required = strings(workload.path("coverageRequirements"));

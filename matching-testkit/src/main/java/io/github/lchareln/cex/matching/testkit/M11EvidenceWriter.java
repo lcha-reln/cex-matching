@@ -37,8 +37,7 @@ public final class M11EvidenceWriter {
   private static final long MAX_FILE_BYTES = 2L * 1024 * 1024;
   private static final long MAX_TREE_BYTES = 10L * 1024 * 1024;
   private static final int MAX_FILES = 64;
-  private static final Pattern FULL_COMMIT =
-      Pattern.compile("^[a-f0-9]{40}(?:[a-f0-9]{24})?$");
+  private static final Pattern FULL_COMMIT = Pattern.compile("^[a-f0-9]{40}(?:[a-f0-9]{24})?$");
   private static final String CHECK_COMMAND = "./gradlew m11Check --no-daemon";
   private static final String EVIDENCE_COMMAND = "./gradlew m11Evidence --no-daemon";
 
@@ -157,7 +156,9 @@ public final class M11EvidenceWriter {
     List<SourceArtifact> artifacts = new ArrayList<>();
     artifacts.add(
         SourceArtifact.capture(
-            root, root.resolve(M11StartCheckRunner.WORKLOAD_PATH), Path.of("inputs/workload-v1.json")));
+            root,
+            root.resolve(M11StartCheckRunner.WORKLOAD_PATH),
+            Path.of("inputs/workload-v1.json")));
     for (Golden golden : frozen.goldens()) {
       artifacts.add(
           SourceArtifact.capture(
@@ -173,11 +174,13 @@ public final class M11EvidenceWriter {
             EVIDENCE_SCHEMA)) {
       Path path = Path.of(schema);
       artifacts.add(
-          SourceArtifact.capture(root, root.resolve(path), Path.of("schemas").resolve(path.getFileName())));
+          SourceArtifact.capture(
+              root, root.resolve(path), Path.of("schemas").resolve(path.getFileName())));
     }
     for (String name : REPORT_ARTIFACTS) {
       artifacts.add(
-          SourceArtifact.capture(root, reports.resolve(name), Path.of("reports/check").resolve(name)));
+          SourceArtifact.capture(
+              root, reports.resolve(name), Path.of("reports/check").resolve(name)));
     }
     artifacts.add(
         SourceArtifact.capture(
@@ -185,8 +188,7 @@ public final class M11EvidenceWriter {
     require(artifacts.size() == 23, "M11 evidence source inventory changed");
     Set<Path> unique = new LinkedHashSet<>();
     artifacts.forEach(
-        artifact ->
-            require(unique.add(artifact.evidencePath()), "duplicate M11 evidence path"));
+        artifact -> require(unique.add(artifact.evidencePath()), "duplicate M11 evidence path"));
     return List.copyOf(artifacts);
   }
 
@@ -295,8 +297,7 @@ public final class M11EvidenceWriter {
             "releaseTarget", check.path("releaseTarget")),
         staging,
         byPath,
-        List.of(
-            "schemas/cex.lab-evidence.v2.schema.json", "reports/check/architecture.json"),
+        List.of("schemas/cex.lab-evidence.v2.schema.json", "reports/check/architecture.json"),
         EVIDENCE_COMMAND);
 
     ArrayNode limitations = manifest.putArray("limitations");
@@ -489,8 +490,7 @@ public final class M11EvidenceWriter {
       require(name.equals(binding.path("path").stringValue()), "M11 check binding order changed");
       Path file = reports.resolve(name).normalize();
       require(file.startsWith(reports), "M11 report binding escapes report root");
-      require(
-          Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS), "missing M11 report " + name);
+      require(Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS), "missing M11 report " + name);
       require(size(file) == binding.path("bytes").longValue(), "M11 report size mismatch: " + name);
       require(
           Hashing.sha256Hex(readBytes(file)).equals(binding.path("sha256").stringValue()),
@@ -614,14 +614,9 @@ public final class M11EvidenceWriter {
   }
 
   private static void verifyManifest(
-      Path evidence,
-      ObjectNode manifest,
-      List<SourceArtifact> artifacts,
-      String sourceCommit) {
+      Path evidence, ObjectNode manifest, List<SourceArtifact> artifacts, String sourceCommit) {
     JsonSupport.validate(
-        manifest,
-        readString(evidence.resolve("schemas/cex.lab-evidence.v2.schema.json")),
-        true);
+        manifest, readString(evidence.resolve("schemas/cex.lab-evidence.v2.schema.json")), true);
     require("M11".equals(manifest.path("unit").stringValue()), "manifest unit changed");
     require(UNIT_TAG.equals(manifest.path("unitTag").stringValue()), "manifest tag changed");
     require(manifest.path("productRelease").isNull(), "manifest claims a product release");
@@ -900,7 +895,8 @@ public final class M11EvidenceWriter {
       Path relative = safeRelative(portable(evidencePath.normalize()));
       long bytes = size(normalized);
       require(bytes > 0 && bytes <= MAX_FILE_BYTES, "M11 source artifact exceeds 2 MiB");
-      return new SourceArtifact(normalized, relative, Hashing.sha256Hex(readBytes(normalized)), bytes);
+      return new SourceArtifact(
+          normalized, relative, Hashing.sha256Hex(readBytes(normalized)), bytes);
     }
   }
 

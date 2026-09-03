@@ -162,7 +162,8 @@ final class M11MutantSuite {
         requireHistory(applied == 0, "apply was not pending");
       }
     }
-    return facts("responses", responses, "applied", applied, "responsesBeforeApply", responseBeforeApply);
+    return facts(
+        "responses", responses, "applied", applied, "responsesBeforeApply", responseBeforeApply);
   }
 
   private static Observation transportAsIdentity(List<Step> steps, boolean session) {
@@ -186,7 +187,9 @@ final class M11MutantSuite {
         DirectM11MatchingRuntime runtime =
             partitioned.computeIfAbsent(key, ignored -> new DirectM11MatchingRuntime());
         M11ApplicationResult result =
-            runtime.submit(request.withCorrelationId(UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8))));
+            runtime.submit(
+                request.withCorrelationId(
+                    UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8))));
         if (result.response().status() == M11ResponseStatus.NEW_APPLIED) {
           candidateNew++;
         }
@@ -222,9 +225,12 @@ final class M11MutantSuite {
     long before = matcher.nextApplicationSequence();
     var second = matcher.apply(request.command());
     return facts(
-        "originalApplied", first.response().status() == M11ResponseStatus.NEW_APPLIED,
-        "retryApplicationSequence", second.applicationSequence(),
-        "beforeRetrySequence", before);
+        "originalApplied",
+        first.response().status() == M11ResponseStatus.NEW_APPLIED,
+        "retryApplicationSequence",
+        second.applicationSequence(),
+        "beforeRetrySequence",
+        before);
   }
 
   private static Observation corruptSnapshotToGenesis(List<Step> steps) {
@@ -242,9 +248,12 @@ final class M11MutantSuite {
     requireHistory(decoderRejected, "corruption was not detected by the production codec");
     DirectM11MatchingRuntime mutantRestored = new DirectM11MatchingRuntime();
     return facts(
-        "decoderRejected", true,
-        "restoredGenesis", mutantRestored.nextApplicationSequence() == 1,
-        "originalNextSequence", original.nextApplicationSequence());
+        "decoderRejected",
+        true,
+        "restoredGenesis",
+        mutantRestored.nextApplicationSequence() == 1,
+        "originalNextSequence",
+        original.nextApplicationSequence());
   }
 
   private static Observation rejectPreviousVersion(Path root, List<Step> steps) {
@@ -285,8 +294,10 @@ final class M11MutantSuite {
     ByteArrayOutputStream localWal = new ByteArrayOutputStream();
     localWal.writeBytes(new M11RequestCodec().encode(request));
     return facts(
-        "applied", applied.response().status() == M11ResponseStatus.NEW_APPLIED,
-        "standaloneWalWrites", localWal.size() > 0 ? 1 : 0);
+        "applied",
+        applied.response().status() == M11ResponseStatus.NEW_APPLIED,
+        "standaloneWalWrites",
+        localWal.size() > 0 ? 1 : 0);
   }
 
   private static Observation acceptUnsupported(List<Step> steps) {
@@ -364,9 +375,7 @@ final class M11MutantSuite {
           steps("SESSION_APPLY:session-1", "SESSION_RETRY:session-2", "OBSERVE:one");
       case "M11-CORRELATION-AS-IDENTITY" ->
           steps(
-              "CORRELATION_APPLY:correlation-1",
-              "CORRELATION_RETRY:correlation-2",
-              "OBSERVE:one");
+              "CORRELATION_APPLY:correlation-1", "CORRELATION_RETRY:correlation-2", "OBSERVE:one");
       case "M11-RESPOND-BEFORE-BIND" ->
           steps("APPLY:one", "RESPOND:one", "CRASH_BEFORE_BIND:one", "RETRY:one");
       case "M11-DROP-IDENTITY-FROM-SNAPSHOT" ->
@@ -375,16 +384,11 @@ final class M11MutantSuite {
           steps("APPLY:one", "CORRUPT_SNAPSHOT:one", "RESTORE_FALLBACK:one");
       case "M11-REJECT-N-MINUS-ONE" ->
           steps(
-              "READ_REQUEST_V1:one",
-              "READ_RESPONSE_V1:one",
-              "READ_SNAPSHOT_S1:one",
-              "OBSERVE:one");
+              "READ_REQUEST_V1:one", "READ_RESPONSE_V1:one", "READ_SNAPSHOT_S1:one", "OBSERVE:one");
       case "M11-INCLUDE-RUNTIME-METADATA-IN-DIGEST" ->
           steps("BUSINESS_STATE:one", "SESSION_ONE:one", "SESSION_TWO:one", "OBSERVE:one");
-      case "M11-DOUBLE-WRITE-LOCAL-WAL" ->
-          steps("CLUSTER_APPLY:one", "OBSERVE_WAL:one");
-      case "M11-ACCEPT-UNSUPPORTED-VERSION" ->
-          steps("DECODE_REQUEST_V3:one", "OBSERVE:one");
+      case "M11-DOUBLE-WRITE-LOCAL-WAL" -> steps("CLUSTER_APPLY:one", "OBSERVE_WAL:one");
+      case "M11-ACCEPT-UNSUPPORTED-VERSION" -> steps("DECODE_REQUEST_V3:one", "OBSERVE:one");
       default -> throw new IllegalArgumentException("unknown M11 mutant " + id);
     };
   }
@@ -447,7 +451,8 @@ final class M11MutantSuite {
   private static String sha256(String value) {
     try {
       return java.util.HexFormat.of()
-          .formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+          .formatHex(
+              MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
     } catch (NoSuchAlgorithmException failure) {
       throw new IllegalStateException("SHA-256 unavailable", failure);
     }
@@ -475,8 +480,7 @@ final class M11MutantSuite {
     return new Shrink(List.copyOf(current), trials);
   }
 
-  private static boolean oneMinimal(
-      Path root, String id, List<Step> steps, String fingerprint) {
+  private static boolean oneMinimal(Path root, String id, List<Step> steps, String fingerprint) {
     for (int index = 0; index < steps.size(); index++) {
       List<Step> candidate = new ArrayList<>(steps);
       candidate.remove(index);
@@ -516,8 +520,7 @@ final class M11MutantSuite {
       classification = M11CheckRunner.SYSTEM_ERROR;
     }
     require(
-        M11CheckRunner.SYSTEM_ERROR.equals(classification),
-        id + " did not fail as SYSTEM_ERROR");
+        M11CheckRunner.SYSTEM_ERROR.equals(classification), id + " did not fail as SYSTEM_ERROR");
     ObjectNode node = controls.addObject();
     node.put("id", id);
     node.put("classification", classification);

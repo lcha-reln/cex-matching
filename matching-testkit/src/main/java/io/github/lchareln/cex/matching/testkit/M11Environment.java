@@ -20,14 +20,17 @@ final class M11Environment {
       report.put("javaVersion", System.getProperty("java.runtime.version"));
       report.put("javaVendor", System.getProperty("java.vendor"));
       report.put("vmName", System.getProperty("java.vm.name"));
-      ManagementFactory.getRuntimeMXBean().getInputArguments().forEach(report.putArray("jvmArguments")::add);
+      ManagementFactory.getRuntimeMXBean()
+          .getInputArguments()
+          .forEach(report.putArray("jvmArguments")::add);
       report.put("osName", System.getProperty("os.name"));
       report.put("osVersion", System.getProperty("os.version"));
       report.put("osArchitecture", System.getProperty("os.arch"));
       report.put("availableProcessors", Runtime.getRuntime().availableProcessors());
       report.put("maximumHeapBytes", Runtime.getRuntime().maxMemory());
       report.put("clusterRoot", realRoot.toString());
-      report.put("fileStoreName", store.name().isBlank() ? realRoot.getRoot().toString() : store.name());
+      report.put(
+          "fileStoreName", store.name().isBlank() ? realRoot.getRoot().toString() : store.name());
       report.put("fileStoreType", store.type().isBlank() ? "local-filesystem" : store.type());
       report.put("runStartedAt", started.toString());
       report.put("runFinishedAt", finished.toString());

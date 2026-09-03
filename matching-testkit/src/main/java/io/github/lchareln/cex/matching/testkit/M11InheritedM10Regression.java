@@ -18,7 +18,9 @@ final class M11InheritedM10Regression {
         Arrays.equals(generated.canonicalBytes(), regenerated.canonicalBytes()),
         "inherited M10 generation is not byte-exact");
     require(mutants.killed() == 12, "inherited M10 mutant suite changed");
-    require(method.scheduledArrivals() > 0 && method.completionSamples() > 0, "M10 method smoke is empty");
+    require(
+        method.scheduledArrivals() > 0 && method.completionSamples() > 0,
+        "M10 method smoke is empty");
 
     ObjectNode result = JsonSupport.MAPPER.createObjectNode();
     result.put("schemaVersion", "matching.m11.inherited-m10.v1");
@@ -32,7 +34,8 @@ final class M11InheritedM10Regression {
     result.put("mutantsKilled", mutants.killed());
     result.put("methodSmoke", M11CheckRunner.PASS);
     result.put("currentCompiledClasses", true);
-    result.put("baselineCommit", git(repositoryRoot, "rev-parse", "course/m10-complete^{}").strip());
+    result.put(
+        "baselineCommit", git(repositoryRoot, "rev-parse", "course/m10-complete^{}").strip());
     return result;
   }
 
@@ -42,8 +45,12 @@ final class M11InheritedM10Regression {
       command.add("git");
       command.addAll(java.util.List.of(arguments));
       Process process = new ProcessBuilder(command).directory(root.toFile()).start();
-      String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-      String error = new String(process.getErrorStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+      String output =
+          new String(
+              process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+      String error =
+          new String(
+              process.getErrorStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
       int exit = process.waitFor();
       if (exit != 0) {
         throw new IllegalStateException("git failed: " + error.strip());

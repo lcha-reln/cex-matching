@@ -69,10 +69,8 @@ public final class M11CheckRunner {
         new M11InheritedM10Regression().run(root, reports.resolve(".m10-regression"));
     M11ProtocolSuite.Result protocol = new M11ProtocolSuite().run(root);
     ObjectNode architecture = new M11ArchitectureGate().run(root);
-    M11GeneratedSuite.Result generated =
-        new M11GeneratedSuite().run(root.resolve("build/tmp/m11"));
-    M11FixedSuite.Result fixed =
-        new M11FixedSuite().run(root, protocol, generated, architecture);
+    M11GeneratedSuite.Result generated = new M11GeneratedSuite().run(root.resolve("build/tmp/m11"));
+    M11FixedSuite.Result fixed = new M11FixedSuite().run(root, protocol, generated, architecture);
     ObjectNode coverage = new M11Coverage().run(root, fixed);
     M11MutantSuite.Result mutants = new M11MutantSuite().run(root);
     JsonSupport.validate(
@@ -144,8 +142,7 @@ public final class M11CheckRunner {
     check.put("objective", artifacts.workload().document().path("objective").stringValue());
     ObjectNode source = check.putObject("source");
     source.put("commit", git(root, "rev-parse", "HEAD").strip());
-    source.put(
-        "dirty", !git(root, "status", "--porcelain=v1", "--untracked-files=all").isBlank());
+    source.put("dirty", !git(root, "status", "--porcelain=v1", "--untracked-files=all").isBlank());
     ObjectNode course = check.putObject("courseDeclaration");
     artifacts.course().forEach(course::put);
 
@@ -367,7 +364,8 @@ public final class M11CheckRunner {
             Map.entry("completeRef", "course/m11-complete"),
             Map.entry("m11Check.expectedStatus", PASS),
             Map.entry("evidencePath", "build/lab-evidence/M11/manifest.json"));
-    studentRequire(properties.size() == expected.size(), "M11 course declaration field set changed");
+    studentRequire(
+        properties.size() == expected.size(), "M11 course declaration field set changed");
     expected.forEach(
         (key, value) ->
             studentRequire(
@@ -382,11 +380,10 @@ public final class M11CheckRunner {
         M11StartCheckRunner.WORKLOAD_SHA256.equals(digest), "M11 frozen workload SHA changed");
     JsonNode workload = JsonSupport.parse(bytes);
     JsonSupport.validate(
-        workload,
-        readString(root.resolve(M11StartCheckRunner.WORKLOAD_SCHEMA_PATH)),
-        false);
+        workload, readString(root.resolve(M11StartCheckRunner.WORKLOAD_SCHEMA_PATH)), false);
     List<String> scenarios = strings(workload.path("fixedScenarios"), "id");
-    studentRequire(scenarios.equals(M11StartCheckRunner.SCENARIO_IDS), "M11 fixed scenarios changed");
+    studentRequire(
+        scenarios.equals(M11StartCheckRunner.SCENARIO_IDS), "M11 fixed scenarios changed");
     List<String> obligations = strings(workload.path("coverageRequirements"));
     studentRequire(
         obligations.equals(M11StartCheckRunner.COVERAGE_IDS), "M11 coverage obligations changed");
@@ -394,8 +391,7 @@ public final class M11CheckRunner {
         strings(workload.path("requiredMutants")).equals(M11StartCheckRunner.MUTANT_IDS),
         "M11 mutant identities changed");
     studentRequire(
-        strings(workload.path("systemErrorControls"))
-            .equals(M11StartCheckRunner.SYSTEM_ERROR_IDS),
+        strings(workload.path("systemErrorControls")).equals(M11StartCheckRunner.SYSTEM_ERROR_IDS),
         "M11 system controls changed");
     JsonNode generated = workload.path("generatedDifferential");
     systemRequire(

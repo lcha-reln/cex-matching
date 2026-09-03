@@ -48,7 +48,8 @@ final class M11ProtocolSuite {
 
     for (JsonNode binding : workload.path("goldenFixtures")) {
       Path path = root.resolve(binding.path("path").stringValue()).normalize();
-      require(path.startsWith(root) && Files.isRegularFile(path), "M11 golden is missing or unsafe");
+      require(
+          path.startsWith(root) && Files.isRegularFile(path), "M11 golden is missing or unsafe");
       byte[] bytes = read(path);
       require(bytes.length == binding.path("bytes").intValue(), "M11 golden byte count changed");
       require(
@@ -60,20 +61,28 @@ final class M11ProtocolSuite {
         case "REQUEST" -> {
           M11CommandRequest decoded = decodeRequest(requestCodec, bytes);
           require(decoded.protocolVersion() == version, "request golden version changed");
-          require(Arrays.equals(bytes, requestCodec.encode(decoded)), "request golden is not byte-exact");
+          require(
+              Arrays.equals(bytes, requestCodec.encode(decoded)),
+              "request golden is not byte-exact");
           requests.add(decoded);
         }
         case "RESPONSE" -> {
           M11CommandResponse decoded = decodeResponse(responseCodec, bytes);
           require(decoded.protocolVersion() == version, "response golden version changed");
-          require(Arrays.equals(bytes, responseCodec.encode(decoded)), "response golden is not byte-exact");
+          require(
+              Arrays.equals(bytes, responseCodec.encode(decoded)),
+              "response golden is not byte-exact");
           responses.add(decoded);
         }
         case "SNAPSHOT" -> {
           M11Snapshot decoded = decodeSnapshot(snapshotCodec, bytes);
           require(decoded.schemaVersion() == version, "snapshot golden version changed");
-          require(Arrays.equals(bytes, snapshotCodec.encode(version, decoded.state())), "snapshot golden is not byte-exact");
-          require(decoded.state().identityBindings().size() >= 2, "snapshot golden needs two real identity bindings");
+          require(
+              Arrays.equals(bytes, snapshotCodec.encode(version, decoded.state())),
+              "snapshot golden is not byte-exact");
+          require(
+              decoded.state().identityBindings().size() >= 2,
+              "snapshot golden needs two real identity bindings");
           verifyIdentityOrdering(decoded);
           DirectM11MatchingRuntime.restore(decoded.state());
           snapshots.add(decoded);
@@ -90,9 +99,12 @@ final class M11ProtocolSuite {
       entry.put("decoded", true);
       entry.put("reencodedByteExact", true);
     }
-    require(requests.size() == 2 && responses.size() == 2 && snapshots.size() == 2, "golden matrix changed");
+    require(
+        requests.size() == 2 && responses.size() == 2 && snapshots.size() == 2,
+        "golden matrix changed");
     require(requests.getFirst().protocolVersion() == 1, "request v1 golden missing");
-    require(requests.getFirst().requestedResponseVersion() == 1, "request v1 did not fix response v1");
+    require(
+        requests.getFirst().requestedResponseVersion() == 1, "request v1 did not fix response v1");
     require(requests.getLast().protocolVersion() == 2, "request v2 golden missing");
     require(responses.getFirst().protocolVersion() == 1, "response v1 golden missing");
     require(responses.getLast().protocolVersion() == 2, "response v2 golden missing");
@@ -140,8 +152,11 @@ final class M11ProtocolSuite {
     DirectM11MatchingRuntime restored = DirectM11MatchingRuntime.restore(snapshot.state());
     long beforeSequence = restored.nextApplicationSequence();
     String beforeDigest = restored.semanticStateDigest();
-    M11ApplicationResult duplicate = restored.submit(request.withCorrelationId(new java.util.UUID(7, 11)));
-    require(duplicate.response().status() == M11ResponseStatus.DUPLICATE_REPLAYED, "S1 lost duplicate identity");
+    M11ApplicationResult duplicate =
+        restored.submit(request.withCorrelationId(new java.util.UUID(7, 11)));
+    require(
+        duplicate.response().status() == M11ResponseStatus.DUPLICATE_REPLAYED,
+        "S1 lost duplicate identity");
     require(duplicate.fullResult().isPresent(), "S1 lost original result");
     require(restored.nextApplicationSequence() == beforeSequence, "S1 duplicate advanced sequence");
     require(restored.semanticStateDigest().equals(beforeDigest), "S1 duplicate mutated state");
@@ -349,10 +364,12 @@ final class M11ProtocolSuite {
       if (cursor == null) {
         require(binding.slot().producerSequence() == 1, "producer history did not start at one");
       } else if (binding.slot().producerEpoch() == cursor[0]) {
-        require(binding.slot().producerSequence() == cursor[1], "producer sequence is discontinuous");
+        require(
+            binding.slot().producerSequence() == cursor[1], "producer sequence is discontinuous");
       } else {
         require(binding.slot().producerEpoch() > cursor[0], "producer epoch moved backward");
-        require(binding.slot().producerSequence() == 1, "new producer epoch did not restart at one");
+        require(
+            binding.slot().producerSequence() == 1, "new producer epoch did not restart at one");
       }
       producerCursors.put(
           producer,
@@ -373,9 +390,12 @@ final class M11ProtocolSuite {
     DirectM11MatchingRuntime untouched = new DirectM11MatchingRuntime();
     long sequence = untouched.nextApplicationSequence();
     String digest = untouched.semanticStateDigest();
-    expectProtocolFailure(() -> codec.decodeCanonical(invalid, 1), "request v2 accepted response v3");
-    require(sequence == untouched.nextApplicationSequence(), "invalid response version advanced state");
-    require(digest.equals(untouched.semanticStateDigest()), "invalid response version mutated state");
+    expectProtocolFailure(
+        () -> codec.decodeCanonical(invalid, 1), "request v2 accepted response v3");
+    require(
+        sequence == untouched.nextApplicationSequence(), "invalid response version advanced state");
+    require(
+        digest.equals(untouched.semanticStateDigest()), "invalid response version mutated state");
   }
 
   private static void verifyMalformed(
@@ -412,7 +432,8 @@ final class M11ProtocolSuite {
     byte[] unsupportedSnapshot = repairSnapshotVersion(snapshot, 3);
     expectProtocolFailure(() -> requests.decodeCanonical(request, 1), "request v3 was accepted");
     expectProtocolFailure(() -> responses.decodeCanonical(response), "response v3 was accepted");
-    expectProtocolFailure(() -> snapshots.decodeCanonical(unsupportedSnapshot), "snapshot S3 was accepted");
+    expectProtocolFailure(
+        () -> snapshots.decodeCanonical(unsupportedSnapshot), "snapshot S3 was accepted");
   }
 
   private static byte[] repairSnapshotVersion(byte[] source, int version) {
