@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "io.github.lchareln.cex"
-version = "0.5.0"
+version = "0.8.0"
 
 spotless {
     format("rootMisc") {
@@ -246,4 +246,10 @@ tasks.register("m12Check") {
     group = "verification"
     description = "Runs the M12 three-member Leader-failure correctness contract."
     dependsOn(":matching-testkit:m12Check")
+}
+
+tasks.register("m12Evidence") {
+    group = "verification"
+    description = "Generates and validates clean-tree annotated-tag M12 release evidence."
+    dependsOn(":matching-testkit:m12Evidence")
 }

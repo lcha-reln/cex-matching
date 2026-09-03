@@ -25,21 +25,29 @@ M11 completes the first Cluster axis: one real single-member Aeron Cluster adapt
 ingress/response/snapshot codecs, correlated post-apply responses, controlled Cluster
 snapshot/restart, and direct-versus-two-Cluster-path semantic equivalence. Its finite judge executes
 8,192 actual Cluster ingress actions and publishes replayable mutation and architecture evidence.
-M11 is the last completed implementation. M12 now freezes the next deliberately narrow contract:
-one localhost shard with three real voting-member JVMs, quorum commit/apply, observed-Leader
-fail-stop, same-durable-identity retry after `UNKNOWN`, former-Leader catch-up, and bounded
-no-quorum recovery. The M12 implementation and completion evidence do not exist at the start ref.
+M12 completes the next deliberately narrow Cluster axis: one localhost shard with three real
+voting-member JVMs, quorum commit/apply, externally injected observed-Leader fail-stop,
+same-durable-identity retry after `UNKNOWN`, former-Leader catch-up, and bounded no-quorum
+recovery. All members use Aeron automatic election; the completion evidence explicitly preserves
+and corrects the start contract's incompatible `appointedInitialLeaderId=0` assumption. Every
+preserved-state restart is gated by a live Aeron 1.52.2 Archive mark-file observation whose
+activity age is strictly greater than the pinned 10,000 ms liveness timeout, rather than a fixed
+sleep. It is the
+`matching-0.8.0` single-shard process-failure correctness stop point. M12 keeps `matching-core`, the
+M11 durable wire/snapshot codecs, and the M11 goldens byte-identical, while explicitly correcting the
+M11 transport adapter so an already-committed result whose egress cannot be delivered becomes a
+diagnostic plus client `UNKNOWN`, not a replicated-service crash.
 
 ## Current course boundary
 
 - Profile: `SPOT-CEX-1.0`
 - Plan version: `0.15`
-- Current frozen contract: `M12`
-- Last completed implementation: `M11` at `6997e05cea81cb93b883e882c8d75887d0622a22`
+- Current completed implementation: `M12`
+- Inherited M11 baseline: `6997e05cea81cb93b883e882c8d75887d0622a22`
 - Declared start ref: `course/m12-start`
 - Declared complete ref: `course/m12-complete`
 - Target product release: `matching-0.8.0`
-- Lifecycle at this boundary: `READY / CONTRACT / GOAL_NOT_IMPLEMENTED`
+- Lifecycle at this boundary: `COMPLETE / IMPLEMENTED / PASS`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -47,25 +55,37 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The default root build compiles and tests the completed M11 implementation together with every
+The default root build compiles and tests the completed M12 implementation together with every
 inherited boundary:
 
 ```bash
 ./gradlew clean build --no-daemon
 ```
 
-The explicit M12 command validates the immutable start contract, workload, schemas, protected M11
-trees, and six-ref release identity. At `course/m12-start` it intentionally exits non-zero only
-after writing a schema-valid structured-RED report:
+The explicit M12 command launches three child JVM members, executes the frozen 85-invocation fault
+schedule, reruns the pure semantic controls, and writes a strict report plus 15 hash-bound child
+artifacts:
 
 ```bash
 ./gradlew m12Check --no-daemon
-# M12 check status: GOAL_NOT_IMPLEMENTED
+# M12 check status: PASS
 ```
 
-That status is a precise stop point, not a degraded implementation claim: no M12 three-member
-runtime, fault-injection judge, or completion evidence is present yet. The frozen boundary and
-explicit exclusions are in [`docs/specs/m12.md`](docs/specs/m12.md).
+At annotated `course/m12-start`, the same command remains the intentionally failing structured RED.
+At one clean commit carrying both annotated `course/m12-complete` and `matching-0.8.0`, evidence is
+regenerated and published atomically with:
+
+```bash
+./gradlew m12Evidence --no-daemon --max-workers=1
+```
+
+This finite single-host run proves the declared process-failure correctness boundary only. It does
+not qualify throughput, latency, backup, disk or host loss, arbitrary partitions, rolling upgrade,
+multiple shards, Counter/REST/database integration, or external exactly-once side effects. The
+real schedule observes no post-failure acknowledgement under the old client authority, but it does
+not inject delayed old egress or provide cryptographic Leader provenance on the M11 response wire;
+that observation must not be generalized into a delayed-response fencing proof. The frozen boundary
+and complete exclusions are in [`docs/specs/m12.md`](docs/specs/m12.md).
 
 The explicit M10 command writes a schema-valid completion report:
 

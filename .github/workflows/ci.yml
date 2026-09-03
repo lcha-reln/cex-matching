@@ -227,7 +227,7 @@ jobs:
           if-no-files-found: error
 
   completion-green:
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/unit/') || github.ref == 'refs/tags/course/m11-complete'
+    if: github.ref == 'refs/tags/course/m11-complete'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -384,4 +384,159 @@ jobs:
           path: |
             build/reports/m11/
             build/lab-evidence/M11/
+          if-no-files-found: error
+
+  m12-completion-green:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/unit/m12' || github.ref == 'refs/tags/course/m12-complete' || github.ref == 'refs/tags/matching-0.8.0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Validate M12 completion declaration and frozen inputs
+        shell: bash
+        run: |
+          test "$(sed -n 's/^unit=//p' course.properties)" = M12
+          test "$(sed -n 's/^planVersion=//p' course.properties)" = 0.15
+          test "$(sed -n 's/^lifecycle=//p' course.properties)" = COMPLETE
+          test "$(sed -n 's/^designDepth=//p' course.properties)" = IMPLEMENTED
+          test "$(sed -n 's/^m12Check.expectedStatus=//p' course.properties)" = PASS
+          test "$(sed -n 's/^startRef=//p' course.properties)" = course/m12-start
+          test "$(sed -n 's/^completeRef=//p' course.properties)" = course/m12-complete
+          test "$(sed -n 's/^productRelease=//p' course.properties)" = matching-0.8.0
+
+          test "$(git cat-file -t course/m12-start)" = tag
+          test "$(git rev-parse 'course/m12-start^{}')" = 43b0bbf853a1ffefeb1d5a87d791f4eb387b1cbf
+          test "$(git cat-file -t course/m11-complete)" = tag
+          test "$(git rev-parse 'course/m11-complete^{}')" = 6997e05cea81cb93b883e882c8d75887d0622a22
+          git merge-base --is-ancestor "$(git rev-parse 'course/m11-complete^{}')" "$(git rev-parse 'course/m12-start^{}')"
+          git merge-base --is-ancestor "$(git rev-parse 'course/m12-start^{}')" HEAD
+          test "$(git rev-parse 'course/m11-complete:matching-core')" = "$(git rev-parse 'HEAD:matching-core')"
+          test "$(git rev-parse 'course/m11-complete:matching-testkit/src/test/resources/m11/goldens')" = "$(git rev-parse 'HEAD:matching-testkit/src/test/resources/m11/goldens')"
+          if [[ "${GITHUB_EVENT_NAME}" != pull_request ]]; then
+            test "$(git cat-file -t course/m12-complete)" = tag
+            test "$(git cat-file -t matching-0.8.0)" = tag
+            test "$(git rev-parse 'course/m12-complete^{}')" = "$(git rev-parse HEAD)"
+            test "$(git rev-parse 'matching-0.8.0^{}')" = "$(git rev-parse HEAD)"
+          fi
+          if [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+            test "${GITHUB_REF_NAME}" = course/m12-complete -o "${GITHUB_REF_NAME}" = matching-0.8.0
+          fi
+
+          test "$(sha256sum matching-testkit/src/test/resources/m12/workload-v1.json | cut -d ' ' -f 1)" = 20ed1e75cd3cd86dc15a7f1f64465524a5638757abe676eb51f20bc5423b89a1
+          mapfile -t resources < <(find schemas matching-testkit/src/test/resources -type f -name '*.json' -print | sort)
+          jq empty "${resources[@]}"
+          test "$(jq '.fixedScenarios | length' matching-testkit/src/test/resources/m12/workload-v1.json)" = 14
+          test "$(jq '.coverageRequirements | length' matching-testkit/src/test/resources/m12/workload-v1.json)" = 25
+          test "$(jq '.requiredMutants | length' matching-testkit/src/test/resources/m12/workload-v1.json)" = 8
+
+      - name: Run inherited and M12 green build
+        shell: bash
+        run: ./gradlew clean build --no-daemon --max-workers=1
+
+      - name: Run and verify M12 strict PASS
+        shell: bash
+        run: |
+          ./gradlew m12Check --no-daemon --max-workers=1
+          jq -e --arg commit "$(git rev-parse HEAD)" '
+            .schemaVersion == "matching.m12.check.v2" and
+            .unit == "M12" and
+            .status == "PASS" and
+            .source.commit == $commit and
+            .source.dirty == false and
+            .workloadProfile.workloadSha256 == "20ed1e75cd3cd86dc15a7f1f64465524a5638757abe676eb51f20bc5423b89a1" and
+            .workloadProfile.distinctBusinessCommands == 66 and
+            .workloadProfile.invocations == 85 and
+            .workloadProfile.acceptedIngressAttempts == 84 and
+            .fixed.scenarios == 14 and
+            .fixed.passed == 14 and
+            .judgeInspection.realAeronChildProcesses == true and
+            .judgeInspection.acknowledged == 82 and
+            .judgeInspection.unknown == 2 and
+            .judgeInspection.notSubmitted == 1 and
+            .judgeInspection.sameIdentityRetries == 18 and
+            (.judgeInspection.duplicateReplays == 17 or .judgeInspection.duplicateReplays == 18) and
+            (.judgeInspection.noQuorumRetryStatus == "NEW_APPLIED" or .judgeInspection.noQuorumRetryStatus == "DUPLICATE_REPLAYED") and
+            .commandOutcomes.appliedUnknownObservedOnAllMembersBeforeLeaderKill == true and
+            .clusterTopology.appliedUnknownObservedOnAllMembersBeforeLeaderKill == true and
+            (.clusterTopology.appliedUnknownMembersBeforeLeaderKill | length) == 3 and
+            .clusterTopology.teardownComplete == true and
+            .clusterTopology.childProcessesAliveAfterTeardown == 0 and
+            .clusterTopology.wallClockUsedForStatusAcceptance == false and
+            .clusterTopology.archiveMarkFileLivenessTimeoutMillis == 10000 and
+            .clusterTopology.restartSafetyPredicate == "ARCHIVE_MARK_FILE_ACTIVITY_AGE_GT_LIVENESS_TIMEOUT" and
+            .clusterTopology.restartSafetyWitnessCount == 3 and
+            (.clusterTopology.restartSafetyWitnesses | length) == 3 and
+            ([.clusterTopology.restartSafetyWitnesses[] |
+              .aeronVersion == "1.52.2" and
+              .livenessTimeoutMillis == 10000 and
+              .lastActivityTimestampMillis > 0 and
+              .ageMillis == (.observedAtMillis - .lastActivityTimestampMillis) and
+              .ageMillis > .livenessTimeoutMillis and
+              .activityTimestampPositive == true and
+              .ageStrictlyExceedsLivenessTimeout == true] | all) and
+            .catchup.firstReturnRestartSafetyWitnessOrdinal == .catchup.firstReturnRestartSafetyWitness.ordinal and
+            .catchup.firstReturnRestartSafetyWitness == .clusterTopology.restartSafetyWitnesses[0] and
+            .clusterTopology.stableSnapshotWitnessCount >= 1 and
+            ([.clusterTopology.stableSnapshotWitnesses[].allMemberStatusSequencesAdvanced] | all) and
+            ([.clusterTopology.stableSnapshotWitnesses[].monotonicElapsedWithinFreshnessBound] | all) and
+            .contractCorrection == .clusterTopology.contractCorrection and
+            .contractCorrection.frozenAppointedInitialLeaderId == 0 and
+            .contractCorrection.frozenAppointmentCompatibleWithThreeMemberHa == false and
+            .contractCorrection.effectiveAeronAppointedLeaderId == -1 and
+            .contractCorrection.automaticElection == true and
+            (.contractCorrection.initialLeaderId >= 0 and .contractCorrection.initialLeaderId <= 2) and
+            .stateEquivalence.identityCount == 66 and
+            .stateEquivalence.allMembersIdentityCountExact == true and
+            .stateEquivalence.allMembersIdentityResultDigestMatchDirectOracle == true and
+            .stateEquivalence.identityResultDigest == .stateEquivalence.expectedIdentityResultDigest and
+            .coverage.executionScope == "REAL_AERON_CHILD_PROCESSES" and
+            .coverage.clusterEvidenceQualified == true and
+            .coverage.observed == 25 and
+            .mutants.required == 8 and
+            .mutants.killed == 8 and
+            .mutants.semanticModelOnly == true and
+            .mutants.realClusterExecuted == false and
+            .mutants.systemErrorCountedAsKill == false and
+            .architecture.matchingCoreByteIdentical == true and
+            .architecture.m11GoldensByteIdentical == true and
+            .environment.correctnessOnly == true and
+            .environment.performanceQualified == false and
+            .environment.singleHost == true and
+            (.artifactBindings | length) == 15 and
+            .releaseTarget.productRelease == "matching-0.8.0" and
+            .releaseTarget.singleShard == true and
+            .releaseTarget.performanceQualified == false and
+            .releaseTarget.backupRestoreQualified == false and
+            .releaseTarget.externalServices == false
+          ' build/reports/m12/check.json
+
+      - name: Publish completion and product-tag evidence
+        if: github.ref == 'refs/tags/course/m12-complete' || github.ref == 'refs/tags/matching-0.8.0'
+        shell: bash
+        run: ./gradlew m12Evidence --no-daemon --max-workers=1
+
+      - name: Upload M12 reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: matching-m12-completion-reports
+          path: |
+            build/reports/m12/
+            build/lab-evidence/M12/
           if-no-files-found: error

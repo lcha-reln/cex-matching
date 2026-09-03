@@ -17,6 +17,7 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
+    jvmArgs("--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED")
     systemProperty("m00.repositoryRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
     systemProperty("matching.repositoryRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
     // Historical source-identity checks remain executable from their immutable completion tags.
@@ -39,6 +40,7 @@ tasks.withType<Test>().configureEach {
         "**/M09StartCheckRunnerTest.class",
         "**/M10StartCheckRunnerTest.class",
         "**/M11StartCheckRunnerTest.class",
+        "**/M12StartCheckRunnerTest.class",
     )
     filter {
         // M10 deliberately introduces bounded java.util.concurrent admission types. The M10 gate
@@ -90,6 +92,9 @@ val m11ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m11")
 val m11EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M11")
 val m11UnitTag = providers.gradleProperty("m11.unitTag").orElse("course/m11-complete")
 val m12ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m12")
+val m12EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M12")
+val m12UnitTag = providers.gradleProperty("m12.unitTag").orElse("course/m12-complete")
+val m12ProductRelease = providers.gradleProperty("m12.productRelease").orElse("matching-0.8.0")
 val m11GoldenOutput =
     providers.gradleProperty("m11.goldenOutput").orElse(
         rootProject.layout.buildDirectory.dir("generated/m11-contract-goldens").map { it.asFile.absolutePath },
@@ -479,4 +484,21 @@ tasks.register<JavaExec>("m12Check") {
         m12ReportDirectory.get().asFile.absolutePath,
     )
     doNotTrackState("M12 must never reuse a stale report")
+}
+
+tasks.register<JavaExec>("m12Evidence") {
+    group = "verification"
+    description = "Generates and validates clean-tree annotated-tag M12 evidence."
+    dependsOn("test", ":matching-core:test", ":matching-local-runtime:test", ":matching-cluster-runtime:test", ":matching-reference:check", "classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    jvmArgs("--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED")
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M12EvidenceMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m12ReportDirectory.get().asFile.absolutePath,
+        m12EvidenceDirectory.get().asFile.absolutePath,
+        m12UnitTag.get(),
+        m12ProductRelease.get(),
+    )
+    doNotTrackState("Evidence must re-check M12 tags and working-tree cleanliness on every invocation")
 }

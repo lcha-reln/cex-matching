@@ -28,7 +28,9 @@ public final class M11ClusteredMatchingService implements ClusteredService {
   private final M11RuntimeStateCodec runtimeStateCodec = new M11RuntimeStateCodec();
   private final M11AeronSnapshotTransport snapshotTransport = new M11AeronSnapshotTransport();
   private final AtomicLong protocolRejections = new AtomicLong();
+  private final AtomicLong undeliveredEgressResponses = new AtomicLong();
   private final AtomicReference<RuntimeException> observerFailure = new AtomicReference<>();
+  private final AtomicReference<String> lastUndeliveredEgressReason = new AtomicReference<>();
   private final AtomicReference<Cluster.Role> role = new AtomicReference<>();
   private final AtomicReference<M11ApplicationSnapshotWitness> lastWrittenSnapshot =
       new AtomicReference<>();
@@ -169,6 +171,18 @@ public final class M11ClusteredMatchingService implements ClusteredService {
     return protocolRejections.get();
   }
 
+  /**
+   * Number of already-bound application results whose best-effort egress could not be delivered.
+   */
+  public long undeliveredEgressResponses() {
+    return undeliveredEgressResponses.get();
+  }
+
+  /** Transport-only diagnostic; never part of replicated application state or a business result. */
+  public String lastUndeliveredEgressReason() {
+    return lastUndeliveredEgressReason.get();
+  }
+
   public RuntimeException observerFailure() {
     return observerFailure.get();
   }
@@ -186,22 +200,77 @@ public final class M11ClusteredMatchingService implements ClusteredService {
   }
 
   private void send(ClientSession session, byte[] encoded) {
-    UnsafeBuffer response = new UnsafeBuffer(encoded);
-    M11BoundedProgress progress =
-        M11BoundedProgress.start("M11 correlated egress", progressTimeout, componentFailure);
-    cluster.idleStrategy().reset();
-    while (true) {
-      progress.checkpoint(session.isClosing());
-      long result = session.offer(response, 0, encoded.length);
-      if (result >= 0) {
+    try {
+      UnsafeBuffer response = new UnsafeBuffer(encoded);
+      M11BoundedProgress progress =
+          M11BoundedProgress.start("M11 correlated egress", progressTimeout, componentFailure);
+      cluster.idleStrategy().reset();
+      while (true) {
+        if (!egressCanContinue(progress, session)) {
+          return;
+        }
+        long result = session.offer(response, 0, encoded.length);
+        if (result >= 0) {
+          return;
+        }
+        if (result == Publication.BACK_PRESSURED || result == Publication.ADMIN_ACTION) {
+          if (!egressCanContinue(progress, session)) {
+            return;
+          }
+          cluster.idleStrategy().idle();
+          continue;
+        }
+        recordUndelivered("PUBLICATION_" + publicationReason(result));
         return;
       }
-      if (result != Publication.BACK_PRESSURED && result != Publication.ADMIN_ACTION) {
-        throw new IllegalStateException("M11 egress failed: " + Publication.errorString(result));
-      }
-      progress.checkpoint(session.isClosing());
-      cluster.idleStrategy().idle();
+    } catch (RuntimeException failure) {
+      recordUndelivered("EGRESS_EXCEPTION:" + failure.getClass().getSimpleName());
     }
+  }
+
+  private boolean egressCanContinue(M11BoundedProgress progress, ClientSession session) {
+    try {
+      progress.checkpoint(session.isClosing());
+      return true;
+    } catch (RuntimeException failure) {
+      recordUndelivered(progressReason(failure));
+      return false;
+    }
+  }
+
+  private void recordUndelivered(String reason) {
+    undeliveredEgressResponses.incrementAndGet();
+    lastUndeliveredEgressReason.set(reason);
+  }
+
+  private static String publicationReason(long result) {
+    if (result == Publication.NOT_CONNECTED) {
+      return "NOT_CONNECTED";
+    }
+    if (result == Publication.CLOSED) {
+      return "CLOSED";
+    }
+    if (result == Publication.MAX_POSITION_EXCEEDED) {
+      return "MAX_POSITION_EXCEEDED";
+    }
+    return "ERROR:" + Publication.errorString(result);
+  }
+
+  private static String progressReason(RuntimeException failure) {
+    String message = failure.getMessage();
+    if (message != null && message.contains("timed out")) {
+      return "PROGRESS_TIMEOUT";
+    }
+    if (message != null && message.contains("closed")) {
+      return "SESSION_CLOSING";
+    }
+    if (message != null && message.contains("interrupted")) {
+      return "INTERRUPTED";
+    }
+    if (failure.getCause() != null) {
+      return "COMPONENT_FAILURE:" + failure.getCause().getClass().getSimpleName();
+    }
+    return "PROGRESS_FAILURE:" + failure.getClass().getSimpleName();
   }
 
   private void observe(M11ServiceObservation observation) {
