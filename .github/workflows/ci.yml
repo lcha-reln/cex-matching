@@ -1,4 +1,4 @@
-name: Matching M10 completion
+name: Matching M11 start contract (intentional RED)
 
 on:
   push:
@@ -7,14 +7,13 @@ on:
       - "unit/**"
     tags:
       - "course/**"
-      - "matching-*"
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  completion:
+  structured-red:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -34,37 +33,36 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Validate completion refs and frozen JSON
+      - name: Validate M11 declaration and frozen bytes
         shell: bash
         run: |
-          test "$(sed -n 's/^unit=//p' course.properties)" = M10
-          test "$(sed -n 's/^planVersion=//p' course.properties)" = 0.13
-          test "$(sed -n 's/^lifecycle=//p' course.properties)" = COMPLETE
-          test "$(sed -n 's/^designDepth=//p' course.properties)" = IMPLEMENTED
-          test "$(sed -n 's/^m10Check.expectedStatus=//p' course.properties)" = PASS
-          test "$(sed -n 's/^startRef=//p' course.properties)" = course/m10-start
-          test "$(sed -n 's/^completeRef=//p' course.properties)" = course/m10-complete
+          test "$(sed -n 's/^unit=//p' course.properties)" = M11
+          test "$(sed -n 's/^planVersion=//p' course.properties)" = 0.14
+          test "$(sed -n 's/^lifecycle=//p' course.properties)" = READY
+          test "$(sed -n 's/^designDepth=//p' course.properties)" = CONTRACT
+          test "$(sed -n 's/^m11Check.expectedStatus=//p' course.properties)" = GOAL_NOT_IMPLEMENTED
+          test "$(sed -n 's/^startRef=//p' course.properties)" = course/m11-start
+          test "$(sed -n 's/^completeRef=//p' course.properties)" = course/m11-complete
 
-          test "$(git cat-file -t course/m09-complete)" = tag
-          test "$(git cat-file -t course/m10-start)" = tag
           test "$(git cat-file -t course/m10-complete)" = tag
           test "$(git cat-file -t matching-0.5.0)" = tag
-          git merge-base --is-ancestor "$(git rev-parse 'course/m09-complete^{}')" HEAD
-          git merge-base --is-ancestor "$(git rev-parse 'course/m10-start^{}')" HEAD
-          test "$(git rev-parse 'course/m10-complete^{}')" = "$(git rev-parse HEAD)"
-          test "$(git rev-parse 'matching-0.5.0^{}')" = "$(git rev-parse HEAD)"
+          git merge-base --is-ancestor "$(git rev-parse 'course/m10-complete^{}')" HEAD
+          git merge-base --is-ancestor "$(git rev-parse 'matching-0.5.0^{}')" HEAD
+          if [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+            test "${GITHUB_REF_NAME}" = course/m11-start
+            test "$(git rev-parse 'course/m11-start^{}')" = "$(git rev-parse HEAD)"
+          fi
 
-          start_workload_sha="$(git show 'course/m10-start:matching-testkit/src/test/resources/m10/workload-v1.json' | sha256sum | cut -d ' ' -f 1)"
-          test "$start_workload_sha" = "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b"
-          cmp \
-            <(git show 'course/m10-start:schemas/matching.m10.workload.v1.schema.json') \
-            schemas/matching.m10.workload.v1.schema.json
-
+          test "$(sha256sum matching-testkit/src/test/resources/m11/workload-v1.json | cut -d ' ' -f 1)" = ec19d23ab95973dca8f5b9c41d773d0f7fe47db679f659bc3e776dd95739b7e7
           mapfile -t resources < <(find schemas matching-testkit/src/test/resources -type f -name '*.json' -print | sort)
-          test "${#resources[@]}" -gt 0
           jq empty "${resources[@]}"
+          test "$(jq '.goldenFixtures | length' matching-testkit/src/test/resources/m11/workload-v1.json)" = 6
+          while IFS=$'\t' read -r path expected_bytes expected_sha; do
+            test "$(wc -c < "${path}" | tr -d ' ')" = "${expected_bytes}"
+            test "$(sha256sum "${path}" | cut -d ' ' -f 1)" = "${expected_sha}"
+          done < <(jq -r '.goldenFixtures[] | [.path, (.bytes | tostring), .sha256] | @tsv' matching-testkit/src/test/resources/m11/workload-v1.json)
 
-      - name: Run clean completion judge
+      - name: Run inherited M10 green build
         shell: bash
         run: |
           ./gradlew clean build \
@@ -72,102 +70,44 @@ jobs:
             -Pm10.storageDevice="GitHub-hosted-ephemeral" \
             -Pm10.filesystem="runner-temp" \
             -Pm10.powerPolicy="GITHUB_HOSTED_RUNNER_DEFAULT" \
-            -Pm10.runId="m10-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -Pm10.runId="m11-start-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --no-daemon --max-workers=1
 
-      - name: Verify completion report
+      - name: Run and verify intentional M11 structured RED
         shell: bash
         run: |
-          jq -e --arg commit "$(git rev-parse HEAD)" '
-            .schemaVersion == "matching.m10.check.v2" and
-            .unit == "M10" and
-            .status == "PASS" and
-            .contractPlanVersion == "0.13" and
-            .source == {"commit": $commit, "dirty": false} and
-            .courseDeclaration.lifecycle == "COMPLETE" and
-            .courseDeclaration.designDepth == "IMPLEMENTED" and
-            .workloadProfile.sha256 == "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b" and
-            .fixed == {"scenarios": 20, "status": "PASS"} and
-            .generator.actions == 16384 and
-            .generator.executedActions == 16384 and
-            .generator.byteExactRegeneration == true and
-            .coverage == {"required": 28, "observed": 28} and
-            .mutants.required == 12 and
-            .mutants.killed == 12 and
-            .mutants.classification == "STUDENT_FAILURE" and
-            .mutants.systemErrorCountedAsKill == false and
-            .admissionService.bounded == true and
-            .admissionService.singleOwnerWorker == true and
-            .admissionService.enqueueIsAck == false and
-            .admissionService.overloadBeforeWalAndIdentity == true and
-            .methodSmoke.profileId == "CI_SMOKE" and
-            .methodSmoke.resultScope == "METHOD_SMOKE_ONLY" and
-            .methodSmoke.eligibleForReleaseEvidence == false and
-            .methodSmoke.releaseThroughputClaim == false and
-            .loadRecovery.realLocalRuntimeExact == true and
-            .releaseBoundary.fullReleaseExecutedByThisCheck == false and
-            .releaseBoundary.noReleaseNumbersFabricated == true and
-            .releaseTarget == {
-              "unitTag": "course/m10-complete",
-              "productRelease": "matching-0.5.0",
-              "verification": "FULL_RELEASE_PROFILE_AND_CLEAN_TREE_EVIDENCE"
-            } and
-            (.artifactBindings | length) == 21
-          ' build/reports/m10/check.json
+          set +e
+          ./gradlew m11Check --no-daemon --max-workers=1
+          check_exit=$?
+          set -e
+          test "${check_exit}" = 1
+          jq -e '
+            .schemaVersion == "matching.m11.check.v1" and
+            .unit == "M11" and
+            .status == "GOAL_NOT_IMPLEMENTED" and
+            .contractPlanVersion == "0.14" and
+            .workloadProfile.sha256 == "ec19d23ab95973dca8f5b9c41d773d0f7fe47db679f659bc3e776dd95739b7e7" and
+            .workloadProfile.generatedActions == 4096 and
+            .workloadProfile.composition == "ONE_CONTINUOUS_CORPUS_OF_32_ORDERED_SEGMENTS" and
+            .workloadProfile.stateResetBetweenSegments == false and
+            .clusterContract.memberCount == 1 and
+            .clusterContract.totalActualClusterIngress == 8192 and
+            .clusterContract.adminSnapshotAcceptance == "OK_REQUIRED_NOT_COMPLETION" and
+            (.clusterContract.snapshotCompletionWitnesses | length) == 5 and
+            .protocolContract.requestV1ResponseVersion == 1 and
+            .protocolContract.requestV2AllowedResponseVersions == [1, 2] and
+            .protocolContract.goldenSnapshotBindings == 2 and
+            .clusterContract.highAvailabilityClaim == false and
+            .protocolContract.nMinusOneRestore == "NO_IDEMPOTENCY_OR_ORIGINAL_RESULT_LOSS" and
+            .executionContract.structuredRedExitCode == 1 and
+            (.goldenFixtures | length) == 6
+          ' build/reports/m11/check.json
+          exit 1
 
-      - name: Verify non-release CI smoke
-        shell: bash
-        run: |
-          jq -e --arg commit "$(git rev-parse HEAD)" '
-            .schemaVersion == "matching.m10.qualification.v2" and
-            .status == "PASS" and
-            .profileId == "CI_SMOKE" and
-            .resultScope == "METHOD_SMOKE_ONLY" and
-            .eligibleForReleaseEvidence == false and
-            .source.commit == $commit and
-            .source.workloadSha256 == "92300fe4580a99f7e8ece911bce2f68a41b945273c923ed484051a011be4fa9b" and
-            .profile.id == "CI_SMOKE" and
-            .profile.sweeps == 1 and
-            .profile.soakSeconds == 3 and
-            .qualificationRuntime.policyId == "M10Q2" and
-            .qualificationRuntime.scope == "M10_DEDICATED_NOT_M09_DEFAULT" and
-            .qualificationRuntime.m09Default == {"maxSuffixRecords": 64, "maxSuffixBytes": 1048576} and
-            .qualificationRuntime.finiteRecoveryBudget == {"maxSuffixRecords": 1000000, "maxSuffixBytes": 1073741824} and
-            .qualificationRuntime.proactiveCheckpointAdmissionLagMaxNanos == 10000000 and
-            .qualificationRuntime.phaseBudgetPreflight.validatePrefixAndSuffixSeparately == true and
-            .qualificationRuntime.scheduler.producerClosureGraceMaxNanos == 250000000 and
-            .qualificationRuntime.scheduler.allScheduledArrivalsMaterialized == true and
-            .qualificationRuntime.scheduler.allAdmissionDecisionsWithinLagLimits == true and
-            .qualificationRuntime.scheduler.scheduledObservationCutDoesNotMove == true and
-            .qualificationRuntime.scheduler.observationCutLagMaxNanos == 10000000 and
-            .qualificationRuntime.observationCut == "IMMUTABLE_SCHEDULED_WINDOW_END_RAW_RECONSTRUCTED_BEFORE_PRODUCER_CLOSURE_AND_TERMINAL_DRAIN" and
-            .qualificationRuntime.rawTimeContract.admissionTimestamp == "admissionDecisionNanos" and
-            .qualificationRuntime.rawTimeContract.completionTimestamp == "ownerCompletedNanos" and
-            (.sweeps | length) == 1 and
-            (.sweeps[0] | length) == 8 and
-            .rawRecomputation.status == "PASS" and
-            .rawRecomputation.fromDecompressedRaw == true and
-            .rawRecomputation.exactAttemptJoin == true and
-            .rawRecomputation.reconstructedTraceHashesExact == true and
-            .rawRecomputation.recoverySuffixRecordsAndBytesExact == true and
-            .rawRecomputation.allNewWalRecordsWithinPlanningCeiling == true and
-            .soak.durationSeconds == 3 and
-            .soak.promotionPolicyId == "M10Q2_DESCENDING_FULL_DURATION_FIRST_PASS" and
-            (.soak.attempts | length) >= 1 and
-            .soak.attempts[-1].outcome == "QUALIFIED" and
-            .soak.attempts[-1].point.saturated == false and
-            .soak.attempts[-1].point.terminalDrain.attemptAccounting.pending == 0 and
-            .soak.qualifiedAttemptNumber == (.soak.attempts | length) and
-            .soak.qualifiedPointId == .soak.attempts[-1].point.pointId and
-            .capacity.qualifiedOperatingPoint == .soak.attempts[-1].point.offeredRate
-          ' build/reports/m10-ci-smoke/qualification.json
-
-      - name: Upload M10 completion reports
+      - name: Upload M11 structured RED report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: matching-m10-completion-reports
-          path: |
-            build/reports/m10/
-            build/reports/m10-ci-smoke/
+          name: matching-m11-start-structured-red
+          path: build/reports/m11/
           if-no-files-found: error

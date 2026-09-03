@@ -83,7 +83,7 @@ tasks.named("assemble") {
 }
 
 tasks.named("check") {
-    dependsOn("spotlessCheck", ":matching-core:check", ":matching-local-runtime:check", ":matching-benchmarks:check", ":matching-reference:check", ":matching-testkit:check", "m10Check")
+    dependsOn("spotlessCheck", ":matching-core:check", ":matching-local-runtime:check", ":matching-benchmarks:check", ":matching-reference:check", ":matching-testkit:check")
 }
 
 tasks.register("m00Check") {
@@ -228,4 +228,10 @@ tasks.register("m10Evidence") {
     group = "verification"
     description = "Validates and publishes clean-tree M10 correctness and full release evidence."
     dependsOn(":matching-testkit:m10Evidence")
+}
+
+tasks.register("m11Check") {
+    group = "verification"
+    description = "Writes the schema-valid intentional M11 start-contract RED report."
+    dependsOn(":matching-testkit:m11Check")
 }

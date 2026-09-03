@@ -84,6 +84,11 @@ val m10ReleaseDirectory = rootProject.layout.buildDirectory.dir("reports/m10-rel
 val m10EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M10")
 val m10UnitTag = providers.gradleProperty("m10.unitTag").orElse("course/m10-complete")
 val m10ProductRelease = providers.gradleProperty("m10.productRelease").orElse("matching-0.5.0")
+val m11ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m11")
+val m11GoldenOutput =
+    providers.gradleProperty("m11.goldenOutput").orElse(
+        rootProject.layout.buildDirectory.dir("generated/m11-contract-goldens").map { it.asFile.absolutePath },
+    )
 
 val m10QualificationSchemaProbe = tasks.register<Test>("m10QualificationSchemaProbe") {
     group = "verification"
@@ -416,4 +421,26 @@ tasks.register<JavaExec>("m10Evidence") {
         m10ProductRelease.get(),
     )
     doNotTrackState("Evidence must re-check M10 tags, raw release artifacts, and working-tree cleanliness on every invocation")
+}
+
+tasks.register<JavaExec>("m11GenerateContractGoldens") {
+    group = "build setup"
+    description = "Generates the deterministic M11 request, response, and snapshot golden bytes."
+    dependsOn("classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M11ContractGoldens")
+    args(m11GoldenOutput.get())
+}
+
+tasks.register<JavaExec>("m11Check") {
+    group = "verification"
+    description = "Writes the schema-valid intentional M11 start-contract RED report."
+    dependsOn("classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M11CheckMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m11ReportDirectory.get().asFile.absolutePath,
+    )
+    doNotTrackState("M11 must never reuse a stale structured RED report")
 }

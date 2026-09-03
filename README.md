@@ -21,16 +21,20 @@ next local-storage axis: one `M09S1` snapshot, a 64-record / 1-MiB WAL-suffix re
 whole-segment retirement after durable snapshot publication. M10 completes the last local-runtime
 axis: a configurable bounded non-blocking admission service, measured at capacity 64, plus an honest
 machine-specific performance qualification and independently verified raw evidence pipeline.
+M11 is now frozen at its start boundary: it will add one real single-member Aeron Cluster adapter,
+versioned ingress/response codecs, Cluster snapshot/restart, and direct-versus-Cluster semantic
+equivalence. No Aeron module or implementation is present yet, and no high-availability claim is
+made.
 
 ## Current course boundary
 
 - Profile: `SPOT-CEX-1.0`
-- Plan version: `0.13`
-- Unit: `M10`
-- Declared start ref: `course/m10-start`
-- Declared complete ref: `course/m10-complete`
+- Plan version: `0.14`
+- Unit: `M11`
+- Declared start ref: `course/m11-start`
+- Declared complete ref: `course/m11-complete`
 - Product release: `matching-0.5.0` at the M10 completion ref
-- Lifecycle at this boundary: `COMPLETE / IMPLEMENTED / PASS`
+- Lifecycle at this boundary: `READY / CONTRACT / GOAL_NOT_IMPLEMENTED`
 - Java toolchain: 25 LTS
 - Gradle Wrapper: 9.7.1 with a pinned distribution checksum
 
@@ -38,7 +42,7 @@ The Gradle Daemon JVM criteria and Java toolchain both require an Adoptium JDK 2
 the configured Foojay resolver can provision it locally before the build; `.java-version` also
 records the major version for compatible JDK managers. CI uses Temurin 25.
 
-The root build reruns the completed M10 judge and every inherited boundary:
+The default root build deliberately remains the green M10 gate and reruns every inherited boundary:
 
 ```bash
 ./gradlew clean build --no-daemon
@@ -50,6 +54,33 @@ The explicit M10 command writes a schema-valid completion report:
 ./gradlew m10Check --no-daemon
 # M10 check status: PASS
 ```
+
+The explicit M11 command validates the content-addressed contract and six binary goldens, writes
+`build/reports/m11/check.json`, then intentionally exits 1 because the Aeron implementation does
+not exist at the start ref:
+
+```bash
+./gradlew m11Check --no-daemon
+# M11 check status: GOAL_NOT_IMPLEMENTED
+```
+
+M11 freezes 22 fixed scenarios, SplitMix64 seed `6111`, one continuous 32-segment-by-128-action
+corpus (not 32 fresh-state histories), four equal lane-major groups,
+and three complete comparison paths: Direct plus two real Cluster runs of 4,096 actions each. The
+application sequence and producer cursors continue across segment boundaries. The second Cluster
+run performs a controlled snapshot/restart after global action 2,048, for 8,192 actual
+Cluster ingress actions in total. `AdminResponseCode.OK` is only request acceptance; shutdown must
+wait for the snapshot counter, neutral control toggle, new consensus (`-1`) and service (`0`)
+Recording Log entries at one term/position with new recording IDs, and a payload digest that the
+restarted service proves it actually loaded. The contract also freezes 28 proof obligations, ten
+semantic mutants, three `SYSTEM_ERROR` controls, and five tutorial permalinks. Request, response,
+and snapshot application formats have current version 2 with minimum readable version 1. Request
+v1 always selects response v1; request v2 may select response v1 or v2, and every valid business
+outcome down-encodes to v1. Response v2 echoes only `commandId`, not the full durable identity.
+The two-binding snapshot goldens order identity results by strict original application sequence.
+S1 already contains the complete identity/original-result table; S2 only adds protocol bounds and integrity
+fields, so an N-1 restore may not lose idempotency. The exact stop point and exclusions are in
+[`docs/specs/m11.md`](docs/specs/m11.md).
 
 The start contract freezes 20 admission and methodology scenarios, SplitMix64 seed `6010`, 64
 histories by 256 actions across four lanes, 28 proof obligations, 12 executable mutant IDs, and five
