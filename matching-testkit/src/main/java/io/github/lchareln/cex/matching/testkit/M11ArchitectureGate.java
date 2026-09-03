@@ -23,6 +23,7 @@ final class M11ArchitectureGate {
     int aeronImportFiles = 0;
     int aeronImports = 0;
     int aeronDependencies = 0;
+    int faultSelectionsOutsideTestkit = 0;
     try (var paths = Files.walk(root)) {
       for (Path path : paths.filter(Files::isRegularFile).sorted().toList()) {
         Path relative = root.relativize(path);
@@ -32,6 +33,11 @@ final class M11ArchitectureGate {
         }
         if (portable.endsWith(".java")) {
           String source = Files.readString(path);
+          if (source.contains("M11FaultPolicy.single(")
+              && !portable.startsWith("matching-testkit/src/")) {
+            faultSelectionsOutsideTestkit++;
+            violations.add("M11 fault selection outside testkit: " + portable);
+          }
           if (containsAeronImport(source)) {
             aeronImportFiles++;
             if (!portable.startsWith("matching-cluster-runtime/")) {
@@ -54,6 +60,23 @@ final class M11ArchitectureGate {
       }
     } catch (IOException failure) {
       throw new IllegalStateException("cannot inspect M11 source tree", failure);
+    }
+
+    String normalLauncher =
+        read(
+            root.resolve(
+                "matching-cluster-runtime/src/main/java/io/github/lchareln/cex/matching/cluster/M11SingleNodeCluster.java"));
+    String normalService =
+        read(
+            root.resolve(
+                "matching-cluster-runtime/src/main/java/io/github/lchareln/cex/matching/cluster/M11ClusteredMatchingService.java"));
+    if (!normalLauncher.contains(
+            "return launch(config, freshStart, observer, M11FaultPolicy.none());")
+        || normalService.contains("M11FaultPolicy.single(")) {
+      violations.add("normal M11 launcher/service is not pinned to the NONE fault policy");
+    }
+    if (faultSelectionsOutsideTestkit != 0) {
+      violations.add("M11 production code selected a qualification fault");
     }
 
     M11ProductionArchitectureProbe.Facts production =
@@ -161,6 +184,14 @@ final class M11ArchitectureGate {
 
   private static String portable(Path path) {
     return path.toString().replace(path.getFileSystem().getSeparator(), "/");
+  }
+
+  private static String read(Path path) {
+    try {
+      return Files.readString(path);
+    } catch (IOException failure) {
+      throw new IllegalStateException("cannot read " + path, failure);
+    }
   }
 
   private static void require(boolean condition, String message) {

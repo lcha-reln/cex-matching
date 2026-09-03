@@ -1,17 +1,20 @@
 package io.github.lchareln.cex.matching.testkit;
 
 import io.github.lchareln.cex.matching.cluster.DirectM11MatchingRuntime;
+import io.github.lchareln.cex.matching.cluster.M11ApplicationObserver;
 import io.github.lchareln.cex.matching.cluster.M11ApplicationResult;
+import io.github.lchareln.cex.matching.cluster.M11ClientCompletionBoundary;
+import io.github.lchareln.cex.matching.cluster.M11ClusterStartupControl;
 import io.github.lchareln.cex.matching.cluster.M11CommandRequest;
+import io.github.lchareln.cex.matching.cluster.M11FaultPolicy;
 import io.github.lchareln.cex.matching.cluster.M11ProtocolException;
 import io.github.lchareln.cex.matching.cluster.M11RequestCodec;
 import io.github.lchareln.cex.matching.cluster.M11ResponseCodec;
 import io.github.lchareln.cex.matching.cluster.M11ResponseStatus;
 import io.github.lchareln.cex.matching.cluster.M11RuntimeState;
+import io.github.lchareln.cex.matching.cluster.M11SingleNodeCluster;
+import io.github.lchareln.cex.matching.cluster.M11SingleNodeConfig;
 import io.github.lchareln.cex.matching.cluster.M11SnapshotCodec;
-import io.github.lchareln.cex.matching.local.CanonicalResult;
-import io.github.lchareln.cex.matching.local.CommandApplierState;
-import io.github.lchareln.cex.matching.local.DeterministicMatchingAdapter;
 import io.github.lchareln.cex.matching.local.M08Command;
 import io.github.lchareln.cex.matching.local.Slot;
 import java.io.IOException;
@@ -22,8 +25,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -63,7 +64,7 @@ final class M11MutantSuite {
         raw.addAll(definition.history());
         raw.add(Step.parse("NOOP:suffix"));
 
-        Outcome production = execute(root, suiteRoot, definition, raw, Mutation.NONE);
+        Outcome production = execute(root, suiteRoot, definition, raw, M11FaultPolicy.Mode.NONE);
         systemRequire(
             production.classification() == Classification.PASS,
             "production candidate did not PASS " + id + ": " + production.detail());
@@ -188,27 +189,27 @@ final class M11MutantSuite {
     add(
         values,
         "M11-OFFER-AS-SUCCESS",
-        Mutation.OFFER_AS_SUCCESS,
+        M11FaultPolicy.Mode.OFFER_AS_SUCCESS,
         "INGRESS_OFFER_UPGRADED_TO_BUSINESS_SUCCESS",
         "OFFER:request-1");
     add(
         values,
         "M11-SESSION-AS-IDENTITY",
-        Mutation.SESSION_AS_IDENTITY,
+        M11FaultPolicy.Mode.SESSION_AS_IDENTITY,
         "SESSION_CHANGED_BUSINESS_IDENTITY",
         "SUBMIT_SESSION:session-a",
         "SUBMIT_SESSION:session-b");
     add(
         values,
         "M11-CORRELATION-AS-IDENTITY",
-        Mutation.CORRELATION_AS_IDENTITY,
+        M11FaultPolicy.Mode.CORRELATION_AS_IDENTITY,
         "CORRELATION_CHANGED_BUSINESS_IDENTITY",
         "SUBMIT_CORRELATION:correlation-a",
         "SUBMIT_CORRELATION:correlation-b");
     add(
         values,
         "M11-RESPOND-BEFORE-BIND",
-        Mutation.RESPOND_BEFORE_BIND,
+        M11FaultPolicy.Mode.RESPOND_BEFORE_BIND,
         "RESPONSE_OBSERVED_BEFORE_RESULT_BIND",
         "BEGIN_SUBMIT:request-1",
         "CRASH:node-1",
@@ -216,7 +217,7 @@ final class M11MutantSuite {
     add(
         values,
         "M11-DROP-IDENTITY-FROM-SNAPSHOT",
-        Mutation.DROP_IDENTITY_FROM_SNAPSHOT,
+        M11FaultPolicy.Mode.DROP_IDENTITY_FROM_SNAPSHOT,
         "SNAPSHOT_LOST_IDEMPOTENCY_TABLE",
         "SUBMIT:request-1",
         "TAKE_SNAPSHOT:snapshot-1",
@@ -225,7 +226,7 @@ final class M11MutantSuite {
     add(
         values,
         "M11-CORRUPT-SNAPSHOT-TO-GENESIS",
-        Mutation.CORRUPT_SNAPSHOT_TO_GENESIS,
+        M11FaultPolicy.Mode.CORRUPT_SNAPSHOT_TO_GENESIS,
         "CORRUPT_SNAPSHOT_SILENTLY_BECAME_GENESIS",
         "SUBMIT:request-1",
         "TAKE_SNAPSHOT:snapshot-1",
@@ -235,7 +236,7 @@ final class M11MutantSuite {
     add(
         values,
         "M11-REJECT-N-MINUS-ONE",
-        Mutation.REJECT_N_MINUS_ONE,
+        M11FaultPolicy.Mode.REJECT_N_MINUS_ONE,
         "N_MINUS_ONE_COMPATIBILITY_REJECTED",
         "DECODE_REQUEST_V1:request-v1",
         "DECODE_RESPONSE_V1:response-v1",
@@ -243,7 +244,7 @@ final class M11MutantSuite {
     add(
         values,
         "M11-INCLUDE-RUNTIME-METADATA-IN-DIGEST",
-        Mutation.INCLUDE_RUNTIME_METADATA_IN_DIGEST,
+        M11FaultPolicy.Mode.INCLUDE_RUNTIME_METADATA_IN_DIGEST,
         "RUNTIME_METADATA_CHANGED_BUSINESS_DIGEST",
         "READ_DIGEST:before",
         "SET_SESSION:session-b",
@@ -251,13 +252,13 @@ final class M11MutantSuite {
     add(
         values,
         "M11-DOUBLE-WRITE-LOCAL-WAL",
-        Mutation.DOUBLE_WRITE_LOCAL_WAL,
+        M11FaultPolicy.Mode.DOUBLE_WRITE_LOCAL_WAL,
         "CLUSTER_SERVICE_WROTE_STANDALONE_WAL",
         "SUBMIT:request-1");
     add(
         values,
         "M11-ACCEPT-UNSUPPORTED-VERSION",
-        Mutation.ACCEPT_UNSUPPORTED_VERSION,
+        M11FaultPolicy.Mode.ACCEPT_UNSUPPORTED_VERSION,
         "UNSUPPORTED_VERSION_ACCEPTED",
         "DECODE_REQUEST_V3:request-v3");
     return Map.copyOf(values);
@@ -266,7 +267,7 @@ final class M11MutantSuite {
   private static void add(
       Map<String, Definition> values,
       String id,
-      Mutation mutation,
+      M11FaultPolicy.Mode mutation,
       String fingerprint,
       String... encoded) {
     values.put(
@@ -280,7 +281,7 @@ final class M11MutantSuite {
       Path suiteRoot,
       Definition definition,
       List<Step> steps,
-      Mutation mutation) {
+      M11FaultPolicy.Mode mutation) {
     Path scratch = createCandidateDirectory(suiteRoot);
     Classification classification = Classification.PASS;
     String fingerprint = "";
@@ -291,7 +292,7 @@ final class M11MutantSuite {
       for (Step step : steps) {
         candidate.execute(step);
       }
-      mutationActions = candidate.trace().mutationActions();
+      mutationActions = candidate.mutationActions();
       Optional<String> violation = UnifiedObserver.observe(candidate.trace());
       if (violation.isPresent()) {
         classification = Classification.STUDENT_FAILURE;
@@ -317,7 +318,7 @@ final class M11MutantSuite {
       }
     }
     if (classification == Classification.STUDENT_FAILURE
-        && mutation != Mutation.NONE
+        && mutation != M11FaultPolicy.Mode.NONE
         && mutationActions == 0) {
       return new Outcome(
           Classification.SYSTEM_ERROR,
@@ -405,7 +406,7 @@ final class M11MutantSuite {
           steps.size() == witness.path("minimalActions").intValue(),
           "persisted minimal action count changed " + mutant);
 
-      Outcome production = execute(root, suiteRoot, definition, steps, Mutation.NONE);
+      Outcome production = execute(root, suiteRoot, definition, steps, M11FaultPolicy.Mode.NONE);
       systemRequire(
           production.classification() == Classification.PASS,
           "serialized production replay did not PASS " + mutant);
@@ -506,14 +507,27 @@ final class M11MutantSuite {
   }
 
   private static String runCodecControl() {
-    M11RequestCodec codec = new M11RequestCodec();
-    byte[] request = codec.encode(request());
-    new FaultingRequestDecoder(codec).decode(request);
+    byte[] encoded = new M11RequestCodec().encode(request());
+    M11RequestCodec codec =
+        new M11RequestCodec(M11FaultPolicy.single(M11FaultPolicy.Mode.REQUEST_CODEC_SYSTEM_ERROR));
+    try {
+      codec.decodeCanonical(encoded, 1);
+    } catch (M11ProtocolException failure) {
+      throw new IllegalStateException(
+          "codec control unexpectedly became a protocol rejection", failure);
+    }
     return "REQUEST_CODEC_COMPONENT";
   }
 
   private static String runClusterStartupControl(Path root) {
-    new FaultingClusterLauncher().launch(root.resolve("build/tmp/m11-control-cluster"), 1, 41_111);
+    M11SingleNodeConfig config =
+        M11SingleNodeConfig.defaults(root.resolve("build/tmp/m11-control-cluster"), 1, 41_111);
+    M11SingleNodeCluster cluster =
+        M11ClusterStartupControl.launch(
+            config,
+            M11ApplicationObserver.NO_OP,
+            M11FaultPolicy.single(M11FaultPolicy.Mode.CLUSTER_STARTUP_SYSTEM_ERROR));
+    cluster.close();
     return "SINGLE_NODE_CLUSTER_LAUNCHER";
   }
 
@@ -538,26 +552,33 @@ final class M11MutantSuite {
   private static final class CandidateMachine {
     private final Path repositoryRoot;
     private final Path scratch;
-    private final Mutation mutation;
-    private final M11RequestCodec requestCodec = new M11RequestCodec();
-    private final M11ResponseCodec responseCodec = new M11ResponseCodec();
-    private final M11SnapshotCodec snapshotCodec = new M11SnapshotCodec();
+    private final M11FaultPolicy faultPolicy;
+    private final M11RequestCodec requestCodec;
+    private final M11ResponseCodec responseCodec;
+    private final M11SnapshotCodec snapshotCodec;
+    private final M11ClientCompletionBoundary completionBoundary;
     private final Trace trace = new Trace();
     private final M11CommandRequest original = request();
-    private DirectM11MatchingRuntime runtime = new DirectM11MatchingRuntime();
-    private byte[] durableSnapshot = snapshotCodec.encodeCurrent(runtime.stateImage());
+    private DirectM11MatchingRuntime runtime;
+    private byte[] durableSnapshot;
     private byte[] snapshotBytes;
-    private CandidateCheckpoint checkpoint;
-    private DeterministicMatchingAdapter matcherWithoutIdentity;
-    private boolean pendingEarlyResponse;
-    private boolean crashed;
+    private boolean snapshotCorrupted;
     private boolean restoreBlocked;
     private String session = "session-a";
 
-    CandidateMachine(Path repositoryRoot, Path scratch, Mutation mutation) {
+    CandidateMachine(Path repositoryRoot, Path scratch, M11FaultPolicy.Mode mutation) {
       this.repositoryRoot = repositoryRoot;
       this.scratch = scratch;
-      this.mutation = mutation;
+      faultPolicy =
+          mutation == M11FaultPolicy.Mode.NONE
+              ? M11FaultPolicy.none()
+              : M11FaultPolicy.single(mutation);
+      requestCodec = new M11RequestCodec(faultPolicy);
+      responseCodec = new M11ResponseCodec(faultPolicy);
+      snapshotCodec = new M11SnapshotCodec(faultPolicy);
+      completionBoundary = new M11ClientCompletionBoundary(faultPolicy);
+      runtime = new DirectM11MatchingRuntime(faultPolicy);
+      durableSnapshot = snapshotCodec.encodeCurrent(runtime.stateImage());
     }
 
     void execute(Step step) {
@@ -587,35 +608,27 @@ final class M11MutantSuite {
       return trace;
     }
 
+    int mutationActions() {
+      return Math.toIntExact(faultPolicy.activationCount());
+    }
+
     private void offer() {
       byte[] encoded = requestCodec.encode(original);
       trace.add(new IngressEvent(original.correlationId(), encoded.length));
-      if (mutation == Mutation.OFFER_AS_SUCCESS) {
-        trace.mutated();
+      M11ClientCompletionBoundary.Decision completion =
+          completionBoundary.onIngressOfferAccepted(original, encoded.length);
+      if (completion.businessComplete()) {
         trace.add(
             new CompletionEvent(
-                original.correlationId(), CompletionSource.INGRESS_OFFER, OutcomeStatus.NEW));
+                completion.correlationId(),
+                CompletionSource.valueOf(completion.source().name()),
+                status(completion.responseStatus().orElseThrow())));
       }
     }
 
     private void submitTransportIdentity(String transportSession, UUID correlation) {
       M11CommandRequest external = original.withCorrelationId(correlation);
-      M11CommandRequest submitted = external;
-      if (mutation == Mutation.SESSION_AS_IDENTITY
-          || mutation == Mutation.CORRELATION_AS_IDENTITY) {
-        String token =
-            mutation == Mutation.SESSION_AS_IDENTITY
-                ? "session:" + transportSession
-                : "correlation:" + correlation;
-        submitted =
-            createRequest(
-                correlation,
-                "m11-mutant-" + sha256(token).substring(0, 12),
-                namedUuid(token),
-                external.command());
-        trace.mutated();
-      }
-      M11ApplicationResult result = runtime.submit(submitted);
+      M11ApplicationResult result = runtime.submit(external, transportSession);
       trace.add(
           new IdentitySubmissionEvent(
               IdentityKey.of(external),
@@ -627,38 +640,37 @@ final class M11MutantSuite {
     }
 
     private void beginSubmit() {
-      M11ApplicationResult applied = runtime.submit(original);
+      M11ApplicationResult applied = runtime.submit(original, session);
       trace.add(
           new ApplyEvent(
               original.correlationId(),
               status(applied),
               applicationSequence(applied),
               resultDigest(applied)));
-      if (mutation == Mutation.RESPOND_BEFORE_BIND) {
-        trace.mutated();
-        pendingEarlyResponse = true;
-        trace.add(
-            new CompletionEvent(
-                original.correlationId(), CompletionSource.CORRELATED_EGRESS, status(applied)));
-      } else {
+      if (runtime.hasIdentityBinding(original.commandId())) {
         durableSnapshot = snapshotCodec.encodeCurrent(runtime.stateImage());
         trace.add(new BindingEvent(original.commandId(), applicationSequence(applied)));
+      }
+      M11ClientCompletionBoundary.Decision completion =
+          completionBoundary.onCorrelatedEgress(applied.response());
+      if (completion.businessComplete()) {
         trace.add(
             new CompletionEvent(
-                original.correlationId(), CompletionSource.CORRELATED_EGRESS, status(applied)));
+                completion.correlationId(),
+                CompletionSource.valueOf(completion.source().name()),
+                status(completion.responseStatus().orElseThrow())));
       }
     }
 
     private void crash() {
-      crashed = true;
-      if (mutation == Mutation.RESPOND_BEFORE_BIND && pendingEarlyResponse) {
-        matcherWithoutIdentity =
-            DeterministicMatchingAdapter.restore(runtime.stateImage().commandState());
-        trace.add(new CrashEvent(matcherWithoutIdentity.nextApplicationSequence()));
-        return;
+      try {
+        runtime =
+            runtime.recoverAfterCrash(snapshotCodec.decodeForRecovery(durableSnapshot).state());
+        restoreBlocked = false;
+        trace.add(new CrashEvent(runtime.nextApplicationSequence()));
+      } catch (M11ProtocolException failure) {
+        throw new IllegalStateException("durable production state did not restore", failure);
       }
-      runtime = restore(durableSnapshot);
-      trace.add(new CrashEvent(runtime.nextApplicationSequence()));
     }
 
     private void retry() {
@@ -667,22 +679,7 @@ final class M11MutantSuite {
         trace.add(new RetryEvent(retry.correlationId(), OutcomeStatus.BLOCKED, 0, ""));
         return;
       }
-      if (matcherWithoutIdentity != null) {
-        CanonicalResult applied = matcherWithoutIdentity.apply(retry.command());
-        trace.add(
-            new RetryEvent(
-                retry.correlationId(),
-                OutcomeStatus.NEW,
-                applied.applicationSequence(),
-                applied.resultDigest()));
-        return;
-      }
-      if (pendingEarlyResponse && !crashed) {
-        durableSnapshot = snapshotCodec.encodeCurrent(runtime.stateImage());
-        trace.add(new BindingEvent(original.commandId(), runtime.nextApplicationSequence() - 1));
-        pendingEarlyResponse = false;
-      }
-      M11ApplicationResult result = runtime.submit(retry);
+      M11ApplicationResult result = runtime.submit(retry, session);
       trace.add(
           new RetryEvent(
               retry.correlationId(),
@@ -692,16 +689,24 @@ final class M11MutantSuite {
     }
 
     private void submit() {
-      M11ApplicationResult result = runtime.submit(original);
+      M11ApplicationResult result = runtime.submit(original, session);
       trace.add(
           new ApplyEvent(
               original.correlationId(),
               status(result),
               applicationSequence(result),
               resultDigest(result)));
-      if (mutation == Mutation.DOUBLE_WRITE_LOCAL_WAL
-          && result.response().status() == M11ResponseStatus.NEW_APPLIED) {
-        writeStandaloneWal(requestCodec.encode(original));
+      long writeSignals = faultPolicy.drainStandaloneWriteSignals();
+      for (long index = 0; index < writeSignals; index++) {
+        writeStandaloneWal(original.envelopeBytes());
+      }
+      Path wal = scratch.resolve("standalone.m11wal");
+      if (Files.isRegularFile(wal)) {
+        try {
+          trace.add(new WalEvent(wal.getFileName().toString(), Files.size(wal), true));
+        } catch (IOException failure) {
+          throw new IllegalStateException("cannot inspect standalone WAL fault output", failure);
+        }
       }
     }
 
@@ -709,19 +714,11 @@ final class M11MutantSuite {
       M11RuntimeState state = runtime.stateImage();
       snapshotBytes = snapshotCodec.encodeCurrent(state);
       M11RuntimeState decoded = decodeSnapshot(snapshotBytes).state();
-      int persistedIdentities = decoded.identityBindings().size();
-      if (mutation == Mutation.DROP_IDENTITY_FROM_SNAPSHOT) {
-        checkpoint = new CandidateCheckpoint(decoded.commandState(), List.of());
-        persistedIdentities = 0;
-        trace.mutated();
-      } else {
-        checkpoint = new CandidateCheckpoint(decoded.commandState(), decoded.identityBindings());
-      }
       trace.add(
           new SnapshotEvent(
               decoded.nextApplicationSequence() - 1,
               decoded.identityBindings().size(),
-              persistedIdentities));
+              decoded.identityBindings().size()));
     }
 
     private void corruptSnapshot() {
@@ -730,55 +727,35 @@ final class M11MutantSuite {
       }
       snapshotBytes = snapshotBytes.clone();
       snapshotBytes[snapshotBytes.length / 2] ^= 1;
+      snapshotCorrupted = true;
       trace.add(new CorruptionEvent(snapshotBytes.length / 2));
     }
 
     private void restart() {
-      if (snapshotBytes == null || checkpoint == null) {
+      if (snapshotBytes == null) {
         return;
       }
       try {
-        M11RuntimeState decoded = snapshotCodec.decodeCanonical(snapshotBytes).state();
-        runtime = DirectM11MatchingRuntime.restore(decoded);
-        durableSnapshot = snapshotBytes.clone();
-        trace.add(new RestoreEvent(RestoreOutcome.EXACT, decoded.nextApplicationSequence()));
-      } catch (M11ProtocolException failure) {
-        if (mutation == Mutation.CORRUPT_SNAPSHOT_TO_GENESIS) {
-          runtime = new DirectM11MatchingRuntime();
-          durableSnapshot = snapshotCodec.encodeCurrent(runtime.stateImage());
-          restoreBlocked = false;
-          trace.mutated();
-          trace.add(new RestoreEvent(RestoreOutcome.GENESIS_FALLBACK, 1));
-        } else {
-          restoreBlocked = true;
-          trace.add(new RestoreEvent(RestoreOutcome.FAIL_CLOSED, 0));
+        M11RuntimeState decoded = snapshotCodec.decodeForRecovery(snapshotBytes).state();
+        runtime = DirectM11MatchingRuntime.restore(decoded, faultPolicy);
+        int restoredIdentities = runtime.identityBindingCount();
+        RestoreOutcome outcome = RestoreOutcome.EXACT;
+        if (snapshotCorrupted && decoded.nextApplicationSequence() == 1) {
+          outcome = RestoreOutcome.GENESIS_FALLBACK;
+        } else if (restoredIdentities < decoded.identityBindings().size()) {
+          outcome = RestoreOutcome.MATCHER_WITHOUT_IDENTITY;
         }
-        return;
-      }
-      if (mutation == Mutation.DROP_IDENTITY_FROM_SNAPSHOT) {
-        matcherWithoutIdentity = DeterministicMatchingAdapter.restore(checkpoint.commandState());
-        trace.add(
-            new RestoreEvent(
-                RestoreOutcome.MATCHER_WITHOUT_IDENTITY,
-                matcherWithoutIdentity.nextApplicationSequence()));
+        restoreBlocked = false;
+        trace.add(new RestoreEvent(outcome, decoded.nextApplicationSequence(), restoredIdentities));
+      } catch (M11ProtocolException | IllegalArgumentException failure) {
+        restoreBlocked = true;
+        trace.add(new RestoreEvent(RestoreOutcome.FAIL_CLOSED, 0, 0));
       }
     }
 
     private void decodePrevious(Artifact artifact) {
       byte[] encoded = readBytes(repositoryRoot.resolve(golden(artifact)));
       int wireVersion = ByteBuffer.wrap(encoded).getInt(Integer.BYTES);
-      if (mutation == Mutation.REJECT_N_MINUS_ONE
-          && wireVersion < M11RequestCodec.CURRENT_VERSION) {
-        trace.mutated();
-        trace.add(
-            new DecodeEvent(
-                artifact,
-                wireVersion,
-                false,
-                0,
-                M11ProtocolException.Code.UNSUPPORTED_VERSION.name()));
-        return;
-      }
       try {
         int decodedVersion =
             switch (artifact) {
@@ -794,11 +771,7 @@ final class M11MutantSuite {
 
     private void readDigest(String label) {
       String businessDigest = runtime.semanticStateDigest();
-      String exposed = businessDigest;
-      if (mutation == Mutation.INCLUDE_RUNTIME_METADATA_IN_DIGEST) {
-        exposed = sha256(businessDigest + "|" + session + "|" + original.correlationId());
-        trace.mutated();
-      }
+      String exposed = runtime.exposedSemanticStateDigest(session, original.correlationId());
       trace.add(new DigestEvent(label, session, businessDigest, exposed));
     }
 
@@ -806,18 +779,6 @@ final class M11MutantSuite {
       byte[] immutable = requestCodec.encode(original);
       ByteBuffer.wrap(immutable).putInt(Integer.BYTES, 3);
       int originalWireVersion = ByteBuffer.wrap(immutable).getInt(Integer.BYTES);
-      if (mutation == Mutation.ACCEPT_UNSUPPORTED_VERSION) {
-        byte[] candidateInput = immutable.clone();
-        ByteBuffer.wrap(candidateInput).putInt(Integer.BYTES, M11RequestCodec.CURRENT_VERSION);
-        try {
-          int decoded = requestCodec.decodeCanonical(candidateInput, 1).protocolVersion();
-          trace.mutated();
-          trace.add(new DecodeEvent(Artifact.REQUEST, originalWireVersion, true, decoded, ""));
-        } catch (M11ProtocolException failure) {
-          throw new IllegalStateException("clamped mutant decoder failed", failure);
-        }
-        return;
-      }
       try {
         M11CommandRequest decoded = requestCodec.decodeCanonical(immutable.clone(), 1);
         trace.add(
@@ -830,10 +791,10 @@ final class M11MutantSuite {
       }
     }
 
-    private void writeStandaloneWal(byte[] canonicalRequest) {
+    private void writeStandaloneWal(byte[] canonicalEnvelope) {
       Path wal = scratch.resolve("standalone.m11wal");
-      ByteBuffer record = ByteBuffer.allocate(Integer.BYTES + canonicalRequest.length);
-      record.putInt(canonicalRequest.length).put(canonicalRequest).flip();
+      ByteBuffer record = ByteBuffer.allocate(Integer.BYTES + canonicalEnvelope.length);
+      record.putInt(canonicalEnvelope.length).put(canonicalEnvelope).flip();
       try (FileChannel channel =
           FileChannel.open(
               wal,
@@ -844,28 +805,8 @@ final class M11MutantSuite {
           channel.write(record);
         }
         channel.force(true);
-        long bytes = Files.size(wal);
-        trace.mutated();
-        trace.add(new WalEvent(wal.getFileName().toString(), bytes, true));
       } catch (IOException failure) {
         throw new IllegalStateException("mutant standalone WAL write failed", failure);
-      }
-    }
-
-    private M11CommandRequest createRequest(
-        UUID correlationId, String producerId, UUID commandId, M08Command command) {
-      try {
-        return requestCodec.create(2, 2, correlationId, producerId, 1, 1, 1, commandId, command);
-      } catch (M11ProtocolException failure) {
-        throw new IllegalStateException("cannot create mutant request", failure);
-      }
-    }
-
-    private DirectM11MatchingRuntime restore(byte[] encoded) {
-      try {
-        return DirectM11MatchingRuntime.restore(snapshotCodec.decodeCanonical(encoded).state());
-      } catch (M11ProtocolException failure) {
-        throw new IllegalStateException("cannot restore candidate snapshot", failure);
       }
     }
 
@@ -917,13 +858,18 @@ final class M11MutantSuite {
         if (events.get(index) instanceof CompletionEvent completion
             && completion.source() == CompletionSource.CORRELATED_EGRESS
             && !hasPriorBinding(events, index)) {
-          boolean crashAfter = hasAfter(events, index, CrashEvent.class);
-          boolean newRetryAfter =
+          CrashEvent crash = firstAfter(events, index, CrashEvent.class);
+          boolean matchingNewRetryAfter =
               events.subList(index + 1, events.size()).stream()
                   .filter(RetryEvent.class::isInstance)
                   .map(RetryEvent.class::cast)
-                  .anyMatch(retry -> retry.status() == OutcomeStatus.NEW);
-          if (crashAfter && newRetryAfter) {
+                  .anyMatch(
+                      retry ->
+                          retry.status() == OutcomeStatus.NEW
+                              && crash != null
+                              && retry.applicationSequence()
+                                  == crash.restoredNextApplicationSequence());
+          if (crash != null && matchingNewRetryAfter) {
             return Optional.of("RESPONSE_OBSERVED_BEFORE_RESULT_BIND");
           }
         }
@@ -936,7 +882,8 @@ final class M11MutantSuite {
           && restore != null
           && retry != null
           && snapshot.liveIdentityCount() > 0
-          && snapshot.persistedIdentityCount() < snapshot.liveIdentityCount()
+          && snapshot.persistedIdentityCount() == snapshot.liveIdentityCount()
+          && restore.identityBindingCount() < snapshot.persistedIdentityCount()
           && restore.outcome() == RestoreOutcome.MATCHER_WITHOUT_IDENTITY
           && retry.status() == OutcomeStatus.NEW
           && retry.applicationSequence() > snapshot.applicationSequence()) {
@@ -1004,9 +951,13 @@ final class M11MutantSuite {
       return events.subList(0, end).stream().anyMatch(BindingEvent.class::isInstance);
     }
 
-    private static boolean hasAfter(
-        List<TraceEvent> events, int start, Class<? extends TraceEvent> type) {
-      return events.subList(start + 1, events.size()).stream().anyMatch(type::isInstance);
+    private static <T extends TraceEvent> T firstAfter(
+        List<TraceEvent> events, int start, Class<T> type) {
+      return events.subList(start + 1, events.size()).stream()
+          .filter(type::isInstance)
+          .map(type::cast)
+          .findFirst()
+          .orElse(null);
     }
 
     private static <T extends TraceEvent> T first(List<TraceEvent> events, Class<T> type) {
@@ -1026,22 +977,13 @@ final class M11MutantSuite {
 
   private static final class Trace {
     private final List<TraceEvent> events = new ArrayList<>();
-    private int mutationActions;
 
     void add(TraceEvent event) {
       events.add(event);
     }
 
-    void mutated() {
-      mutationActions++;
-    }
-
     List<TraceEvent> events() {
       return List.copyOf(events);
-    }
-
-    int mutationActions() {
-      return mutationActions;
     }
   }
 
@@ -1092,7 +1034,8 @@ final class M11MutantSuite {
 
   private record CorruptionEvent(int byteOffset) implements TraceEvent {}
 
-  private record RestoreEvent(RestoreOutcome outcome, long nextApplicationSequence)
+  private record RestoreEvent(
+      RestoreOutcome outcome, long nextApplicationSequence, int identityBindingCount)
       implements TraceEvent {}
 
   private record DecodeEvent(
@@ -1115,15 +1058,8 @@ final class M11MutantSuite {
     }
   }
 
-  private record CandidateCheckpoint(
-      CommandApplierState commandState,
-      List<io.github.lchareln.cex.matching.cluster.M11IdentityBinding> bindings) {
-    CandidateCheckpoint {
-      bindings = List.copyOf(bindings);
-    }
-  }
-
-  private record Definition(String id, Mutation mutation, String fingerprint, List<Step> history) {
+  private record Definition(
+      String id, M11FaultPolicy.Mode mutation, String fingerprint, List<Step> history) {
     Definition {
       history = List.copyOf(history);
     }
@@ -1270,20 +1206,6 @@ final class M11MutantSuite {
     DECODE_REQUEST_V3
   }
 
-  private enum Mutation {
-    NONE,
-    OFFER_AS_SUCCESS,
-    SESSION_AS_IDENTITY,
-    CORRELATION_AS_IDENTITY,
-    RESPOND_BEFORE_BIND,
-    DROP_IDENTITY_FROM_SNAPSHOT,
-    CORRUPT_SNAPSHOT_TO_GENESIS,
-    REJECT_N_MINUS_ONE,
-    INCLUDE_RUNTIME_METADATA_IN_DIGEST,
-    DOUBLE_WRITE_LOCAL_WAL,
-    ACCEPT_UNSUPPORTED_VERSION
-  }
-
   private enum Classification {
     PASS,
     STUDENT_FAILURE,
@@ -1314,28 +1236,6 @@ final class M11MutantSuite {
     REQUEST,
     RESPONSE,
     SNAPSHOT
-  }
-
-  private static final class FaultingRequestDecoder {
-    private final M11RequestCodec delegate;
-
-    FaultingRequestDecoder(M11RequestCodec delegate) {
-      this.delegate = delegate;
-    }
-
-    M11CommandRequest decode(byte[] encoded) {
-      java.util.Objects.requireNonNull(delegate, "delegate");
-      java.util.Objects.requireNonNull(encoded, "encoded");
-      throw new IllegalStateException("injected request codec component failure");
-    }
-  }
-
-  private static final class FaultingClusterLauncher {
-    void launch(Path root, long shard, int portBase) {
-      new io.github.lchareln.cex.matching.cluster.M11SingleNodeConfig(
-          root, 11, shard, portBase, 0x020000, java.time.Duration.ofSeconds(1));
-      throw new IllegalStateException("injected single-node Cluster startup failure");
-    }
   }
 
   private static M11CommandRequest request() {
@@ -1376,7 +1276,11 @@ final class M11MutantSuite {
   }
 
   private static OutcomeStatus status(M11ApplicationResult result) {
-    return switch (result.response().status()) {
+    return status(result.response().status());
+  }
+
+  private static OutcomeStatus status(M11ResponseStatus status) {
+    return switch (status) {
       case NEW_APPLIED -> OutcomeStatus.NEW;
       case DUPLICATE_REPLAYED -> OutcomeStatus.DUPLICATE;
       case REJECTED -> OutcomeStatus.REJECTED;
@@ -1401,16 +1305,6 @@ final class M11MutantSuite {
 
   private static UUID namedUuid(String value) {
     return UUID.nameUUIDFromBytes(value.getBytes(StandardCharsets.UTF_8));
-  }
-
-  private static String sha256(String value) {
-    try {
-      return java.util.HexFormat.of()
-          .formatHex(
-              MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
-    } catch (NoSuchAlgorithmException failure) {
-      throw new IllegalStateException("SHA-256 unavailable", failure);
-    }
   }
 
   private static Path createTemporaryDirectory() {

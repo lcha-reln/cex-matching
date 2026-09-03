@@ -52,7 +52,18 @@ public final class M11SingleNodeCluster implements AutoCloseable {
 
   public static M11SingleNodeCluster launch(
       M11SingleNodeConfig config, boolean freshStart, M11ApplicationObserver observer) {
+    return launch(config, freshStart, observer, M11FaultPolicy.none());
+  }
+
+  static M11SingleNodeCluster launch(
+      M11SingleNodeConfig config,
+      boolean freshStart,
+      M11ApplicationObserver observer,
+      M11FaultPolicy faultPolicy) {
     Objects.requireNonNull(config, "config");
+    Objects.requireNonNull(observer, "observer");
+    Objects.requireNonNull(faultPolicy, "faultPolicy");
+    faultPolicy.beforeClusterLaunch();
     ConcurrentLinkedQueue<Throwable> errors = new ConcurrentLinkedQueue<>();
     M11ClusteredMatchingService service =
         new M11ClusteredMatchingService(

@@ -16,6 +16,15 @@ public final class M11ResponseCodec {
   public static final int MAX_MESSAGE_BYTES = 16 * 1024;
 
   private static final int MAX_REJECTION_BYTES = 1024;
+  private final M11FaultPolicy faultPolicy;
+
+  public M11ResponseCodec() {
+    this(M11FaultPolicy.none());
+  }
+
+  public M11ResponseCodec(M11FaultPolicy faultPolicy) {
+    this.faultPolicy = Objects.requireNonNull(faultPolicy, "faultPolicy");
+  }
 
   public byte[] encode(M11CommandResponse response) {
     Objects.requireNonNull(response, "response");
@@ -61,6 +70,11 @@ public final class M11ResponseCodec {
     if (version < MIN_READABLE_VERSION || version > CURRENT_VERSION) {
       throw failure(
           M11ProtocolException.Code.UNSUPPORTED_VERSION, "response version is unsupported");
+    }
+    if (faultPolicy.rejectPreviousVersion(version, CURRENT_VERSION)) {
+      throw failure(
+          M11ProtocolException.Code.UNSUPPORTED_VERSION,
+          "response previous readable version was rejected by the active fault policy");
     }
     if (reader.getInt() != TEMPLATE_ID) {
       throw failure(M11ProtocolException.Code.INVALID_VALUE, "response template is unsupported");

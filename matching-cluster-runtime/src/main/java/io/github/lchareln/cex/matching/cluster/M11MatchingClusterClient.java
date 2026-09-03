@@ -32,6 +32,7 @@ public final class M11MatchingClusterClient implements AutoCloseable {
   private final Listener listener;
   private final IdleStrategy idleStrategy = new BackoffIdleStrategy();
   private final M11RequestCodec requestCodec = new M11RequestCodec();
+  private final M11ClientCompletionBoundary completionBoundary = new M11ClientCompletionBoundary();
   private final AtomicLong nextAdminCorrelation = new AtomicLong(1);
   private long ingressOffersAccepted;
   private long egressResponsesDecoded;
@@ -98,6 +99,9 @@ public final class M11MatchingClusterClient implements AutoCloseable {
       long offered = cluster.offer(buffer, 0, encoded.length);
       if (offered >= 0) {
         ingressOffersAccepted++;
+        if (completionBoundary.onIngressOfferAccepted(request, offered).businessComplete()) {
+          throw new IllegalStateException("ingress offer cannot complete an M11 business command");
+        }
         break;
       }
       if (offered != Publication.BACK_PRESSURED
@@ -116,6 +120,11 @@ public final class M11MatchingClusterClient implements AutoCloseable {
       pollAndCheck();
       M11CommandResponse response = listener.responses.remove(correlation);
       if (response != null) {
+        M11ClientCompletionBoundary.Decision completion =
+            completionBoundary.onCorrelatedEgress(response);
+        if (!completion.businessComplete()) {
+          throw new IllegalStateException("correlated egress did not complete an M11 command");
+        }
         egressResponsesDecoded++;
         return response;
       }

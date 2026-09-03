@@ -6,10 +6,26 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.lchareln.cex.matching.cluster.DirectM11MatchingRuntime;
+import io.github.lchareln.cex.matching.cluster.M11ApplicationObserver;
+import io.github.lchareln.cex.matching.cluster.M11ClientCompletionBoundary;
+import io.github.lchareln.cex.matching.cluster.M11ClusterStartupControl;
+import io.github.lchareln.cex.matching.cluster.M11CommandRequest;
+import io.github.lchareln.cex.matching.cluster.M11FaultPolicy;
+import io.github.lchareln.cex.matching.cluster.M11ProtocolException;
+import io.github.lchareln.cex.matching.cluster.M11RequestCodec;
+import io.github.lchareln.cex.matching.cluster.M11ResponseStatus;
+import io.github.lchareln.cex.matching.cluster.M11SingleNodeCluster;
+import io.github.lchareln.cex.matching.cluster.M11SingleNodeConfig;
+import io.github.lchareln.cex.matching.cluster.M11SnapshotCodec;
+import io.github.lchareln.cex.matching.local.M08Command;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -32,6 +48,19 @@ final class M11MutationCoverageCompletionTest {
     assertTrue(mutants.actualMutationActions() >= 10);
     assertEquals(M11StartCheckRunner.MUTANT_IDS, strings(mutants.candidates(), "id"));
     assertEquals(M11StartCheckRunner.SYSTEM_ERROR_IDS, strings(mutants.controls(), "id"));
+    assertEquals(
+        List.of(
+            "OFFER_AS_SUCCESS",
+            "SESSION_AS_IDENTITY",
+            "CORRELATION_AS_IDENTITY",
+            "RESPOND_BEFORE_BIND",
+            "DROP_IDENTITY_FROM_SNAPSHOT",
+            "CORRUPT_SNAPSHOT_TO_GENESIS",
+            "REJECT_N_MINUS_ONE",
+            "INCLUDE_RUNTIME_METADATA_IN_DIGEST",
+            "DOUBLE_WRITE_LOCAL_WAL",
+            "ACCEPT_UNSUPPORTED_VERSION"),
+        strings(mutants.candidates(), "singleFaultMode"));
     mutants
         .candidates()
         .forEach(
@@ -42,6 +71,13 @@ final class M11MutationCoverageCompletionTest {
                   "M11_UNIFIED_TYPED_TRACE_OBSERVER_V2", candidate.path("observer").stringValue());
               assertTrue(candidate.path("actualMutationActions").intValue() > 0);
             });
+    assertEquals(
+        List.of("REQUEST_CODEC_COMPONENT", "SINGLE_NODE_CLUSTER_LAUNCHER", "HARNESS_REPORT_PARSER"),
+        strings(mutants.controls(), "executedPath"));
+    assertEquals(
+        "IllegalStateException", mutants.controls().get(0).path("failureType").stringValue());
+    assertEquals(
+        "IllegalStateException", mutants.controls().get(1).path("failureType").stringValue());
     mutants
         .controls()
         .forEach(
@@ -93,6 +129,121 @@ final class M11MutationCoverageCompletionTest {
       assertTrue(witness.path("oneMinimal").booleanValue());
       assertTrue(witness.path("strictFreshReplay").booleanValue());
     }
+  }
+
+  @Test
+  void productionComponentsOwnFaultEffectsAndCrashRecoveryPreservesAppliedState() throws Exception {
+    M11CommandRequest request = productionRequest();
+    M11FaultPolicy none = M11FaultPolicy.none();
+    assertEquals(M11FaultPolicy.Mode.NONE, none.mode());
+    assertEquals(0, none.activationCount());
+    assertFalse(
+        new M11ClientCompletionBoundary(none)
+            .onIngressOfferAccepted(request, 1)
+            .businessComplete());
+    DirectM11MatchingRuntime production = new DirectM11MatchingRuntime(none);
+    assertEquals(
+        M11ResponseStatus.NEW_APPLIED, production.submit(request, "session-a").response().status());
+    assertEquals(
+        M11ResponseStatus.DUPLICATE_REPLAYED,
+        production
+            .submit(request.withCorrelationId(new UUID(90, 91)), "session-b")
+            .response()
+            .status());
+    assertEquals(0, none.activationCount());
+    assertThrows(
+        IllegalArgumentException.class, () -> M11FaultPolicy.single(M11FaultPolicy.Mode.NONE));
+
+    M11FaultPolicy respond = M11FaultPolicy.single(M11FaultPolicy.Mode.RESPOND_BEFORE_BIND);
+    DirectM11MatchingRuntime faultyRuntime = new DirectM11MatchingRuntime(respond);
+    var genesis = faultyRuntime.stateImage();
+    var first = faultyRuntime.submit(request, "session-a");
+    assertEquals(1, first.response().applicationSequence().orElseThrow());
+    assertFalse(faultyRuntime.hasIdentityBinding(request.commandId()));
+    assertTrue(faultyRuntime.hasUnboundApplication());
+    DirectM11MatchingRuntime recovered = faultyRuntime.recoverAfterCrash(genesis);
+    assertEquals(2, recovered.nextApplicationSequence());
+    var retry = recovered.submit(request.withCorrelationId(new UUID(92, 93)), "session-a");
+    assertEquals(M11ResponseStatus.NEW_APPLIED, retry.response().status());
+    assertEquals(2, retry.response().applicationSequence().orElseThrow());
+
+    M11FaultPolicy drop = M11FaultPolicy.single(M11FaultPolicy.Mode.DROP_IDENTITY_FROM_SNAPSHOT);
+    DirectM11MatchingRuntime snapshotRuntime = new DirectM11MatchingRuntime(drop);
+    snapshotRuntime.submit(request);
+    M11SnapshotCodec snapshotCodec = new M11SnapshotCodec(drop);
+    byte[] snapshot = snapshotCodec.encodeCurrent(snapshotRuntime.stateImage());
+    DirectM11MatchingRuntime dropped =
+        DirectM11MatchingRuntime.restore(snapshotCodec.decodeForRecovery(snapshot).state(), drop);
+    assertEquals(2, dropped.nextApplicationSequence());
+    assertEquals(0, dropped.identityBindingCount());
+    var duplicateBecameNew = dropped.submit(request.withCorrelationId(new UUID(94, 95)));
+    assertEquals(M11ResponseStatus.NEW_APPLIED, duplicateBecameNew.response().status());
+    assertEquals(2, duplicateBecameNew.response().applicationSequence().orElseThrow());
+  }
+
+  @Test
+  void infrastructureControlsEnterProductionCodecAndClusterLaunchWhilePolicyHasNoIoPower()
+      throws Exception {
+    M11CommandRequest request = productionRequest();
+    byte[] encoded = new M11RequestCodec().encode(request);
+    M11FaultPolicy codecFault =
+        M11FaultPolicy.single(M11FaultPolicy.Mode.REQUEST_CODEC_SYSTEM_ERROR);
+    IllegalStateException codecFailure =
+        assertThrows(
+            IllegalStateException.class,
+            () -> new M11RequestCodec(codecFault).decodeCanonical(encoded, 1));
+    assertTrue(codecFailure.getMessage().contains("request codec component failure"));
+    assertEquals(1, codecFault.activationCount());
+
+    Path clusterRoot = Files.createTempDirectory("m11-startup-control-");
+    try {
+      M11FaultPolicy clusterFault =
+          M11FaultPolicy.single(M11FaultPolicy.Mode.CLUSTER_STARTUP_SYSTEM_ERROR);
+      IllegalStateException clusterFailure =
+          assertThrows(
+              IllegalStateException.class,
+              () ->
+                  M11ClusterStartupControl.launch(
+                      M11SingleNodeConfig.defaults(clusterRoot, 1, 41_111),
+                      M11ApplicationObserver.NO_OP,
+                      clusterFault));
+      assertTrue(clusterFailure.getMessage().contains("Cluster startup component failure"));
+      assertEquals(1, clusterFault.activationCount());
+    } finally {
+      M09ScenarioSupport.deleteTree(clusterRoot);
+    }
+
+    String policySource =
+        Files.readString(
+            root()
+                .resolve(
+                    "matching-cluster-runtime/src/main/java/io/github/lchareln/cex/matching/cluster/M11FaultPolicy.java"));
+    assertFalse(policySource.contains("java.nio.file"));
+    assertFalse(policySource.contains("FileChannel"));
+    assertFalse(policySource.contains("Consumer<byte[]>"));
+    String candidateSource =
+        Files.readString(
+            root()
+                .resolve(
+                    "matching-testkit/src/main/java/io/github/lchareln/cex/matching/testkit/M11MutantSuite.java"));
+    assertFalse(candidateSource.contains("if (mutation =="));
+    assertFalse(candidateSource.contains("trace.mutated"));
+    assertTrue(candidateSource.contains("new M11RequestCodec(faultPolicy)"));
+    assertTrue(candidateSource.contains("M11ClusterStartupControl.launch("));
+    String startupControlSource =
+        Files.readString(
+            root()
+                .resolve(
+                    "matching-cluster-runtime/src/main/java/io/github/lchareln/cex/matching/cluster/M11ClusterStartupControl.java"));
+    assertTrue(startupControlSource.contains("M11SingleNodeCluster.launch("));
+    assertTrue(
+        java.util.Arrays.stream(M11SingleNodeCluster.class.getDeclaredMethods())
+            .filter(method -> method.getName().equals("launch"))
+            .filter(method -> java.lang.reflect.Modifier.isPublic(method.getModifiers()))
+            .noneMatch(
+                method ->
+                    java.util.Arrays.asList(method.getParameterTypes())
+                        .contains(M11FaultPolicy.class)));
   }
 
   @Test
@@ -373,5 +524,28 @@ final class M11MutationCoverageCompletionTest {
 
   private static Path root() {
     return Path.of(System.getProperty("matching.repositoryRoot")).toAbsolutePath().normalize();
+  }
+
+  private static M11CommandRequest productionRequest() throws M11ProtocolException {
+    return new M11RequestCodec()
+        .create(
+            2,
+            2,
+            new UUID(80, 81),
+            "m11-production-fault-test",
+            1,
+            1,
+            1,
+            new UUID(82, 83),
+            new M08Command.Place(
+                "BTC-USDT",
+                BigInteger.valueOf(8_001),
+                "BUY",
+                BigInteger.valueOf(5_000_000),
+                BigInteger.ONE,
+                "GTC",
+                0,
+                "NONE",
+                Optional.empty()));
   }
 }

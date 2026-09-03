@@ -79,7 +79,7 @@ public final class M11ClusteredMatchingService implements ClusteredService {
       M11AeronSnapshotTransport.LoadedSnapshot loaded =
           snapshotTransport.read(
               snapshotImage, cluster.idleStrategy(), progressTimeout, componentFailure);
-      M11Snapshot snapshot = snapshotCodec.decodeCanonical(loaded.canonicalBytes());
+      M11Snapshot snapshot = snapshotCodec.decodeForRecovery(loaded.canonicalBytes());
       long expectedSnapshotSequence = snapshot.state().nextApplicationSequence() - 1;
       if (loaded.snapshotSequence() != expectedSnapshotSequence) {
         throw new M11ProtocolException(

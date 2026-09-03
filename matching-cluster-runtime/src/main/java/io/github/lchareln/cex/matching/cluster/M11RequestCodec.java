@@ -4,6 +4,7 @@ import io.github.lchareln.cex.matching.local.M08Command;
 import io.github.lchareln.cex.matching.local.M08Envelope;
 import io.github.lchareln.cex.matching.local.M08EnvelopeCodec;
 import io.github.lchareln.cex.matching.local.StructuralRejectionException;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.UUID;
@@ -17,6 +18,15 @@ public final class M11RequestCodec {
   public static final int MAX_MESSAGE_BYTES = M08EnvelopeCodec.MAX_ENVELOPE_BYTES + 64;
 
   private final M08EnvelopeCodec envelopeCodec = new M08EnvelopeCodec();
+  private final M11FaultPolicy faultPolicy;
+
+  public M11RequestCodec() {
+    this(M11FaultPolicy.none());
+  }
+
+  public M11RequestCodec(M11FaultPolicy faultPolicy) {
+    this.faultPolicy = Objects.requireNonNull(faultPolicy, "faultPolicy");
+  }
 
   public M11CommandRequest create(
       int requestVersion,
@@ -77,18 +87,33 @@ public final class M11RequestCodec {
 
   public M11CommandRequest decodeCanonical(byte[] encoded, long expectedShard)
       throws M11ProtocolException {
+    faultPolicy.beforeRequestDecode();
     Objects.requireNonNull(encoded, "encoded");
     if (encoded.length == 0 || encoded.length > MAX_MESSAGE_BYTES) {
       throw failure(M11ProtocolException.Code.LENGTH_LIMIT, "request length is outside its bound");
     }
-    M11Binary.Reader reader = new M11Binary.Reader(encoded);
+    byte[] canonicalInput = encoded;
+    M11Binary.Reader reader = new M11Binary.Reader(canonicalInput);
     if (reader.getInt() != MAGIC) {
       throw failure(M11ProtocolException.Code.INVALID_MAGIC, "request magic is invalid");
     }
-    int version = reader.getInt();
+    int wireVersion = reader.getInt();
+    int version = faultPolicy.readableRequestVersion(wireVersion, CURRENT_VERSION);
+    if (version != wireVersion) {
+      canonicalInput = encoded.clone();
+      ByteBuffer.wrap(canonicalInput).putInt(Integer.BYTES, version);
+      reader = new M11Binary.Reader(canonicalInput);
+      reader.getInt();
+      reader.getInt();
+    }
     if (version < MIN_READABLE_VERSION || version > CURRENT_VERSION) {
       throw failure(
           M11ProtocolException.Code.UNSUPPORTED_VERSION, "request version is unsupported");
+    }
+    if (faultPolicy.rejectPreviousVersion(version, CURRENT_VERSION)) {
+      throw failure(
+          M11ProtocolException.Code.UNSUPPORTED_VERSION,
+          "request previous readable version was rejected by the active fault policy");
     }
     if (reader.getInt() != TEMPLATE_ID) {
       throw failure(M11ProtocolException.Code.INVALID_VALUE, "request template is unsupported");
@@ -104,7 +129,7 @@ public final class M11RequestCodec {
                 new M11CommandRequest(
                     version, correlation, responseVersion, envelopeBytes, envelope),
             "request");
-    if (!Arrays.equals(encoded, encode(request))) {
+    if (!Arrays.equals(canonicalInput, encode(request))) {
       throw failure(M11ProtocolException.Code.NON_CANONICAL, "request is not canonical");
     }
     return request;

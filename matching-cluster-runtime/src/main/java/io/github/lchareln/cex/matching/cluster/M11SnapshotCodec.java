@@ -17,6 +17,15 @@ public final class M11SnapshotCodec {
   private static final int TRAILER_BYTES = Integer.BYTES + SHA256_BYTES;
 
   private final M11RuntimeStateCodec stateCodec = new M11RuntimeStateCodec();
+  private final M11FaultPolicy faultPolicy;
+
+  public M11SnapshotCodec() {
+    this(M11FaultPolicy.none());
+  }
+
+  public M11SnapshotCodec(M11FaultPolicy faultPolicy) {
+    this.faultPolicy = Objects.requireNonNull(faultPolicy, "faultPolicy");
+  }
 
   public byte[] encodeCurrent(M11RuntimeState state) {
     return encode(CURRENT_VERSION, state);
@@ -77,6 +86,11 @@ public final class M11SnapshotCodec {
       throw failure(
           M11ProtocolException.Code.UNSUPPORTED_VERSION, "snapshot version is unsupported");
     }
+    if (faultPolicy.rejectPreviousVersion(version, CURRENT_VERSION)) {
+      throw failure(
+          M11ProtocolException.Code.UNSUPPORTED_VERSION,
+          "snapshot previous readable version was rejected by the active fault policy");
+    }
     if (reader.getInt() != TEMPLATE_ID) {
       throw failure(M11ProtocolException.Code.INVALID_VALUE, "snapshot template is unsupported");
     }
@@ -118,6 +132,18 @@ public final class M11SnapshotCodec {
       throw failure(M11ProtocolException.Code.NON_CANONICAL, "snapshot is not canonical");
     }
     return snapshot;
+  }
+
+  /** Recovery entrypoint used by the Cluster service and deterministic restart qualification. */
+  public M11Snapshot decodeForRecovery(byte[] encoded) throws M11ProtocolException {
+    try {
+      return decodeCanonical(encoded);
+    } catch (M11ProtocolException failure) {
+      if (!faultPolicy.fallbackCorruptSnapshotToGenesis()) {
+        throw failure;
+      }
+      return new M11Snapshot(CURRENT_VERSION, new DirectM11MatchingRuntime().stateImage());
+    }
   }
 
   private static M11ProtocolException failure(M11ProtocolException.Code code, String message) {

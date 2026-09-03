@@ -17,6 +17,7 @@ final class M11IdentityTable {
   private final Map<Slot, M11IdentityBinding> bySlot = new HashMap<>();
   private final Map<ProducerKey, ProducerCursor> producers = new HashMap<>();
   private final Map<Long, M11IdentityBinding> byApplication = new LinkedHashMap<>();
+  private long nextApplicationSequence = 1;
 
   Decision preflight(M08Envelope envelope) {
     Objects.requireNonNull(envelope, "envelope");
@@ -45,8 +46,7 @@ final class M11IdentityTable {
     if (preflight(envelope) != New.INSTANCE) {
       throw new IllegalStateException("identity must be new at commit");
     }
-    long expectedApplication = byApplication.size() + 1L;
-    if (result.applicationSequence() != expectedApplication) {
+    if (result.applicationSequence() != nextApplicationSequence) {
       throw new IllegalStateException("identity result is not at the next application sequence");
     }
     M11IdentityBinding binding =
@@ -61,10 +61,24 @@ final class M11IdentityTable {
         new ProducerCursor(
             binding.slot().producerEpoch(),
             Math.incrementExact(binding.slot().producerSequence())));
+    nextApplicationSequence = Math.incrementExact(nextApplicationSequence);
   }
 
   List<M11IdentityBinding> bindings() {
     return List.copyOf(byApplication.values());
+  }
+
+  boolean containsCommand(UUID commandId) {
+    return byCommand.containsKey(Objects.requireNonNull(commandId, "commandId"));
+  }
+
+  static M11IdentityTable emptyAt(long nextApplicationSequence) {
+    if (nextApplicationSequence <= 1) {
+      throw new IllegalArgumentException("dropped identity state requires an advanced sequence");
+    }
+    M11IdentityTable restored = new M11IdentityTable();
+    restored.nextApplicationSequence = nextApplicationSequence;
+    return restored;
   }
 
   static M11IdentityTable restore(List<M11IdentityBinding> bindings) {
@@ -85,6 +99,7 @@ final class M11IdentityTable {
           new ProducerCursor(
               binding.slot().producerEpoch(),
               Math.incrementExact(binding.slot().producerSequence())));
+      restored.nextApplicationSequence = Math.incrementExact(restored.nextApplicationSequence);
     }
     return restored;
   }
