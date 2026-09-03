@@ -88,7 +88,10 @@ by 512 cross-snapshot duplicate replays. `AdminResponseCode.OK` is only request 
 wait for the snapshot counter, neutral control toggle, new consensus (`-1`) and service (`0`)
 Recording Log entries at one term/position with new recording IDs, and a payload digest that the
 restarted service proves it actually loaded. The contract also freezes 28 proof obligations, ten
-semantic mutants, three `SYSTEM_ERROR` controls, and five tutorial permalinks. Request, response,
+semantic mutants, three `SYSTEM_ERROR` controls, and five tutorial permalinks. Coverage replays the
+actual fixed assertions and requires stable assertion IDs, producers, observed values, observation
+digests, and complete witness digests to match the serialized ledger exactly; copying the 28 labels
+cannot produce a PASS. Request, response,
 and snapshot application formats have current version 2 with minimum readable version 1. Request
 v1 always selects response v1; request v2 may select response v1 or v2, and every valid business
 outcome down-encodes to v1. Response v2 echoes only `commandId`, not the full durable identity.

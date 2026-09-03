@@ -79,7 +79,8 @@ public final class M11CheckRunner {
         mutants.counterexamples(), readString(root.resolve(COUNTEREXAMPLE_SCHEMA_PATH)), false);
     JsonSupport.validate(
         mutants.replayReport(), readString(root.resolve(REPLAY_SCHEMA_PATH)), false);
-    ObjectNode coverage = new M11Coverage().run(root, fixed, mutants);
+    ObjectNode coverage =
+        new M11Coverage().run(root, fixed, protocol, generated, architecture, mutants);
     JsonSupport.validate(coverage, readString(root.resolve(COVERAGE_SCHEMA_PATH)), false);
     ObjectNode environment =
         new M11Environment().capture(generated.clusterRoot(), started, Instant.now());
@@ -319,7 +320,13 @@ public final class M11CheckRunner {
         "observed",
         "allWitnessed",
         "source",
+        "witnessContract",
         "systemErrorEvaluatedAfterControls",
+        "assertionsExecuted",
+        "allAssertionsPassed",
+        "ledgerVerifiedAgainstExecutionReplay",
+        "obligationEvidenceRecomputed",
+        "duplicateAssertionIdsRejected",
         "factCount",
         "ledgerSha256");
     ObjectNode mutants = check.putObject("mutants");

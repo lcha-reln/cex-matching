@@ -117,38 +117,133 @@ final class M11MutationCoverageCompletionTest {
   }
 
   @Test
-  void coverageComesFromFactsAndOnlyAddsSystemFactAfterExecutedControls() throws Exception {
-    M11FixedSuite.Result fixed = fixed(allNonSystemFacts());
-    ObjectNode coverage = new M11Coverage().run(root(), fixed, mutants);
+  void coveragePublishesAttestedFactsAndOnlyAddsSystemFactAfterExecutedControls() throws Exception {
+    List<String> fixedRequired = fixedRequired();
+    List<M11FixedSuite.Fact> executedFacts = executedFacts("executed-observation");
+    List<String> executedAssertionIds = assertionIds(executedFacts);
+    M11Coverage.verifyAssertionLedger(
+        fixedRequired, executedFacts, executedFacts, executedAssertionIds);
+
+    List<M11FixedSuite.Fact> completeLedger = new ArrayList<>(executedFacts);
+    completeLedger.add(M11Coverage.verifiedSystemControlFact(mutants));
+    ObjectNode coverage = M11Coverage.buildReport(M11StartCheckRunner.COVERAGE_IDS, completeLedger);
     String coverageSchema = Files.readString(root().resolve(M11CheckRunner.COVERAGE_SCHEMA_PATH));
     JsonSupport.validate(coverage, coverageSchema, false);
     assertEquals(28, coverage.path("observed").intValue());
-    assertEquals("ASSERTION_FACT_LEDGER", coverage.path("source").stringValue());
+    assertEquals("EXECUTED_ASSERTION_WITNESS_LEDGER", coverage.path("source").stringValue());
+    assertEquals(
+        "M11_EXECUTED_ASSERTION_WITNESS_V1", coverage.path("witnessContract").stringValue());
     assertTrue(coverage.path("systemErrorEvaluatedAfterControls").booleanValue());
+    assertTrue(coverage.path("ledgerVerifiedAgainstExecutionReplay").booleanValue());
+    assertTrue(coverage.path("obligationEvidenceRecomputed").booleanValue());
+    assertEquals(completeLedger.size(), coverage.path("assertionsExecuted").intValue());
     JsonNode system = coverage.path("witnesses").get(27);
     assertEquals("SYSTEM_ERROR_NEVER_PASS", system.path("obligation").stringValue());
     assertEquals("M11_SYSTEM_ERROR_CONTROLS", system.path("scenarios").get(0).stringValue());
+    JsonNode systemFact = system.path("facts").get(0);
+    assertTrue(systemFact.path("executed").booleanValue());
+    assertTrue(systemFact.path("passed").booleanValue());
+    assertFalse(systemFact.path("observationSha256").stringValue().isBlank());
+    assertFalse(systemFact.path("witnessSha256").stringValue().isBlank());
     ObjectNode incompleteReport = coverage.deepCopy();
     incompleteReport.put("observed", 27);
     assertThrows(
         FixtureSchemaException.class,
         () -> JsonSupport.validate(incompleteReport, coverageSchema, false));
 
-    List<M11FixedSuite.Fact> missing = new ArrayList<>(allNonSystemFacts());
-    missing.removeFirst();
-    assertThrows(
-        M11SemanticFailure.class, () -> new M11Coverage().run(root(), fixed(missing), mutants));
-
-    List<M11FixedSuite.Fact> preclaimed = new ArrayList<>(allNonSystemFacts());
-    preclaimed.add(fact("SYSTEM_ERROR_NEVER_PASS"));
-    assertThrows(
-        M11SemanticFailure.class, () -> new M11Coverage().run(root(), fixed(preclaimed), mutants));
-
     ArrayNode tamperedControls = mutants.controls();
     ((ObjectNode) tamperedControls.get(0)).put("classification", "STUDENT_FAILURE");
     assertThrows(
         M11SemanticFailure.class,
-        () -> new M11Coverage().run(root(), fixed, withControls(tamperedControls)));
+        () -> M11Coverage.verifiedSystemControlFact(withControls(tamperedControls)));
+  }
+
+  @Test
+  void coverageRejectsLabelsForgedValuesDuplicatesMissingAndUnexecutedAssertions() {
+    List<String> required = fixedRequired();
+    List<M11FixedSuite.Fact> expected = executedFacts("executed-observation");
+    List<String> executed = assertionIds(expected);
+
+    List<M11FixedSuite.Fact> labelsOnly = executedFacts("copied-label-without-execution");
+    assertThrows(
+        M11SemanticFailure.class,
+        () -> M11Coverage.verifyAssertionLedger(required, expected, labelsOnly, executed));
+
+    List<M11FixedSuite.Fact> forgedValue = new ArrayList<>(expected);
+    M11FixedSuite.Fact original = forgedValue.getFirst();
+    forgedValue.set(
+        0,
+        M11FixedSuite.Fact.executed(
+            original.obligation(),
+            original.scenarioId(),
+            original.sourceArtifact(),
+            original.assertionId(),
+            original.producer(),
+            original.assertion(),
+            "forged-observed-value"));
+    assertThrows(
+        M11SemanticFailure.class,
+        () -> M11Coverage.verifyAssertionLedger(required, expected, forgedValue, executed));
+
+    List<M11FixedSuite.Fact> forgedAssertionId = new ArrayList<>(expected);
+    forgedAssertionId.set(
+        0,
+        M11FixedSuite.Fact.executed(
+            original.obligation(),
+            original.scenarioId(),
+            original.sourceArtifact(),
+            "M11.FORGED." + original.obligation() + ".V1",
+            original.producer(),
+            original.assertion(),
+            original.observedValue()));
+    assertThrows(
+        M11SemanticFailure.class,
+        () -> M11Coverage.verifyAssertionLedger(required, expected, forgedAssertionId, executed));
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new M11FixedSuite.Fact(
+                original.obligation(),
+                original.scenarioId(),
+                original.sourceArtifact(),
+                original.assertionId(),
+                original.producer(),
+                original.assertion(),
+                "forged-with-stale-digests",
+                original.observationSha256(),
+                original.witnessSha256()));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new M11FixedSuite.Fact(
+                original.obligation(),
+                original.scenarioId(),
+                original.sourceArtifact(),
+                original.assertionId(),
+                original.producer(),
+                original.assertion(),
+                original.observedValue(),
+                original.observationSha256(),
+                "0".repeat(64)));
+
+    List<M11FixedSuite.Fact> missing = new ArrayList<>(expected);
+    missing.removeFirst();
+    assertThrows(
+        M11SemanticFailure.class,
+        () -> M11Coverage.verifyAssertionLedger(required, expected, missing, executed));
+
+    List<M11FixedSuite.Fact> duplicate = new ArrayList<>(expected);
+    duplicate.add(expected.getFirst());
+    assertThrows(
+        M11SemanticFailure.class,
+        () -> M11Coverage.verifyAssertionLedger(required, expected, duplicate, executed));
+
+    List<String> notExecuted = new ArrayList<>(executed);
+    notExecuted.removeFirst();
+    assertThrows(
+        M11SemanticFailure.class,
+        () -> M11Coverage.verifyAssertionLedger(required, expected, expected, notExecuted));
   }
 
   @Test
@@ -212,29 +307,34 @@ final class M11MutationCoverageCompletionTest {
     assertThrows(FixtureSchemaException.class, () -> JsonSupport.validate(failure, schema, false));
   }
 
-  private static M11FixedSuite.Result fixed(List<M11FixedSuite.Fact> facts) {
-    ObjectNode report = JsonSupport.MAPPER.createObjectNode();
-    report.put("schemaVersion", "matching.m11.fixed-scenarios.v1");
-    report.put("status", "PASS");
-    report.put("scenarios", 22);
-    report.put("passed", 22);
-    return new M11FixedSuite.Result(report, 22, facts);
-  }
-
-  private static List<M11FixedSuite.Fact> allNonSystemFacts() {
+  private static List<String> fixedRequired() {
     return M11StartCheckRunner.COVERAGE_IDS.stream()
-        .filter(obligation -> !"SYSTEM_ERROR_NEVER_PASS".equals(obligation))
-        .map(M11MutationCoverageCompletionTest::fact)
+        .filter(value -> !"SYSTEM_ERROR_NEVER_PASS".equals(value))
         .toList();
   }
 
-  private static M11FixedSuite.Fact fact(String obligation) {
-    return new M11FixedSuite.Fact(
-        obligation,
-        "FACT_LEDGER_TEST",
-        "fixed-scenarios.json",
-        "executed assertion for " + obligation,
-        "observed=true");
+  private static List<M11FixedSuite.Fact> executedFacts(String observedPrefix) {
+    List<M11FixedSuite.Fact> facts = new ArrayList<>();
+    int observation = 0;
+    for (String scenario : M11StartCheckRunner.SCENARIO_IDS) {
+      for (String obligation : M11FixedSuite.assertedObligations(scenario)) {
+        facts.add(
+            M11FixedSuite.Fact.executed(
+                obligation,
+                scenario,
+                "fixed-scenarios.json",
+                "M11." + scenario + "." + obligation + ".V1",
+                "M11FixedSuite#assertScenario(" + scenario + ")",
+                "executed obligation-specific assertion " + obligation,
+                observedPrefix + '=' + observation));
+        observation++;
+      }
+    }
+    return List.copyOf(facts);
+  }
+
+  private static List<String> assertionIds(List<M11FixedSuite.Fact> facts) {
+    return facts.stream().map(M11FixedSuite.Fact::assertionId).toList();
   }
 
   private M11MutantSuite.Result withControls(ArrayNode controls) {

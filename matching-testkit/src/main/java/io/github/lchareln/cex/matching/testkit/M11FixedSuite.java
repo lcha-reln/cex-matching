@@ -1,12 +1,15 @@
 package io.github.lchareln.cex.matching.testkit;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -15,7 +18,78 @@ import tools.jackson.databind.node.ObjectNode;
  * Binds the 22 frozen scenario identities to executed protocol, runtime, and architecture facts.
  */
 final class M11FixedSuite {
+  static final String WITNESS_CONTRACT = "M11_EXECUTED_ASSERTION_WITNESS_V1";
+
   Result run(
+      Path repositoryRoot,
+      M11ProtocolSuite.Result protocol,
+      M11GeneratedSuite.Result generated,
+      ObjectNode architecture) {
+    JsonNode workload =
+        JsonSupport.parse(read(repositoryRoot.resolve(M11StartCheckRunner.WORKLOAD_PATH)));
+    AssertionReplay replay = replayAssertions(repositoryRoot, protocol, generated, architecture);
+
+    ArrayNode results = JsonSupport.MAPPER.createArrayNode();
+    for (JsonNode scenario : workload.path("fixedScenarios")) {
+      String id = scenario.path("id").stringValue();
+      List<String> declared = strings(scenario.path("proofObligations"));
+      require(declared.equals(declaredObligations(id)), id + " obligation declaration changed");
+      List<Fact> asserted =
+          replay.facts().stream().filter(fact -> fact.scenarioId().equals(id)).toList();
+      require(
+          asserted.stream()
+              .map(Fact::obligation)
+              .distinct()
+              .toList()
+              .equals(assertedObligations(id)),
+          id + " assertion fact mapping changed");
+      ObjectNode result = results.addObject();
+      result.put("id", id);
+      result.put("status", M11CheckRunner.PASS);
+      result.put("evidenceMode", evidenceMode(id));
+      result.set("proofObligations", scenario.path("proofObligations").deepCopy());
+      ArrayNode assertedFacts = result.putArray("assertedFacts");
+      asserted.forEach(fact -> fact.write(assertedFacts.addObject()));
+      ObjectNode observations = result.putObject("observations");
+      observations.put("executed", true);
+      observations.put("source", source(id));
+      observations.put("detail", detail(id));
+    }
+    require(
+        replay.scenarioIds().equals(M11StartCheckRunner.SCENARIO_IDS),
+        "M11 fixed scenario identity or order changed");
+    require(results.size() == 22, "M11 fixed scenario count changed");
+
+    ObjectNode report = JsonSupport.MAPPER.createObjectNode();
+    report.put("schemaVersion", "matching.m11.fixed-scenarios.v1");
+    report.put("status", M11CheckRunner.PASS);
+    report.put("scenarios", results.size());
+    report.put("passed", results.size());
+    report.put("assertionFacts", replay.facts().size());
+    report.put("assertionsExecuted", replay.executedAssertionIds().size());
+    report.put("allAssertionsPassed", true);
+    report.put("witnessContract", WITNESS_CONTRACT);
+    report.put("factSource", "EXECUTED_ASSERTION_WITNESS_LEDGER");
+    report.put("ledgerSha256", ledgerSha256(replay.facts()));
+    report.set("results", results);
+    ArrayNode executed = report.putArray("executedAssertionIds");
+    replay.executedAssertionIds().forEach(executed::add);
+    ArrayNode ledger = report.putArray("factLedger");
+    replay.facts().forEach(fact -> fact.write(ledger.addObject()));
+    return new Result(
+        report,
+        results.size(),
+        replay.facts(),
+        replay.executedAssertionIds(),
+        ledgerSha256(replay.facts()));
+  }
+
+  /**
+   * Re-executes every frozen assertion from the actual protocol/runtime/architecture observations.
+   * Coverage calls this independently of the published fixed-suite report, so a caller cannot turn
+   * obligation labels into evidence by constructing a synthetic {@link Result}.
+   */
+  static AssertionReplay replayAssertions(
       Path repositoryRoot,
       M11ProtocolSuite.Result protocol,
       M11GeneratedSuite.Result generated,
@@ -36,52 +110,26 @@ final class M11FixedSuite {
         "M11 restart did not load a completed snapshot");
     require(architecture.path("violations").isEmpty(), "M11 architecture gate has violations");
 
-    ArrayNode results = JsonSupport.MAPPER.createArrayNode();
-    List<String> ids = new ArrayList<>();
+    List<String> scenarioIds = new ArrayList<>();
     List<Fact> facts = new ArrayList<>();
+    Set<String> executedAssertionIds = new LinkedHashSet<>();
     for (JsonNode scenario : workload.path("fixedScenarios")) {
       String id = scenario.path("id").stringValue();
       assertScenario(id, protocol, generated, architecture);
-      List<String> declared = strings(scenario.path("proofObligations"));
-      require(declared.equals(declaredObligations(id)), id + " obligation declaration changed");
-      List<Fact> asserted = factsAfterAssertion(id, protocol, generated, architecture);
-      require(
-          asserted.stream()
-              .map(Fact::obligation)
-              .distinct()
-              .toList()
-              .equals(assertedObligations(id)),
-          id + " assertion fact mapping changed");
+      // This method is deliberately called only after assertScenario returned normally.
+      List<Fact> asserted = factsAfterPassedAssertion(id, protocol, generated, architecture);
+      for (Fact fact : asserted) {
+        require(
+            executedAssertionIds.add(fact.assertionId()),
+            "duplicate executed assertion ID " + fact.assertionId());
+      }
       facts.addAll(asserted);
-      ids.add(id);
-      ObjectNode result = results.addObject();
-      result.put("id", id);
-      result.put("status", M11CheckRunner.PASS);
-      result.put("evidenceMode", evidenceMode(id));
-      result.set("proofObligations", scenario.path("proofObligations").deepCopy());
-      ArrayNode assertedFacts = result.putArray("assertedFacts");
-      asserted.forEach(fact -> fact.write(assertedFacts.addObject()));
-      ObjectNode observations = result.putObject("observations");
-      observations.put("executed", true);
-      observations.put("source", source(id));
-      observations.put("detail", detail(id));
+      scenarioIds.add(id);
     }
     require(
-        ids.equals(M11StartCheckRunner.SCENARIO_IDS),
+        scenarioIds.equals(M11StartCheckRunner.SCENARIO_IDS),
         "M11 fixed scenario identity or order changed");
-    require(results.size() == 22, "M11 fixed scenario count changed");
-
-    ObjectNode report = JsonSupport.MAPPER.createObjectNode();
-    report.put("schemaVersion", "matching.m11.fixed-scenarios.v1");
-    report.put("status", M11CheckRunner.PASS);
-    report.put("scenarios", results.size());
-    report.put("passed", results.size());
-    report.put("assertionFacts", facts.size());
-    report.put("factSource", "EXECUTED_ASSERTION_LEDGER");
-    report.set("results", results);
-    ArrayNode ledger = report.putArray("factLedger");
-    facts.forEach(fact -> fact.write(ledger.addObject()));
-    return new Result(report, results.size(), facts);
+    return new AssertionReplay(scenarioIds, facts, List.copyOf(executedAssertionIds));
   }
 
   private static void assertScenario(
@@ -311,7 +359,7 @@ final class M11FixedSuite {
         .count();
   }
 
-  private static List<Fact> factsAfterAssertion(
+  private static List<Fact> factsAfterPassedAssertion(
       String id,
       M11ProtocolSuite.Result protocol,
       M11GeneratedSuite.Result generated,
@@ -570,7 +618,14 @@ final class M11FixedSuite {
 
   private static Fact fact(
       String scenarioId, String obligation, String assertion, String observedValue) {
-    return new Fact(obligation, scenarioId, source(scenarioId), assertion, observedValue);
+    return Fact.executed(
+        obligation,
+        scenarioId,
+        source(scenarioId),
+        "M11." + scenarioId + "." + obligation + ".V1",
+        "M11FixedSuite#assertScenario(" + scenarioId + ")",
+        assertion,
+        observedValue);
   }
 
   static List<String> assertedObligations(String id) {
@@ -689,26 +744,159 @@ final class M11FixedSuite {
     }
   }
 
+  static String ledgerSha256(List<Fact> facts) {
+    StringBuilder canonical = new StringBuilder("M11-EXECUTED-ASSERTION-LEDGER-V1\n");
+    for (Fact fact : facts) {
+      appendField(canonical, "witnessSha256", fact.witnessSha256());
+    }
+    return Hashing.sha256Hex(canonical.toString().getBytes(StandardCharsets.UTF_8));
+  }
+
+  private static void appendField(StringBuilder target, String name, String value) {
+    int bytes = value.getBytes(StandardCharsets.UTF_8).length;
+    target.append(name).append(':').append(bytes).append(':').append(value).append('\n');
+  }
+
   record Fact(
       String obligation,
       String scenarioId,
       String sourceArtifact,
+      String assertionId,
+      String producer,
       String assertion,
-      String observedValue) {
+      String observedValue,
+      String observationSha256,
+      String witnessSha256) {
     Fact {
       requireNonBlank(obligation, "obligation");
       requireNonBlank(scenarioId, "scenarioId");
       requireNonBlank(sourceArtifact, "sourceArtifact");
+      requireNonBlank(assertionId, "assertionId");
+      requireNonBlank(producer, "producer");
       requireNonBlank(assertion, "assertion");
       requireNonBlank(observedValue, "observedValue");
+      requireNonBlank(observationSha256, "observationSha256");
+      requireNonBlank(witnessSha256, "witnessSha256");
+      String expectedObservation = observationDigest(assertionId, sourceArtifact, observedValue);
+      if (!expectedObservation.equals(observationSha256)) {
+        throw new IllegalArgumentException("observationSha256 does not bind observedValue");
+      }
+      String expectedWitness =
+          witnessDigest(
+              obligation,
+              scenarioId,
+              sourceArtifact,
+              assertionId,
+              producer,
+              assertion,
+              observedValue,
+              observationSha256);
+      if (!expectedWitness.equals(witnessSha256)) {
+        throw new IllegalArgumentException("witnessSha256 does not bind assertion witness");
+      }
+    }
+
+    static Fact executed(
+        String obligation,
+        String scenarioId,
+        String sourceArtifact,
+        String assertionId,
+        String producer,
+        String assertion,
+        String observedValue) {
+      String observationSha256 = observationDigest(assertionId, sourceArtifact, observedValue);
+      return new Fact(
+          obligation,
+          scenarioId,
+          sourceArtifact,
+          assertionId,
+          producer,
+          assertion,
+          observedValue,
+          observationSha256,
+          witnessDigest(
+              obligation,
+              scenarioId,
+              sourceArtifact,
+              assertionId,
+              producer,
+              assertion,
+              observedValue,
+              observationSha256));
     }
 
     void write(ObjectNode target) {
       target.put("obligation", obligation);
       target.put("scenarioId", scenarioId);
       target.put("sourceArtifact", sourceArtifact);
+      target.put("assertionId", assertionId);
+      target.put("producer", producer);
       target.put("assertion", assertion);
       target.put("observedValue", observedValue);
+      target.put("observationSha256", observationSha256);
+      target.put("witnessSha256", witnessSha256);
+      target.put("executed", true);
+      target.put("passed", true);
+    }
+
+    static Fact read(JsonNode source) {
+      requireJsonTrue(source, "executed");
+      requireJsonTrue(source, "passed");
+      return new Fact(
+          text(source, "obligation"),
+          text(source, "scenarioId"),
+          text(source, "sourceArtifact"),
+          text(source, "assertionId"),
+          text(source, "producer"),
+          text(source, "assertion"),
+          text(source, "observedValue"),
+          text(source, "observationSha256"),
+          text(source, "witnessSha256"));
+    }
+
+    private static String observationDigest(
+        String assertionId, String sourceArtifact, String observedValue) {
+      StringBuilder canonical = new StringBuilder("M11-ASSERTION-OBSERVATION-V1\n");
+      appendField(canonical, "assertionId", assertionId);
+      appendField(canonical, "sourceArtifact", sourceArtifact);
+      appendField(canonical, "observedValue", observedValue);
+      return Hashing.sha256Hex(canonical.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String witnessDigest(
+        String obligation,
+        String scenarioId,
+        String sourceArtifact,
+        String assertionId,
+        String producer,
+        String assertion,
+        String observedValue,
+        String observationSha256) {
+      StringBuilder canonical = new StringBuilder("M11-EXECUTED-ASSERTION-WITNESS-V1\n");
+      appendField(canonical, "obligation", obligation);
+      appendField(canonical, "scenarioId", scenarioId);
+      appendField(canonical, "sourceArtifact", sourceArtifact);
+      appendField(canonical, "assertionId", assertionId);
+      appendField(canonical, "producer", producer);
+      appendField(canonical, "assertion", assertion);
+      appendField(canonical, "observedValue", observedValue);
+      appendField(canonical, "observationSha256", observationSha256);
+      return Hashing.sha256Hex(canonical.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String text(JsonNode source, String field) {
+      JsonNode value = source.get(field);
+      if (value == null || !value.isString() || value.stringValue().isBlank()) {
+        throw new IllegalArgumentException(field + " must be a non-blank string");
+      }
+      return value.stringValue();
+    }
+
+    private static void requireJsonTrue(JsonNode source, String field) {
+      JsonNode value = source.get(field);
+      if (value == null || !value.isBoolean() || !value.booleanValue()) {
+        throw new IllegalArgumentException(field + " must be true");
+      }
     }
 
     private static void requireNonBlank(String value, String field) {
@@ -718,15 +906,37 @@ final class M11FixedSuite {
     }
   }
 
-  record Result(ObjectNode report, int passed, List<Fact> facts) {
+  record AssertionReplay(
+      List<String> scenarioIds, List<Fact> facts, List<String> executedAssertionIds) {
+    AssertionReplay {
+      scenarioIds = List.copyOf(scenarioIds);
+      facts = List.copyOf(facts);
+      executedAssertionIds = List.copyOf(executedAssertionIds);
+    }
+  }
+
+  record Result(
+      ObjectNode report,
+      int passed,
+      List<Fact> facts,
+      List<String> executedAssertionIds,
+      String ledgerSha256) {
     Result {
       report = report.deepCopy();
       facts = List.copyOf(facts);
+      executedAssertionIds = List.copyOf(executedAssertionIds);
+      requireNonBlank(ledgerSha256, "ledgerSha256");
     }
 
     @Override
     public ObjectNode report() {
       return report.deepCopy();
+    }
+
+    private static void requireNonBlank(String value, String field) {
+      if (value == null || value.isBlank()) {
+        throw new IllegalArgumentException(field + " must not be blank");
+      }
     }
   }
 }

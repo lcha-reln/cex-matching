@@ -409,13 +409,19 @@
     "coverage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["required", "observed", "allWitnessed", "source", "systemErrorEvaluatedAfterControls", "factCount", "ledgerSha256"],
+      "required": ["required", "observed", "allWitnessed", "source", "witnessContract", "systemErrorEvaluatedAfterControls", "assertionsExecuted", "allAssertionsPassed", "ledgerVerifiedAgainstExecutionReplay", "obligationEvidenceRecomputed", "duplicateAssertionIdsRejected", "factCount", "ledgerSha256"],
       "properties": {
         "required": { "const": 28 },
         "observed": { "const": 28 },
         "allWitnessed": { "const": true },
-        "source": { "const": "ASSERTION_FACT_LEDGER" },
+        "source": { "const": "EXECUTED_ASSERTION_WITNESS_LEDGER" },
+        "witnessContract": { "const": "M11_EXECUTED_ASSERTION_WITNESS_V1" },
         "systemErrorEvaluatedAfterControls": { "const": true },
+        "assertionsExecuted": { "type": "integer", "minimum": 28 },
+        "allAssertionsPassed": { "const": true },
+        "ledgerVerifiedAgainstExecutionReplay": { "const": true },
+        "obligationEvidenceRecomputed": { "const": true },
+        "duplicateAssertionIdsRejected": { "const": true },
         "factCount": { "type": "integer", "minimum": 28 },
         "ledgerSha256": { "$ref": "#/$defs/sha256" }
       }

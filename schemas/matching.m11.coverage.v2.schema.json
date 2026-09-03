@@ -10,7 +10,13 @@
     "observed",
     "allWitnessed",
     "source",
+    "witnessContract",
     "systemErrorEvaluatedAfterControls",
+    "assertionsExecuted",
+    "allAssertionsPassed",
+    "ledgerVerifiedAgainstExecutionReplay",
+    "obligationEvidenceRecomputed",
+    "duplicateAssertionIdsRejected",
     "factCount",
     "ledgerSha256",
     "witnesses"
@@ -21,8 +27,14 @@
     "required": { "const": 28 },
     "observed": { "const": 28 },
     "allWitnessed": { "const": true },
-    "source": { "const": "ASSERTION_FACT_LEDGER" },
+    "source": { "const": "EXECUTED_ASSERTION_WITNESS_LEDGER" },
+    "witnessContract": { "const": "M11_EXECUTED_ASSERTION_WITNESS_V1" },
     "systemErrorEvaluatedAfterControls": { "const": true },
+    "assertionsExecuted": { "type": "integer", "minimum": 28 },
+    "allAssertionsPassed": { "const": true },
+    "ledgerVerifiedAgainstExecutionReplay": { "const": true },
+    "obligationEvidenceRecomputed": { "const": true },
+    "duplicateAssertionIdsRejected": { "const": true },
     "factCount": { "type": "integer", "minimum": 28 },
     "ledgerSha256": { "$ref": "#/$defs/sha256" },
     "witnesses": {
@@ -37,7 +49,7 @@
     "witness": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["obligation", "factCount", "scenarios", "facts"],
+      "required": ["obligation", "factCount", "scenarios", "assertionIds", "witnessSha256s", "facts"],
       "properties": {
         "obligation": { "$ref": "#/$defs/obligation" },
         "factCount": { "type": "integer", "minimum": 1 },
@@ -46,6 +58,18 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": { "type": "string", "pattern": "^[A-Z0-9_]+$" }
+        },
+        "assertionIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^M11\\.[A-Z0-9_]+\\.[A-Z0-9_]+\\.V1$" }
+        },
+        "witnessSha256s": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/sha256" }
         },
         "facts": {
           "type": "array",
@@ -58,13 +82,19 @@
     "fact": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["obligation", "scenarioId", "sourceArtifact", "assertion", "observedValue"],
+      "required": ["obligation", "scenarioId", "sourceArtifact", "assertionId", "producer", "assertion", "observedValue", "observationSha256", "witnessSha256", "executed", "passed"],
       "properties": {
         "obligation": { "$ref": "#/$defs/obligation" },
         "scenarioId": { "type": "string", "pattern": "^[A-Z0-9_]+$" },
         "sourceArtifact": { "type": "string", "pattern": "^[a-z0-9][a-z0-9+.-]*\\.json(?:\\+[a-z0-9.-]+\\.json)*$" },
+        "assertionId": { "type": "string", "pattern": "^M11\\.[A-Z0-9_]+\\.[A-Z0-9_]+\\.V1$" },
+        "producer": { "type": "string", "pattern": "^M11(?:FixedSuite#assertScenario|Coverage#verifiedSystemControlFact)\\([A-Z0-9_]+\\)$" },
         "assertion": { "type": "string", "minLength": 1 },
-        "observedValue": { "type": "string", "minLength": 1 }
+        "observedValue": { "type": "string", "minLength": 1 },
+        "observationSha256": { "$ref": "#/$defs/sha256" },
+        "witnessSha256": { "$ref": "#/$defs/sha256" },
+        "executed": { "const": true },
+        "passed": { "const": true }
       }
     },
     "obligation": {
