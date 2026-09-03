@@ -28,6 +28,7 @@ public final class M11EvidenceWriter {
   static final String UNIT_TAG = "course/m11-complete";
   private static final String START_TAG = "course/m11-start";
   private static final String INHERITED_TAG = "course/m10-complete";
+  private static final String INHERITED_PRODUCT_TAG = "matching-0.5.0";
   private static final String CHECK_DIRECTORY = "build/reports/m11";
   private static final String EVIDENCE_DIRECTORY = "build/lab-evidence/M11";
   private static final String CHECK_SCHEMA = "schemas/matching.m11.check.v2.schema.json";
@@ -41,19 +42,7 @@ public final class M11EvidenceWriter {
   private static final String CHECK_COMMAND = "./gradlew m11Check --no-daemon";
   private static final String EVIDENCE_COMMAND = "./gradlew m11Evidence --no-daemon";
 
-  static final List<String> REPORT_ARTIFACTS =
-      List.of(
-          "inherited-m10.json",
-          "fixed-scenarios.json",
-          "generated-differential.json",
-          "generated-requests.canonical.bin",
-          "cluster-runtime.json",
-          "protocol-goldens.json",
-          "coverage.json",
-          "mutants.json",
-          "counterexamples.json",
-          "architecture.json",
-          "environment.json");
+  static final List<String> REPORT_ARTIFACTS = List.copyOf(M11CheckRunner.OUTPUTS);
 
   static final List<String> REQUIRED_CLAIMS =
       List.of(
@@ -73,16 +62,23 @@ public final class M11EvidenceWriter {
           "M11 makes no throughput, latency, capacity, resource-efficiency, or production performance claim; environment fields scope this correctness run only.",
           "M11 does not run a three-node cluster, inject member or network faults, prove leader failover, run Cluster Backup, or exercise disaster recovery.",
           "M11 uses no external service and excludes Rest, WebSocket, TLS, load balancers, accounts, balances, positions, settlement, database synchronization, and external side effects.",
-          "Protocol evidence is limited to the frozen current and N-1 request, response, and snapshot fixtures; it does not claim arbitrary-version compatibility, rollback safety, or online mixed-version upgrade safety.");
+          "Protocol evidence is limited to the frozen current and N-1 request, response, and snapshot fixtures; it does not claim arbitrary-version compatibility, rollback safety, or online mixed-version upgrade safety.",
+          "The evidence manifest keeps the shared walRoot field for schema compatibility; in M11 it identifies the owned Aeron Cluster runtime root and does not imply a standalone application WAL.");
 
   private final CheckExecutor checkExecutor;
+  private final BoundaryHook boundaryHook;
 
   public M11EvidenceWriter() {
-    this((root, reports) -> new M11CheckRunner().run(root, reports));
+    this((root, reports) -> new M11CheckRunner().run(root, reports), BoundaryHook.NOOP);
   }
 
   M11EvidenceWriter(CheckExecutor checkExecutor) {
+    this(checkExecutor, BoundaryHook.NOOP);
+  }
+
+  M11EvidenceWriter(CheckExecutor checkExecutor, BoundaryHook boundaryHook) {
     this.checkExecutor = java.util.Objects.requireNonNull(checkExecutor, "checkExecutor");
+    this.boundaryHook = java.util.Objects.requireNonNull(boundaryHook, "boundaryHook");
   }
 
   public Result write(
@@ -124,19 +120,26 @@ public final class M11EvidenceWriter {
           staging.resolve("reports/check/check.json"),
           staging.resolve("reports/check"),
           sourceCommit);
-      ObjectNode manifest = manifest(sourceCommit, check, staging, artifacts);
-      verifyManifest(staging, manifest, artifacts, sourceCommit);
+      ObjectNode expectedManifest =
+          (ObjectNode)
+              JsonSupport.parse(
+                  JsonSupport.prettyBytes(manifest(sourceCommit, check, staging, artifacts)));
+      ObjectNode manifest = expectedManifest.deepCopy();
+      verifyManifest(staging, manifest, artifacts, sourceCommit, expectedManifest);
       AtomicFiles.write(staging.resolve("manifest.json"), JsonSupport.prettyBytes(manifest));
       verifyBudget(staging);
 
+      boundaryHook.beforeFinalVerification(root);
       verifyReleaseState(root, sourceCommit, frozen, schemas);
       verifySourceArtifacts(artifacts);
-      verifyEvidenceTree(root, staging, artifacts, sourceCommit, frozen, schemas);
+      verifyEvidenceTree(root, staging, artifacts, sourceCommit, frozen, schemas, expectedManifest);
       publishAtomically(root, staging, destination);
       try {
+        boundaryHook.beforePostPublishVerification(root);
         verifyReleaseState(root, sourceCommit, frozen, schemas);
         verifySourceArtifacts(artifacts);
-        verifyEvidenceTree(root, destination, artifacts, sourceCommit, frozen, schemas);
+        verifyEvidenceTree(
+            root, destination, artifacts, sourceCommit, frozen, schemas, expectedManifest);
       } catch (RuntimeException failure) {
         deleteTree(destination);
         throw failure;
@@ -185,7 +188,8 @@ public final class M11EvidenceWriter {
     artifacts.add(
         SourceArtifact.capture(
             root, reports.resolve("check.json"), Path.of("reports/check/check.json")));
-    require(artifacts.size() == 23, "M11 evidence source inventory changed");
+    require(
+        artifacts.size() == 12 + REPORT_ARTIFACTS.size(), "M11 evidence source inventory changed");
     Set<Path> unique = new LinkedHashSet<>();
     artifacts.forEach(
         artifact -> require(unique.add(artifact.evidencePath()), "duplicate M11 evidence path"));
@@ -214,7 +218,7 @@ public final class M11EvidenceWriter {
         claims,
         "m00-m10-semantic-regression",
         "correctness",
-        "The current compiled M00-M10 finite semantic, durability, recovery, and admission judges remain PASS at the M11 source boundary.",
+        "The current compiled M10 fixed, generated, mutant, and admission-method regression suites remain PASS at the M11 source boundary.",
         object("inheritedM10", check.path("inheritedM10")),
         staging,
         byPath,
@@ -308,10 +312,10 @@ public final class M11EvidenceWriter {
   }
 
   private static ObjectNode manifestEnvironment(JsonNode environment) {
-    if (environment.path("physicalMemoryBytes").longValue() > 0
+    if (positiveLong(environment, "physicalMemoryBytes")
         && environment.path("garbageCollectorNames").isArray()
         && environment.path("garbageCollectorNames").size() > 0
-        && environment.path("walFileStoreTotalSpaceBytes").longValue() > 0) {
+        && positiveLong(environment, "walFileStoreTotalSpaceBytes")) {
       ObjectNode result = JsonSupport.MAPPER.createObjectNode();
       String javaVersion = requiredText(environment, "javaVersion");
       String osName = requiredText(environment, "osName");
@@ -401,6 +405,11 @@ public final class M11EvidenceWriter {
     result.put("runStartedAt", value.runStartedAt().toString());
     result.put("runFinishedAt", value.runFinishedAt().toString());
     return result;
+  }
+
+  private static boolean positiveLong(JsonNode object, String field) {
+    JsonNode value = object.path(field);
+    return value.isIntegralNumber() && value.longValue() > 0;
   }
 
   private static void addClaim(
@@ -534,6 +543,16 @@ public final class M11EvidenceWriter {
     verifyAnnotatedExact(root, UNIT_TAG, sourceCommit);
     verifyAnnotatedAncestor(root, START_TAG, sourceCommit);
     verifyAnnotatedAncestor(root, INHERITED_TAG, sourceCommit);
+    verifyAnnotatedAncestor(root, INHERITED_PRODUCT_TAG, sourceCommit);
+    String inheritedCommit = peeledAnnotated(root, INHERITED_TAG);
+    String productCommit = peeledAnnotated(root, INHERITED_PRODUCT_TAG);
+    require(
+        inheritedCommit.equals(productCommit),
+        "course/m10-complete and matching-0.5.0 do not identify the same baseline");
+    String startCommit = peeledAnnotated(root, START_TAG);
+    require(
+        isAncestor(root, inheritedCommit, startCommit),
+        "course/m10-complete is not an ancestor of course/m11-start");
     require(
         git(root, "tag", "--points-at", sourceCommit, "--list", "matching-*").isBlank(),
         "M11 must not carry a matching-* product release tag");
@@ -549,9 +568,13 @@ public final class M11EvidenceWriter {
   }
 
   private static void verifyAnnotatedAncestor(Path root, String tag, String sourceCommit) {
-    require("tag".equals(git(root, "cat-file", "-t", tag).strip()), tag + " is not annotated");
-    String commit = git(root, "rev-parse", tag + "^{}").strip();
+    String commit = peeledAnnotated(root, tag);
     require(isAncestor(root, commit, sourceCommit), tag + " is not an ancestor of M11");
+  }
+
+  private static String peeledAnnotated(Path root, String tag) {
+    require("tag".equals(git(root, "cat-file", "-t", tag).strip()), tag + " is not annotated");
+    return git(root, "rev-parse", tag + "^{}").strip();
   }
 
   private static boolean isAncestor(Path root, String ancestor, String descendant) {
@@ -592,7 +615,8 @@ public final class M11EvidenceWriter {
       List<SourceArtifact> artifacts,
       String sourceCommit,
       FrozenInputs frozen,
-      SchemaSnapshot schemas) {
+      SchemaSnapshot schemas,
+      ObjectNode expectedManifest) {
     requireSafeTree(repositoryRoot, evidence);
     verifyCopiedArtifacts(evidence, artifacts);
     JsonNode check =
@@ -603,7 +627,7 @@ public final class M11EvidenceWriter {
             sourceCommit);
     JsonNode manifest = JsonSupport.parse(readBytes(evidence.resolve("manifest.json")));
     require(manifest instanceof ObjectNode, "M11 evidence manifest is not an object");
-    verifyManifest(evidence, (ObjectNode) manifest, artifacts, sourceCommit);
+    verifyManifest(evidence, (ObjectNode) manifest, artifacts, sourceCommit, expectedManifest);
     Set<String> expected = new LinkedHashSet<>();
     artifacts.forEach(artifact -> expected.add(portable(artifact.evidencePath())));
     expected.add("manifest.json");
@@ -614,7 +638,11 @@ public final class M11EvidenceWriter {
   }
 
   private static void verifyManifest(
-      Path evidence, ObjectNode manifest, List<SourceArtifact> artifacts, String sourceCommit) {
+      Path evidence,
+      ObjectNode manifest,
+      List<SourceArtifact> artifacts,
+      String sourceCommit,
+      ObjectNode expectedManifest) {
     JsonSupport.validate(
         manifest, readString(evidence.resolve("schemas/cex.lab-evidence.v2.schema.json")), true);
     require("M11".equals(manifest.path("unit").stringValue()), "manifest unit changed");
@@ -653,6 +681,10 @@ public final class M11EvidenceWriter {
         LIMITATIONS.equals(
             manifest.path("limitations").valueStream().map(JsonNode::stringValue).toList()),
         "M11 limitations changed");
+    Instant.parse(requiredText(manifest, "generatedAt"));
+    require(
+        expectedManifest.equals(manifest),
+        "M11 manifest is not the exact projection of the verified check and artifacts");
   }
 
   private static void verifySourceArtifacts(List<SourceArtifact> artifacts) {
@@ -839,6 +871,21 @@ public final class M11EvidenceWriter {
   @FunctionalInterface
   interface CheckExecutor {
     M11CheckRunner.Result run(Path root, Path reports);
+  }
+
+  interface BoundaryHook {
+    BoundaryHook NOOP =
+        new BoundaryHook() {
+          @Override
+          public void beforeFinalVerification(Path root) {}
+
+          @Override
+          public void beforePostPublishVerification(Path root) {}
+        };
+
+    void beforeFinalVerification(Path root);
+
+    void beforePostPublishVerification(Path root);
   }
 
   private record Golden(Path path, String sha256, long bytes) {}
