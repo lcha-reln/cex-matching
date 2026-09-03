@@ -182,6 +182,34 @@ final class M11MutationCoverageCompletionTest {
   }
 
   @Test
+  void respondBeforeBindRecoveryPreservesEarlierDurableIdentityBindings() throws Exception {
+    M11CommandRequest requestA = productionRequest();
+    DirectM11MatchingRuntime initial = new DirectM11MatchingRuntime();
+    var appliedA = initial.submit(requestA);
+    assertEquals(M11ResponseStatus.NEW_APPLIED, appliedA.response().status());
+    assertEquals(1, appliedA.response().applicationSequence().orElseThrow());
+    var durableAfterA = initial.stateImage();
+
+    M11FaultPolicy respond = M11FaultPolicy.single(M11FaultPolicy.Mode.RESPOND_BEFORE_BIND);
+    DirectM11MatchingRuntime beforeCrash = DirectM11MatchingRuntime.restore(durableAfterA, respond);
+    M11CommandRequest requestB = productionRequest(2, new UUID(84, 85), 8_002, new UUID(86, 87));
+    var appliedB = beforeCrash.submit(requestB, "session-a");
+    assertEquals(M11ResponseStatus.NEW_APPLIED, appliedB.response().status());
+    assertEquals(2, appliedB.response().applicationSequence().orElseThrow());
+    assertTrue(beforeCrash.hasIdentityBinding(requestA.commandId()));
+    assertFalse(beforeCrash.hasIdentityBinding(requestB.commandId()));
+
+    DirectM11MatchingRuntime recovered = beforeCrash.recoverAfterCrash(durableAfterA);
+    assertEquals(3, recovered.nextApplicationSequence());
+    var retryA = recovered.submit(requestA.withCorrelationId(new UUID(88, 89)), "session-b");
+    assertEquals(M11ResponseStatus.DUPLICATE_REPLAYED, retryA.response().status());
+    assertEquals(1, retryA.response().applicationSequence().orElseThrow());
+    var retryB = recovered.submit(requestB.withCorrelationId(new UUID(90, 91)), "session-b");
+    assertEquals(M11ResponseStatus.NEW_APPLIED, retryB.response().status());
+    assertEquals(3, retryB.response().applicationSequence().orElseThrow());
+  }
+
+  @Test
   void infrastructureControlsEnterProductionCodecAndClusterLaunchWhilePolicyHasNoIoPower()
       throws Exception {
     M11CommandRequest request = productionRequest();
@@ -527,19 +555,25 @@ final class M11MutationCoverageCompletionTest {
   }
 
   private static M11CommandRequest productionRequest() throws M11ProtocolException {
+    return productionRequest(1, new UUID(82, 83), 8_001, new UUID(80, 81));
+  }
+
+  private static M11CommandRequest productionRequest(
+      long producerSequence, UUID commandId, long orderId, UUID correlationId)
+      throws M11ProtocolException {
     return new M11RequestCodec()
         .create(
             2,
             2,
-            new UUID(80, 81),
+            correlationId,
             "m11-production-fault-test",
             1,
             1,
-            1,
-            new UUID(82, 83),
+            producerSequence,
+            commandId,
             new M08Command.Place(
                 "BTC-USDT",
-                BigInteger.valueOf(8_001),
+                BigInteger.valueOf(orderId),
                 "BUY",
                 BigInteger.valueOf(5_000_000),
                 BigInteger.ONE,

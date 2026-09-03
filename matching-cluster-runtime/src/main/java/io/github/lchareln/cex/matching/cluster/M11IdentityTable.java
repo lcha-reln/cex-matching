@@ -81,6 +81,17 @@ final class M11IdentityTable {
     return restored;
   }
 
+  static M11IdentityTable restoreAtNext(
+      List<M11IdentityBinding> bindings, long nextApplicationSequence) {
+    M11IdentityTable restored = restore(bindings);
+    if (nextApplicationSequence < restored.nextApplicationSequence) {
+      throw new IllegalArgumentException(
+          "next application sequence cannot precede durable identity history");
+    }
+    restored.nextApplicationSequence = nextApplicationSequence;
+    return restored;
+  }
+
   static M11IdentityTable restore(List<M11IdentityBinding> bindings) {
     M11IdentityTable restored = new M11IdentityTable();
     for (M11IdentityBinding binding : new ArrayList<>(bindings)) {

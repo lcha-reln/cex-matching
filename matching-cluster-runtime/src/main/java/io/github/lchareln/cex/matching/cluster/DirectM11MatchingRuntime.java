@@ -97,7 +97,8 @@ public final class DirectM11MatchingRuntime {
     DeterministicMatchingAdapter recoveredMatcher =
         DeterministicMatchingAdapter.restore(matcher.stateImage());
     M11IdentityTable recoveredIdentities =
-        M11IdentityTable.emptyAt(recoveredMatcher.nextApplicationSequence());
+        M11IdentityTable.restoreAtNext(
+            lastDurableState.identityBindings(), recoveredMatcher.nextApplicationSequence());
     return new DirectM11MatchingRuntime(recoveredMatcher, recoveredIdentities, faultPolicy);
   }
 
