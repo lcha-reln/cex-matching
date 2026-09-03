@@ -122,7 +122,7 @@ jobs:
           if-no-files-found: error
 
   completion-green:
-    if: github.ref != 'refs/tags/course/m11-start'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/unit/') || github.ref == 'refs/tags/course/m11-complete'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -154,19 +154,23 @@ jobs:
           test "$(sed -n 's/^completeRef=//p' course.properties)" = course/m11-complete
 
           test "$(git cat-file -t course/m11-start)" = tag
-          test "$(git cat-file -t course/m11-complete)" = tag
           test "$(git cat-file -t course/m10-complete)" = tag
           test "$(git cat-file -t matching-0.5.0)" = tag
+          test "$(git rev-parse 'course/m10-complete^{}')" = "$(git rev-parse 'matching-0.5.0^{}')"
+          git merge-base --is-ancestor "$(git rev-parse 'course/m10-complete^{}')" "$(git rev-parse 'course/m11-start^{}')"
           git merge-base --is-ancestor "$(git rev-parse 'course/m11-start^{}')" HEAD
           git merge-base --is-ancestor "$(git rev-parse 'course/m10-complete^{}')" HEAD
           git merge-base --is-ancestor "$(git rev-parse 'matching-0.5.0^{}')" HEAD
-          test "$(git rev-parse 'course/m11-complete^{}')" = "$(git rev-parse HEAD)"
           test -z "$(git tag --points-at HEAD --list 'matching-*')"
-          if [[ "${GITHUB_REF_TYPE}" == tag ]]; then
-            test "${GITHUB_REF_NAME}" = course/m11-complete
+          if [[ "${GITHUB_EVENT_NAME}" != pull_request ]]; then
+            test "$(git cat-file -t course/m11-complete)" = tag
+            test "$(git rev-parse 'course/m11-complete^{}')" = "$(git rev-parse HEAD)"
+            if [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+              test "${GITHUB_REF_NAME}" = course/m11-complete
+            fi
           fi
 
-          test "$(sha256sum matching-testkit/src/test/resources/m11/workload-v1.json | cut -d ' ' -f 1)" = ec19d23ab95973dca8f5b9c41d773d0f7fe47db679f659bc3e776dd95739b7e7
+          test "$(sha256sum matching-testkit/src/test/resources/m11/workload-v1.json | cut -d ' ' -f 1)" = f856c8dcf2e902add248a59cdb97525083bae469745682eed0ea7ae9169033b6
           mapfile -t resources < <(find schemas matching-testkit/src/test/resources -type f -name '*.json' -print | sort)
           jq empty "${resources[@]}"
           test "$(jq '.goldenFixtures | length' matching-testkit/src/test/resources/m11/workload-v1.json)" = 6
@@ -196,7 +200,7 @@ jobs:
             .status == "PASS" and
             .source.commit == $commit and
             .source.dirty == false and
-            .workloadProfile.sha256 == "ec19d23ab95973dca8f5b9c41d773d0f7fe47db679f659bc3e776dd95739b7e7" and
+            .workloadProfile.sha256 == "f856c8dcf2e902add248a59cdb97525083bae469745682eed0ea7ae9169033b6" and
             .generator.actionsPerPath == 4096 and
             .generator.continuousCorpus == true and
             .generator.clusterRuns == 2 and
