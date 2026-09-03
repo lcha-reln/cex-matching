@@ -116,7 +116,9 @@ final class M11ArchitectureGate {
       String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
       String error = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
       int exit = process.waitFor();
-      require(exit == 0, "git command failed: " + error.strip());
+      if (exit != 0) {
+        throw new IllegalStateException("git command failed: " + error.strip());
+      }
       return output;
     } catch (IOException failure) {
       throw new IllegalStateException("cannot execute git", failure);

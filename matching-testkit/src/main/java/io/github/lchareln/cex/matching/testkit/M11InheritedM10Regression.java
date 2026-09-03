@@ -45,7 +45,9 @@ final class M11InheritedM10Regression {
       String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
       String error = new String(process.getErrorStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
       int exit = process.waitFor();
-      require(exit == 0, "git failed: " + error.strip());
+      if (exit != 0) {
+        throw new IllegalStateException("git failed: " + error.strip());
+      }
       return output;
     } catch (java.io.IOException failure) {
       throw new IllegalStateException("cannot execute git", failure);

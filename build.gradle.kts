@@ -232,6 +232,12 @@ tasks.register("m10Evidence") {
 
 tasks.register("m11Check") {
     group = "verification"
-    description = "Writes the schema-valid intentional M11 start-contract RED report."
+    description = "Runs the completed single-member Aeron adapter judge."
     dependsOn(":matching-testkit:m11Check")
+}
+
+tasks.register("m11Evidence") {
+    group = "verification"
+    description = "Generates and validates clean-tree annotated-tag M11 evidence."
+    dependsOn(":matching-testkit:m11Evidence")
 }

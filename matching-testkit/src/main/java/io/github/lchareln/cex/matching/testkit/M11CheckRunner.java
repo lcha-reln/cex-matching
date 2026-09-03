@@ -74,7 +74,7 @@ public final class M11CheckRunner {
     M11FixedSuite.Result fixed =
         new M11FixedSuite().run(root, protocol, generated, architecture);
     ObjectNode coverage = new M11Coverage().run(root, fixed);
-    M11MutantSuite.Result mutants = new M11MutantSuite().run();
+    M11MutantSuite.Result mutants = new M11MutantSuite().run(root);
     JsonSupport.validate(
         mutants.counterexamples(), readString(root.resolve(COUNTEREXAMPLE_SCHEMA_PATH)), false);
     ObjectNode environment =
@@ -222,6 +222,10 @@ public final class M11CheckRunner {
         "invalidRequestedResponseStateMutations",
         "fabricatedBusinessResults",
         "responseV1DownEncoded",
+        "responseV1OutcomesCovered",
+        "payloadHashOuterInvariant",
+        "forgedPayloadHashPreApplyRejected",
+        "forgedPayloadHashStateMutations",
         "responseV2Current",
         "snapshotS1ReadableAndRestorable",
         "snapshotS2Current",

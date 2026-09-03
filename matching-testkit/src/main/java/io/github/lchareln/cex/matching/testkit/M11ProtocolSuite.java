@@ -4,14 +4,15 @@ import io.github.lchareln.cex.matching.cluster.DirectM11MatchingRuntime;
 import io.github.lchareln.cex.matching.cluster.M11ApplicationResult;
 import io.github.lchareln.cex.matching.cluster.M11CommandRequest;
 import io.github.lchareln.cex.matching.cluster.M11CommandResponse;
+import io.github.lchareln.cex.matching.cluster.M11IdentityBinding;
 import io.github.lchareln.cex.matching.cluster.M11ProtocolException;
 import io.github.lchareln.cex.matching.cluster.M11RequestCodec;
 import io.github.lchareln.cex.matching.cluster.M11ResponseCodec;
 import io.github.lchareln.cex.matching.cluster.M11ResponseStatus;
-import io.github.lchareln.cex.matching.cluster.M11RuntimeStateCodec;
 import io.github.lchareln.cex.matching.cluster.M11Snapshot;
 import io.github.lchareln.cex.matching.cluster.M11SnapshotCodec;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,7 +20,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.zip.CRC32C;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
@@ -68,6 +74,7 @@ final class M11ProtocolSuite {
           require(decoded.schemaVersion() == version, "snapshot golden version changed");
           require(Arrays.equals(bytes, snapshotCodec.encode(version, decoded.state())), "snapshot golden is not byte-exact");
           require(decoded.state().identityBindings().size() >= 2, "snapshot golden needs two real identity bindings");
+          verifyIdentityOrdering(decoded);
           DirectM11MatchingRuntime.restore(decoded.state());
           snapshots.add(decoded);
         }
@@ -93,6 +100,8 @@ final class M11ProtocolSuite {
     require(snapshots.getLast().schemaVersion() == 2, "snapshot S2 golden missing");
 
     verifyS1Idempotency(requests.getFirst(), snapshots.getFirst());
+    verifyResponseDownEncoding(requestCodec, responseCodec, requests.getLast());
+    verifyPayloadHashDomain(requestCodec, requests.getLast());
     verifyInvalidRequestedResponse(requestCodec, requests.getLast());
     verifyMalformed(requestCodec, responseCodec, snapshotCodec, root, workload);
     verifyUnsupported(requestCodec, responseCodec, snapshotCodec, root, workload);
@@ -108,6 +117,10 @@ final class M11ProtocolSuite {
     report.put("invalidRequestedResponseStateMutations", 0);
     report.put("fabricatedBusinessResults", 0);
     report.put("responseV1DownEncoded", true);
+    report.put("responseV1OutcomesCovered", 4);
+    report.put("payloadHashOuterInvariant", true);
+    report.put("forgedPayloadHashPreApplyRejected", true);
+    report.put("forgedPayloadHashStateMutations", 0);
     report.put("responseV2Current", true);
     report.put("snapshotS1ReadableAndRestorable", true);
     report.put("snapshotS2Current", true);
@@ -132,6 +145,225 @@ final class M11ProtocolSuite {
     require(duplicate.fullResult().isPresent(), "S1 lost original result");
     require(restored.nextApplicationSequence() == beforeSequence, "S1 duplicate advanced sequence");
     require(restored.semanticStateDigest().equals(beforeDigest), "S1 duplicate mutated state");
+  }
+
+  private static void verifyResponseDownEncoding(
+      M11RequestCodec requestCodec,
+      M11ResponseCodec responseCodec,
+      M11CommandRequest currentRequest) {
+    M11CommandRequest downEncodedRequest =
+        create(
+            requestCodec,
+            2,
+            1,
+            new UUID(13, 17),
+            currentRequest.envelopeBytes(),
+            currentRequest.slot().shardId());
+    DirectM11MatchingRuntime runtime = new DirectM11MatchingRuntime();
+    M11ApplicationResult applied = runtime.submit(downEncodedRequest);
+    assertResponseV1(responseCodec, applied.response(), M11ResponseStatus.NEW_APPLIED);
+
+    M11ApplicationResult duplicate =
+        runtime.submit(downEncodedRequest.withCorrelationId(new UUID(19, 23)));
+    assertResponseV1(responseCodec, duplicate.response(), M11ResponseStatus.DUPLICATE_REPLAYED);
+    require(
+        duplicate.fullResult().orElseThrow().equals(applied.fullResult().orElseThrow()),
+        "response-v1 duplicate lost its original result");
+
+    M11CommandRequest conflict =
+        create(
+            requestCodec,
+            2,
+            1,
+            new UUID(29, 31),
+            "m11-protocol-conflict",
+            1,
+            1,
+            1,
+            downEncodedRequest.commandId(),
+            new io.github.lchareln.cex.matching.local.M08Command.Place(
+                "BTC-USDT",
+                BigInteger.valueOf(9001),
+                "BUY",
+                BigInteger.valueOf(6_000_000),
+                BigInteger.ONE,
+                "GTC",
+                0,
+                "NONE",
+                java.util.Optional.empty()));
+    M11ApplicationResult rejected = runtime.submit(conflict);
+    assertResponseV1(responseCodec, rejected.response(), M11ResponseStatus.REJECTED);
+    require(rejected.fullResult().isEmpty(), "identity rejection fabricated a business result");
+
+    M11CommandRequest businessRejected =
+        create(
+            requestCodec,
+            2,
+            1,
+            new UUID(37, 41),
+            downEncodedRequest.slot().producerId(),
+            downEncodedRequest.slot().producerEpoch(),
+            downEncodedRequest.slot().shardId(),
+            2,
+            new UUID(43, 47),
+            new io.github.lchareln.cex.matching.local.M08Command.Cancel(
+                "BTC-USDT", BigInteger.valueOf(999_999)));
+    M11ApplicationResult coreRejection = runtime.submit(businessRejected);
+    assertResponseV1(responseCodec, coreRejection.response(), M11ResponseStatus.NEW_APPLIED);
+    require(
+        coreRejection.fullResult().orElseThrow().events().stream()
+            .anyMatch(event -> event.contains("CancelRejected")),
+        "core business rejection commitment was not covered");
+  }
+
+  private static void verifyPayloadHashDomain(
+      M11RequestCodec requestCodec, M11CommandRequest currentRequest) {
+    String payloadHash = currentRequest.payloadHash();
+    M11CommandRequest differentCorrelation = currentRequest.withCorrelationId(new UUID(53, 59));
+    require(
+        payloadHash.equals(differentCorrelation.payloadHash()),
+        "outer correlation changed the payload hash");
+    M11CommandRequest differentResponse =
+        create(
+            requestCodec,
+            2,
+            1,
+            new UUID(61, 67),
+            currentRequest.envelopeBytes(),
+            currentRequest.slot().shardId());
+    require(
+        payloadHash.equals(differentResponse.payloadHash()),
+        "requested response version changed the payload hash");
+    DirectM11MatchingRuntime runtime = new DirectM11MatchingRuntime();
+    runtime.submit(currentRequest);
+    long beforeSequence = runtime.nextApplicationSequence();
+    String beforeDigest = runtime.semanticStateDigest();
+    M11ApplicationResult duplicate = runtime.submit(differentResponse);
+    require(
+        duplicate.response().status() == M11ResponseStatus.DUPLICATE_REPLAYED,
+        "outer changes changed durable identity");
+    require(runtime.nextApplicationSequence() == beforeSequence, "outer retry advanced state");
+    require(runtime.semanticStateDigest().equals(beforeDigest), "outer retry changed state");
+
+    byte[] forgedEnvelope = currentRequest.envelopeBytes();
+    byte[] actualHash = java.util.HexFormat.of().parseHex(payloadHash);
+    int hashOffset = indexOf(forgedEnvelope, actualHash);
+    require(hashOffset >= 0, "canonical payload hash bytes are missing from the envelope");
+    forgedEnvelope[hashOffset] ^= 1;
+    DirectM11MatchingRuntime untouched = new DirectM11MatchingRuntime();
+    long untouchedSequence = untouched.nextApplicationSequence();
+    String untouchedDigest = untouched.semanticStateDigest();
+    try {
+      requestCodec.create(2, 2, new UUID(71, 73), forgedEnvelope, 1);
+      throw new M11SemanticFailure("forged payload hash was accepted");
+    } catch (M11ProtocolException expected) {
+      // Decoder recomputes the command-payload hash before a request can reach apply.
+    }
+    require(
+        untouched.nextApplicationSequence() == untouchedSequence,
+        "forged payload hash advanced state");
+    require(untouched.semanticStateDigest().equals(untouchedDigest), "forged hash changed state");
+  }
+
+  private static void assertResponseV1(
+      M11ResponseCodec codec, M11CommandResponse response, M11ResponseStatus status) {
+    require(response.protocolVersion() == 1, "request v2 did not down-encode response v1");
+    require(response.status() == status, "response-v1 outcome changed");
+    require(response.commandId().isEmpty(), "response v1 leaked a v2 command extension");
+    require(response.semanticStateDigest().isEmpty(), "response v1 leaked a v2 digest extension");
+    byte[] encoded = codec.encode(response);
+    require(
+        decodeResponse(codec, encoded).equals(response), "down-encoded response is not canonical");
+  }
+
+  private static M11CommandRequest create(
+      M11RequestCodec codec,
+      int requestVersion,
+      int responseVersion,
+      UUID correlation,
+      String producer,
+      long epoch,
+      long shard,
+      long producerSequence,
+      UUID commandId,
+      io.github.lchareln.cex.matching.local.M08Command command) {
+    try {
+      return codec.create(
+          requestVersion,
+          responseVersion,
+          correlation,
+          producer,
+          epoch,
+          shard,
+          producerSequence,
+          commandId,
+          command);
+    } catch (M11ProtocolException failure) {
+      throw new M11SemanticFailure("valid protocol request was rejected: " + failure.code());
+    }
+  }
+
+  private static M11CommandRequest create(
+      M11RequestCodec codec,
+      int requestVersion,
+      int responseVersion,
+      UUID correlation,
+      byte[] envelope,
+      long shard) {
+    try {
+      return codec.create(requestVersion, responseVersion, correlation, envelope, shard);
+    } catch (M11ProtocolException failure) {
+      throw new M11SemanticFailure("valid protocol request was rejected: " + failure.code());
+    }
+  }
+
+  private static int indexOf(byte[] bytes, byte[] needle) {
+    for (int index = 0; index <= bytes.length - needle.length; index++) {
+      boolean equal = true;
+      for (int offset = 0; offset < needle.length; offset++) {
+        if (bytes[index + offset] != needle[offset]) {
+          equal = false;
+          break;
+        }
+      }
+      if (equal) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  private static void verifyIdentityOrdering(M11Snapshot snapshot) {
+    long application = 1;
+    Set<java.util.UUID> commands = new HashSet<>();
+    Set<io.github.lchareln.cex.matching.local.Slot> slots = new HashSet<>();
+    Map<String, long[]> producerCursors = new HashMap<>();
+    for (M11IdentityBinding binding : snapshot.state().identityBindings()) {
+      require(
+          binding.result().applicationSequence() == application,
+          "snapshot identities are not in strict application order");
+      require(commands.add(binding.commandId()), "snapshot contains duplicate commandId");
+      require(slots.add(binding.slot()), "snapshot contains duplicate Slot");
+      String producer = binding.slot().producerId() + '\u0000' + binding.slot().shardId();
+      long[] cursor = producerCursors.get(producer);
+      if (cursor == null) {
+        require(binding.slot().producerSequence() == 1, "producer history did not start at one");
+      } else if (binding.slot().producerEpoch() == cursor[0]) {
+        require(binding.slot().producerSequence() == cursor[1], "producer sequence is discontinuous");
+      } else {
+        require(binding.slot().producerEpoch() > cursor[0], "producer epoch moved backward");
+        require(binding.slot().producerSequence() == 1, "new producer epoch did not restart at one");
+      }
+      producerCursors.put(
+          producer,
+          new long[] {
+            binding.slot().producerEpoch(), Math.incrementExact(binding.slot().producerSequence())
+          });
+      application++;
+    }
+    require(
+        snapshot.state().nextApplicationSequence() == application,
+        "snapshot next application sequence does not follow identity order");
   }
 
   private static void verifyInvalidRequestedResponse(

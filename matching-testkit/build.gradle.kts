@@ -6,6 +6,7 @@ plugins {
 dependencies {
     api(project(":matching-core"))
     implementation(project(":matching-local-runtime"))
+    implementation(project(":matching-cluster-runtime"))
     implementation(project(":matching-benchmarks"))
     implementation(project(":matching-reference"))
     implementation(libs.jackson.databind)
@@ -37,6 +38,7 @@ tasks.withType<Test>().configureEach {
         "**/M08StartCheckRunnerTest.class",
         "**/M09StartCheckRunnerTest.class",
         "**/M10StartCheckRunnerTest.class",
+        "**/M11StartCheckRunnerTest.class",
     )
     filter {
         // M10 deliberately introduces bounded java.util.concurrent admission types. The M10 gate
@@ -85,6 +87,8 @@ val m10EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M
 val m10UnitTag = providers.gradleProperty("m10.unitTag").orElse("course/m10-complete")
 val m10ProductRelease = providers.gradleProperty("m10.productRelease").orElse("matching-0.5.0")
 val m11ReportDirectory = rootProject.layout.buildDirectory.dir("reports/m11")
+val m11EvidenceDirectory = rootProject.layout.buildDirectory.dir("lab-evidence/M11")
+val m11UnitTag = providers.gradleProperty("m11.unitTag").orElse("course/m11-complete")
 val m11GoldenOutput =
     providers.gradleProperty("m11.goldenOutput").orElse(
         rootProject.layout.buildDirectory.dir("generated/m11-contract-goldens").map { it.asFile.absolutePath },
@@ -434,13 +438,28 @@ tasks.register<JavaExec>("m11GenerateContractGoldens") {
 
 tasks.register<JavaExec>("m11Check") {
     group = "verification"
-    description = "Writes the schema-valid intentional M11 start-contract RED report."
-    dependsOn("classes")
+    description = "Runs the completed single-member Aeron adapter judge."
+    dependsOn("test", ":matching-core:test", ":matching-local-runtime:test", ":matching-cluster-runtime:test", ":matching-reference:check", "classes")
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("io.github.lchareln.cex.matching.testkit.M11CheckMain")
     args(
         rootProject.layout.projectDirectory.asFile.absolutePath,
         m11ReportDirectory.get().asFile.absolutePath,
     )
-    doNotTrackState("M11 must never reuse a stale structured RED report")
+    doNotTrackState("M11 must never reuse a stale completion report")
+}
+
+tasks.register<JavaExec>("m11Evidence") {
+    group = "verification"
+    description = "Generates and validates clean-tree annotated-tag M11 evidence."
+    dependsOn("m11Check")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.lchareln.cex.matching.testkit.M11EvidenceMain")
+    args(
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+        m11ReportDirectory.get().asFile.absolutePath,
+        m11EvidenceDirectory.get().asFile.absolutePath,
+        m11UnitTag.get(),
+    )
+    doNotTrackState("Evidence must re-check M11 tags and working-tree cleanliness on every invocation")
 }

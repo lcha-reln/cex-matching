@@ -126,8 +126,32 @@ final class M11GeneratedSuite {
         "serviceObservations",
         uninterrupted.observationCount() + restarted.observationCount());
     cluster.put(
+        "newBusinessApplications",
+        uninterruptedHarness.newBusinessApplications()
+            + restartedHarness.newBusinessApplications());
+    cluster.put(
+        "duplicateReplays",
+        uninterruptedHarness.duplicateReplays() + restartedHarness.duplicateReplays());
+    cluster.put(
+        "rejectedApplications",
+        uninterruptedHarness.rejectedApplications() + restartedHarness.rejectedApplications());
+    cluster.put(
+        "snapshotAdminAccepted",
+        uninterruptedHarness.snapshotAdminAccepted() + restartedHarness.snapshotAdminAccepted());
+    cluster.put(
+        "snapshotsCompleted",
+        uninterruptedHarness.snapshotsCompleted() + restartedHarness.snapshotsCompleted());
+    cluster.put("restarts", uninterruptedHarness.restarts() + restartedHarness.restarts());
+    cluster.put(
         "componentErrors",
         uninterruptedHarness.componentErrorCount() + restartedHarness.componentErrorCount());
+    cluster.put("correlationRoundTrips", TOTAL_CLUSTER_INGRESS);
+    cluster.put(
+        "allBusinessOutcomesFromCorrelatedEgress",
+        uninterruptedHarness.ingressOffersAccepted()
+                == uninterruptedHarness.correlatedEgressResponses()
+            && restartedHarness.ingressOffersAccepted()
+                == restartedHarness.correlatedEgressResponses());
     cluster.put("singleMemberOnly", true);
     cluster.put("highAvailabilityClaim", false);
     cluster.put("performanceClaim", false);
@@ -197,7 +221,8 @@ final class M11GeneratedSuite {
                 commandConflict ? 1 : original.slot().producerSequence(),
                 commandConflict ? original.commandId() : uuid(random),
                 conflictingPlace(global + 1L, random));
-        String detail = commandConflict ? "COMMAND_ID_CONFLICT" : "SLOT_CONFLICT";
+        String detail =
+            commandConflict ? "COMMAND_ID_SLOT_CONFLICT" : "SLOT_IDENTITY_CONFLICT";
         actions.add(
             new Action(global, segment, action, Lane.IDENTITY_CONFLICT, Expected.CONFLICT, conflict, detail));
       }
@@ -217,9 +242,9 @@ final class M11GeneratedSuite {
       verifyExpected(action, result.response());
       results.add(result);
       counts.merge(action.expected(), 1, Integer::sum);
-      if ("COMMAND_ID_CONFLICT".equals(action.detail())) {
+      if ("COMMAND_ID_SLOT_CONFLICT".equals(action.detail())) {
         commandConflicts++;
-      } else if ("SLOT_CONFLICT".equals(action.detail())) {
+      } else if ("SLOT_IDENTITY_CONFLICT".equals(action.detail())) {
         slotConflicts++;
       }
     }
@@ -267,7 +292,8 @@ final class M11GeneratedSuite {
           directoriesPresentBefore =
               Files.isRegularFile(config.clusterDirectory().resolve("recording.log"))
                   && Files.isDirectory(config.archiveDirectory());
-          require(harness.componentErrors().isEmpty(), "component error before Cluster restart");
+          infrastructureRequire(
+              harness.componentErrors().isEmpty(), "component error before Cluster restart");
           harness.restartFromSnapshot();
           directoriesPresentAfter =
               Files.isRegularFile(config.clusterDirectory().resolve("recording.log"))
@@ -302,7 +328,8 @@ final class M11GeneratedSuite {
       List<M11ApplicationResult> applications =
           observations.stream().map(M11ServiceObservation::applicationResult).toList();
       require(applications.equals(expected), "Cluster full business observations diverged");
-      require(harness.componentErrors().isEmpty(), "Aeron component errors were observed");
+      infrastructureRequire(
+          harness.componentErrors().isEmpty(), "Aeron component errors were observed");
       M11RuntimeState finalState = harness.stateImage();
       M11HarnessReport harnessReport = harness.report();
       if (restart) {
@@ -322,7 +349,7 @@ final class M11GeneratedSuite {
             completedSnapshot.completion().completionCountAfter()
                 > completedSnapshot.completion().completionCountBefore());
         snapshot.put(
-            "controlToggleResetOrActive",
+            "controlToggleResetToNeutral",
             "NEUTRAL".equals(completedSnapshot.completion().controlToggleState().name()));
         snapshot.put(
             "recordingLogNewSnapshotEntry",
@@ -342,8 +369,22 @@ final class M11GeneratedSuite {
             "nextApplicationSequenceExact", application.nextApplicationSequence() == beforeNextSequence);
         snapshot.put("duplicateOriginalResultsSurvived", 1024);
         snapshot.put("conflictsRemainNonMutating", 1024);
+        snapshot.put("adminCorrelationId", completedSnapshot.adminAcceptance().correlationId());
+        snapshot.put(
+            "completionCountBefore", completedSnapshot.completion().completionCountBefore());
+        snapshot.put(
+            "completionCountAfter", completedSnapshot.completion().completionCountAfter());
+        snapshot.put(
+            "controlToggleState", completedSnapshot.completion().controlToggleState().name());
+        snapshot.put("leadershipTermId", completedSnapshot.completion().leadershipTermId());
+        snapshot.put("logPosition", completedSnapshot.completion().logPosition());
+        snapshot.put("serviceRecordingId", completedSnapshot.completion().serviceRecordingId());
+        snapshot.put(
+            "consensusRecordingId", completedSnapshot.completion().consensusRecordingId());
+        snapshot.put("snapshotSequence", application.snapshotSequence());
         snapshot.put("snapshotStateSha256", beforeSnapshotDigest);
         snapshot.put("identityTableSha256", beforeIdentityDigest);
+        snapshot.put("semanticStateSha256", beforeSemanticDigest);
         snapshot.put("restoredNextApplicationSequence", beforeNextSequence);
       }
       return new ClusterRun(
@@ -398,7 +439,7 @@ final class M11GeneratedSuite {
     require(report.newBusinessApplications() == 2048, "Cluster NEW count changed");
     require(report.duplicateReplays() == 1024, "Cluster duplicate count changed");
     require(report.rejectedApplications() == 1024, "Cluster rejection count changed");
-    require(report.componentErrorCount() == 0, "Cluster component error count changed");
+    infrastructureRequire(report.componentErrorCount() == 0, "Cluster component error count changed");
     require(report.snapshotAdminAccepted() == (restarted ? 1 : 0), "snapshot acceptance count changed");
     require(report.snapshotsCompleted() == (restarted ? 1 : 0), "snapshot completion count changed");
     require(report.restarts() == (restarted ? 1 : 0), "restart count changed");
@@ -543,6 +584,12 @@ final class M11GeneratedSuite {
   private static void require(boolean condition, String message) {
     if (!condition) {
       throw new M11SemanticFailure(message);
+    }
+  }
+
+  private static void infrastructureRequire(boolean condition, String message) {
+    if (!condition) {
+      throw new IllegalStateException(message);
     }
   }
 

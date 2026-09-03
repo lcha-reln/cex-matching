@@ -51,7 +51,7 @@
             "status": { "const": "PASS" },
             "contractPlanVersion": { "const": "0.14" },
             "objective": {
-              "const": "Prove one deterministic matcher is business-equivalent through direct, uninterrupted single-member Aeron Cluster, and snapshot-restart single-member Aeron Cluster paths."
+              "const": "Put the unchanged deterministic single-shard matcher behind one real single-member Aeron Cluster adapter and prove direct-path semantic equivalence, correlated apply responses, protocol compatibility, and Cluster snapshot restart."
             },
             "source": { "$ref": "#/$defs/source" },
             "courseDeclaration": { "$ref": "#/$defs/course" },
@@ -143,9 +143,9 @@
     "workload": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sha256", "seed", "fixedScenarios", "histories", "actionsPerHistory", "actionsPerPath", "clusterRuns", "totalActualClusterIngress", "lanes", "snapshotAfterAction", "coverageObligations", "requiredMutants", "systemErrorControls", "goldens"],
+      "required": ["sha256", "seed", "fixedScenarios", "histories", "actionsPerHistory", "actionsPerPath", "clusterRuns", "totalActualClusterIngress", "continuousCorpus", "stateResetBetweenSegments", "lanes", "snapshotAfterAction", "coverageObligations", "requiredMutants", "systemErrorControls", "goldens"],
       "properties": {
-        "sha256": { "const": "b85c3d2c50a35b4ef7bca6fc64450f7a78f599103c4f8bcd09d783f92731c132" },
+        "sha256": { "const": "ec19d23ab95973dca8f5b9c41d773d0f7fe47db679f659bc3e776dd95739b7e7" },
         "seed": { "const": "6111" },
         "fixedScenarios": { "const": 22 },
         "histories": { "const": 32 },
@@ -153,6 +153,8 @@
         "actionsPerPath": { "const": 4096 },
         "clusterRuns": { "const": 2 },
         "totalActualClusterIngress": { "const": 8192 },
+        "continuousCorpus": { "const": true },
+        "stateResetBetweenSegments": { "const": false },
         "lanes": { "const": 4 },
         "snapshotAfterAction": { "const": 2048 },
         "coverageObligations": { "const": 28 },
@@ -174,11 +176,12 @@
     "generator": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["algorithm", "seed", "histories", "actionsPerHistory", "actionsPerPath", "clusterRuns", "totalActualClusterIngress", "freshGenerations", "byteExactRegeneration", "canonicalSha256", "newApplied", "duplicateReplayed", "identityRejected", "commandIdConflicts", "slotConflicts", "directClusterComparisons", "clusterClusterComparisons", "threePathFullBusinessEquivalent", "finalIdentityBindings", "finalNextApplicationSequence"],
+      "required": ["algorithm", "seed", "histories", "continuousCorpus", "actionsPerHistory", "actionsPerPath", "clusterRuns", "totalActualClusterIngress", "freshGenerations", "byteExactRegeneration", "canonicalSha256", "newApplied", "duplicateReplayed", "identityRejected", "commandIdConflicts", "slotConflicts", "directClusterComparisons", "clusterClusterComparisons", "threePathFullBusinessEquivalent", "finalIdentityBindings", "finalNextApplicationSequence"],
       "properties": {
         "algorithm": { "const": "splitmix64-v1" },
         "seed": { "const": "6111" },
         "histories": { "const": 32 },
+        "continuousCorpus": { "const": true },
         "actionsPerHistory": { "const": 128 },
         "actionsPerPath": { "const": 4096 },
         "clusterRuns": { "const": 2 },
@@ -201,15 +204,26 @@
     "protocol": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["goldens", "requestV1Readable", "requestV2Current", "responseV1DownEncoded", "responseV2Current", "snapshotS1ReadableAndRestorable", "snapshotS2Current", "nMinusOneIdempotencyPreserved", "malformedFailsClosed", "unsupportedFailsClosed", "boundedResponse", "fullEventStreamInResponse"],
+      "required": ["goldens", "requestV1Readable", "requestV1FixesResponseV1", "requestV2Current", "requestV2ResponseBounds", "invalidRequestedResponseStateMutations", "fabricatedBusinessResults", "responseV1DownEncoded", "responseV1OutcomesCovered", "payloadHashOuterInvariant", "forgedPayloadHashPreApplyRejected", "forgedPayloadHashStateMutations", "responseV2Current", "snapshotS1ReadableAndRestorable", "snapshotS2Current", "snapshotIdentityBindingsMinimum", "snapshotIdentityOrder", "snapshotProducerCursorContinuityValidated", "nMinusOneIdempotencyPreserved", "malformedFailsClosed", "unsupportedFailsClosed", "boundedResponse", "fullEventStreamInResponse"],
       "properties": {
         "goldens": { "const": 6 },
         "requestV1Readable": { "const": true },
+        "requestV1FixesResponseV1": { "const": true },
         "requestV2Current": { "const": true },
+        "requestV2ResponseBounds": { "const": "ONE_OR_TWO_ONLY_PRE_APPLY" },
+        "invalidRequestedResponseStateMutations": { "const": 0 },
+        "fabricatedBusinessResults": { "const": 0 },
         "responseV1DownEncoded": { "const": true },
+        "responseV1OutcomesCovered": { "const": 4 },
+        "payloadHashOuterInvariant": { "const": true },
+        "forgedPayloadHashPreApplyRejected": { "const": true },
+        "forgedPayloadHashStateMutations": { "const": 0 },
         "responseV2Current": { "const": true },
         "snapshotS1ReadableAndRestorable": { "const": true },
         "snapshotS2Current": { "const": true },
+        "snapshotIdentityBindingsMinimum": { "type": "integer", "minimum": 2 },
+        "snapshotIdentityOrder": { "const": "ORIGINAL_APPLICATION_SEQUENCE_1_TO_N" },
+        "snapshotProducerCursorContinuityValidated": { "const": true },
         "nMinusOneIdempotencyPreserved": { "const": true },
         "malformedFailsClosed": { "const": true },
         "unsupportedFailsClosed": { "const": true },
@@ -220,7 +234,7 @@
     "clusterRuntime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["implementation", "memberCount", "memberId", "appointedLeaderId", "clusterRuns", "actionsPerRun", "acceptedIngressOffers", "correlatedResponses", "serviceObservations", "componentErrors", "singleMemberOnly", "highAvailabilityClaim", "performanceClaim", "dockerRequired", "externalServices"],
+      "required": ["implementation", "memberCount", "memberId", "appointedLeaderId", "clusterRuns", "actionsPerRun", "acceptedIngressOffers", "correlatedResponses", "serviceObservations", "newBusinessApplications", "duplicateReplays", "rejectedApplications", "snapshotAdminAccepted", "snapshotsCompleted", "restarts", "componentErrors", "singleMemberOnly", "highAvailabilityClaim", "performanceClaim", "dockerRequired", "externalServices"],
       "properties": {
         "implementation": { "const": "REAL_AERON_CLUSTER" },
         "memberCount": { "const": 1 },
@@ -231,6 +245,12 @@
         "acceptedIngressOffers": { "const": 8192 },
         "correlatedResponses": { "const": 8192 },
         "serviceObservations": { "const": 8192 },
+        "newBusinessApplications": { "const": 4096 },
+        "duplicateReplays": { "const": 2048 },
+        "rejectedApplications": { "const": 2048 },
+        "snapshotAdminAccepted": { "const": 1 },
+        "snapshotsCompleted": { "const": 1 },
+        "restarts": { "const": 1 },
         "componentErrors": { "const": 0 },
         "singleMemberOnly": { "const": true },
         "highAvailabilityClaim": { "const": false },
@@ -242,12 +262,14 @@
     "snapshotRestart": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["requestedAfterAction", "adminRequestAccepted", "completionBounded", "controlToggleResetOrActive", "recordingLogNewSnapshotEntry", "closedOnlyAfterCompletion", "restartCount", "directoriesPreserved", "loadedSnapshot", "identityDigestExact", "semanticDigestExact", "nextApplicationSequenceExact", "duplicateOriginalResultsSurvived", "conflictsRemainNonMutating"],
+      "required": ["schemaVersion", "status", "requestedAfterAction", "adminRequestAccepted", "completionBounded", "controlToggleResetToNeutral", "recordingLogNewSnapshotEntry", "closedOnlyAfterCompletion", "restartCount", "directoriesPreserved", "loadedSnapshot", "identityDigestExact", "semanticDigestExact", "nextApplicationSequenceExact", "duplicateOriginalResultsSurvived", "conflictsRemainNonMutating", "adminCorrelationId", "completionCountBefore", "completionCountAfter", "controlToggleState", "leadershipTermId", "logPosition", "serviceRecordingId", "consensusRecordingId", "snapshotSequence", "snapshotStateSha256", "identityTableSha256", "semanticStateSha256", "restoredNextApplicationSequence"],
       "properties": {
+        "schemaVersion": { "const": "matching.m11.snapshot-restart.v1" },
+        "status": { "const": "PASS" },
         "requestedAfterAction": { "const": 2048 },
         "adminRequestAccepted": { "const": true },
         "completionBounded": { "const": true },
-        "controlToggleResetOrActive": { "const": true },
+        "controlToggleResetToNeutral": { "const": true },
         "recordingLogNewSnapshotEntry": { "const": true },
         "closedOnlyAfterCompletion": { "const": true },
         "restartCount": { "const": 1 },
@@ -257,7 +279,20 @@
         "semanticDigestExact": { "const": true },
         "nextApplicationSequenceExact": { "const": true },
         "duplicateOriginalResultsSurvived": { "const": 1024 },
-        "conflictsRemainNonMutating": { "const": 1024 }
+        "conflictsRemainNonMutating": { "const": 1024 },
+        "adminCorrelationId": { "type": "integer", "minimum": 1 },
+        "completionCountBefore": { "type": "integer", "minimum": 0 },
+        "completionCountAfter": { "type": "integer", "minimum": 1 },
+        "controlToggleState": { "const": "NEUTRAL" },
+        "leadershipTermId": { "type": "integer", "minimum": 0 },
+        "logPosition": { "type": "integer", "minimum": 0 },
+        "serviceRecordingId": { "type": "integer", "minimum": 0 },
+        "consensusRecordingId": { "type": "integer", "minimum": 0 },
+        "snapshotSequence": { "const": 2048 },
+        "snapshotStateSha256": { "$ref": "#/$defs/sha256" },
+        "identityTableSha256": { "$ref": "#/$defs/sha256" },
+        "semanticStateSha256": { "$ref": "#/$defs/sha256" },
+        "restoredNextApplicationSequence": { "const": 2049 }
       }
     },
     "coverage": {
