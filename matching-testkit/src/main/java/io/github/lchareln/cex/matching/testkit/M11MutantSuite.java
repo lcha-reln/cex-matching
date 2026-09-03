@@ -7,390 +7,1335 @@ import io.github.lchareln.cex.matching.cluster.M11ProtocolException;
 import io.github.lchareln.cex.matching.cluster.M11RequestCodec;
 import io.github.lchareln.cex.matching.cluster.M11ResponseCodec;
 import io.github.lchareln.cex.matching.cluster.M11ResponseStatus;
+import io.github.lchareln.cex.matching.cluster.M11RuntimeState;
 import io.github.lchareln.cex.matching.cluster.M11SnapshotCodec;
+import io.github.lchareln.cex.matching.local.CanonicalResult;
+import io.github.lchareln.cex.matching.local.CommandApplierState;
 import io.github.lchareln.cex.matching.local.DeterministicMatchingAdapter;
 import io.github.lchareln.cex.matching.local.M08Command;
-import java.io.ByteArrayOutputStream;
+import io.github.lchareln.cex.matching.local.Slot;
+import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Executable production-derived adapter candidates judged by one invariant observer. */
+/** Fresh production and single-fault candidates judged by one typed trace observer. */
 final class M11MutantSuite {
+  private static final String OBSERVER = "M11_UNIFIED_TYPED_TRACE_OBSERVER_V2";
+  private static final String INTERPRETER = "M11_TYPED_STEP_INTERPRETER_V2";
+
   Result run(Path repositoryRoot) {
     Path root = repositoryRoot.toAbsolutePath().normalize();
-    ArrayNode candidates = JsonSupport.MAPPER.createArrayNode();
-    ArrayNode witnesses = JsonSupport.MAPPER.createArrayNode();
-    StringBuilder canonical = new StringBuilder();
-    int killed = 0;
-    int rawActions = 0;
-    int minimalActions = 0;
-    int shrinkTrials = 0;
-    for (String id : M11StartCheckRunner.MUTANT_IDS) {
-      List<Step> raw = rawWitness(id);
-      Replay initial = classify(root, id, raw);
-      require(
-          M11CheckRunner.STUDENT_FAILURE.equals(initial.classification()),
-          id + " did not expose a student failure: " + initial.classification());
-      Shrink shrink = minimize(root, id, raw, initial.fingerprint());
-      Replay replay = classify(root, id, shrink.steps());
-      require(
-          M11CheckRunner.STUDENT_FAILURE.equals(replay.classification()),
-          id + " minimized witness no longer fails");
-      require(initial.fingerprint().equals(replay.fingerprint()), id + " fingerprint changed");
-      require(
-          oneMinimal(root, id, shrink.steps(), replay.fingerprint()), id + " is not one-minimal");
+    Path suiteRoot = createTemporaryDirectory();
+    try {
+      Map<String, Definition> definitions = definitions();
+      ArrayNode candidates = JsonSupport.MAPPER.createArrayNode();
+      ArrayNode witnesses = JsonSupport.MAPPER.createArrayNode();
+      int killed = 0;
+      int rawActions = 0;
+      int minimalActions = 0;
+      int shrinkTrials = 0;
+      int actualMutationActions = 0;
 
-      killed++;
-      rawActions += raw.size();
-      minimalActions += shrink.steps().size();
-      shrinkTrials += shrink.trials();
-      String witnessId = "cex-m11-" + id.substring(4).toLowerCase();
-      ObjectNode candidate = candidates.addObject();
-      candidate.put("id", id);
-      candidate.put("classification", M11CheckRunner.STUDENT_FAILURE);
-      candidate.put("fingerprint", initial.fingerprint());
-      candidate.put("executableCandidate", true);
-      candidate.put("observer", "M11_UNIFIED_CONTRACT_OBSERVER_V1");
-      candidate.put("freshCandidatePerReplay", true);
-      candidate.put("systemErrorCountedAsKill", false);
-      candidate.put("counterexampleId", witnessId);
+      for (String id : M11StartCheckRunner.MUTANT_IDS) {
+        Definition definition = definitions.get(id);
+        systemRequire(definition != null, "missing M11 mutant definition " + id);
+        List<Step> raw = new ArrayList<>();
+        raw.add(Step.parse("NOOP:prefix"));
+        raw.addAll(definition.history());
+        raw.add(Step.parse("NOOP:suffix"));
 
-      ObjectNode witness = witnesses.addObject();
-      witness.put("id", witnessId);
-      witness.put("mutant", id);
-      witness.put("classification", M11CheckRunner.STUDENT_FAILURE);
-      witness.put("fingerprint", initial.fingerprint());
-      witness.put("rawActions", raw.size());
-      witness.put("minimalActions", shrink.steps().size());
-      witness.put("shrinkTrials", shrink.trials());
-      witness.put("minimalityScope", "ONE_MINIMAL_WITHIN_DECLARED_STEP_DELETION_GRAMMAR");
-      witness.put("globalMinimumClaim", false);
-      ArrayNode steps = witness.putArray("steps");
-      shrink.steps().forEach(step -> step.write(steps.addObject()));
-      canonical.append(JsonSupport.MAPPER.writeValueAsString(witness)).append('\n');
+        Outcome production = execute(root, suiteRoot, definition, raw, Mutation.NONE);
+        systemRequire(
+            production.classification() == Classification.PASS,
+            "production candidate did not PASS " + id + ": " + production.detail());
+
+        Outcome mutant = execute(root, suiteRoot, definition, raw, definition.mutation());
+        systemRequire(
+            mutant.classification() != Classification.SYSTEM_ERROR,
+            "mutant raised SYSTEM_ERROR " + id + ": " + mutant.detail());
+        semanticRequire(
+            mutant.classification() == Classification.STUDENT_FAILURE,
+            "required executable mutant survived " + id);
+        systemRequire(
+            definition.fingerprint().equals(mutant.fingerprint()),
+            "raw mutant fingerprint changed " + id);
+        systemRequire(mutant.mutationActions() > 0, "mutant performed no fault action " + id);
+
+        Shrink shrink = minimize(root, suiteRoot, definition, raw);
+        systemRequire(shrink.steps().size() < raw.size(), "mutant witness did not shrink " + id);
+        Outcome minimized =
+            execute(root, suiteRoot, definition, shrink.steps(), definition.mutation());
+        systemRequire(
+            minimized.classification() == Classification.STUDENT_FAILURE
+                && definition.fingerprint().equals(minimized.fingerprint())
+                && minimized.mutationActions() > 0,
+            "minimized mutant witness changed " + id);
+        systemRequire(
+            oneMinimal(root, suiteRoot, definition, shrink.steps()),
+            "mutant witness is not one-minimal " + id);
+
+        String witnessId = "cex-m11-" + id.substring(4).toLowerCase();
+        ObjectNode candidate = candidates.addObject();
+        candidate.put("id", id);
+        candidate.put("productionClassification", Classification.PASS.name());
+        candidate.put("classification", Classification.STUDENT_FAILURE.name());
+        candidate.put("fingerprint", minimized.fingerprint());
+        candidate.put("candidateDriver", "FRESH_PRODUCTION_DERIVED_SINGLE_FAULT_MACHINE");
+        candidate.put("observer", OBSERVER);
+        candidate.put("freshProductionControl", true);
+        candidate.put("singleFaultMode", definition.mutation().name());
+        candidate.put("actualMutationActions", minimized.mutationActions());
+        candidate.put("systemErrorCountedAsKill", false);
+        candidate.put("counterexampleId", witnessId);
+
+        ObjectNode witness = witnesses.addObject();
+        witness.put("id", witnessId);
+        witness.put("mutant", id);
+        witness.put("classification", Classification.STUDENT_FAILURE.name());
+        witness.put("fingerprint", minimized.fingerprint());
+        witness.put("rawActions", raw.size());
+        witness.put("minimalActions", shrink.steps().size());
+        witness.put("shrinkTrials", shrink.trials());
+        witness.put("actualMutationActions", minimized.mutationActions());
+        witness.put("oneMinimal", true);
+        witness.put("stepCountMatchesMinimalActions", true);
+        witness.put("strictFreshReplay", true);
+        witness.put("serializedReplayFingerprintExact", true);
+        witness.put("minimalityScope", "ONE_MINIMAL_WITHIN_TYPED_STEP_DELETION_GRAMMAR");
+        witness.put("globalMinimumClaim", false);
+        ArrayNode steps = witness.putArray("steps");
+        shrink.steps().forEach(step -> step.write(steps.addObject()));
+
+        killed++;
+        rawActions += raw.size();
+        minimalActions += shrink.steps().size();
+        shrinkTrials += shrink.trials();
+        actualMutationActions += minimized.mutationActions();
+      }
+
+      ArrayNode controls = executeControls(root);
+      systemRequire(killed == 10, "not every M11 mutant was killed");
+      systemRequire(controls.size() == 3, "M11 system control count changed");
+
+      ObjectNode counterexamples = JsonSupport.MAPPER.createObjectNode();
+      counterexamples.put("schemaVersion", "matching.m11.counterexamples.v1");
+      counterexamples.put("seed", "6111");
+      counterexamples.put("required", 10);
+      counterexamples.put("persisted", killed);
+      counterexamples.put("replayInterpreter", INTERPRETER);
+      counterexamples.put("minimalityScope", "ONE_MINIMAL_WITHIN_TYPED_STEP_DELETION_GRAMMAR");
+      counterexamples.put("globalMinimumClaim", false);
+      counterexamples.put("invalidHistoryCountedAsKill", false);
+      counterexamples.put("systemErrorCountedAsKill", false);
+      counterexamples.put("serializedFreshReplay", true);
+      counterexamples.put("serializedReplayCount", 10);
+      counterexamples.put("serializedReplayFingerprintsExact", true);
+      counterexamples.put("oneDeleteAudits", 10);
+      counterexamples.set("witnesses", witnesses);
+
+      byte[] persistedBytes = JsonSupport.prettyBytes(counterexamples);
+      Path persistedPath = suiteRoot.resolve("counterexamples.json");
+      AtomicFiles.write(persistedPath, persistedBytes);
+      byte[] readBack = readBytes(persistedPath);
+      systemRequire(
+          Arrays.equals(persistedBytes, readBack), "counterexample bytes changed on disk");
+      JsonNode parsed = JsonSupport.parse(readBack);
+      JsonSupport.validate(
+          parsed, readString(root.resolve(M11CheckRunner.COUNTEREXAMPLE_SCHEMA_PATH)), false);
+      ReplayAudit replay = strictReplay(root, suiteRoot, parsed, definitions, readBack);
+      JsonSupport.validate(
+          replay.report(), readString(root.resolve(M11CheckRunner.REPLAY_SCHEMA_PATH)), false);
+
+      return new Result(
+          (ObjectNode) parsed.deepCopy(),
+          persistedBytes,
+          candidates,
+          controls,
+          replay.report(),
+          replay.canonicalBytes(),
+          replay.digest(),
+          killed,
+          rawActions,
+          minimalActions,
+          shrinkTrials,
+          actualMutationActions);
+    } finally {
+      M09ScenarioSupport.deleteTree(suiteRoot);
     }
+  }
 
-    ArrayNode controls = JsonSupport.MAPPER.createArrayNode();
-    for (String id : M11StartCheckRunner.SYSTEM_ERROR_IDS) {
-      control(controls, id, controlAction(id));
+  private static Map<String, Definition> definitions() {
+    Map<String, Definition> values = new LinkedHashMap<>();
+    add(
+        values,
+        "M11-OFFER-AS-SUCCESS",
+        Mutation.OFFER_AS_SUCCESS,
+        "INGRESS_OFFER_UPGRADED_TO_BUSINESS_SUCCESS",
+        "OFFER:request-1");
+    add(
+        values,
+        "M11-SESSION-AS-IDENTITY",
+        Mutation.SESSION_AS_IDENTITY,
+        "SESSION_CHANGED_BUSINESS_IDENTITY",
+        "SUBMIT_SESSION:session-a",
+        "SUBMIT_SESSION:session-b");
+    add(
+        values,
+        "M11-CORRELATION-AS-IDENTITY",
+        Mutation.CORRELATION_AS_IDENTITY,
+        "CORRELATION_CHANGED_BUSINESS_IDENTITY",
+        "SUBMIT_CORRELATION:correlation-a",
+        "SUBMIT_CORRELATION:correlation-b");
+    add(
+        values,
+        "M11-RESPOND-BEFORE-BIND",
+        Mutation.RESPOND_BEFORE_BIND,
+        "RESPONSE_OBSERVED_BEFORE_RESULT_BIND",
+        "BEGIN_SUBMIT:request-1",
+        "CRASH:node-1",
+        "RETRY:request-1");
+    add(
+        values,
+        "M11-DROP-IDENTITY-FROM-SNAPSHOT",
+        Mutation.DROP_IDENTITY_FROM_SNAPSHOT,
+        "SNAPSHOT_LOST_IDEMPOTENCY_TABLE",
+        "SUBMIT:request-1",
+        "TAKE_SNAPSHOT:snapshot-1",
+        "RESTART:node-1",
+        "RETRY:request-1");
+    add(
+        values,
+        "M11-CORRUPT-SNAPSHOT-TO-GENESIS",
+        Mutation.CORRUPT_SNAPSHOT_TO_GENESIS,
+        "CORRUPT_SNAPSHOT_SILENTLY_BECAME_GENESIS",
+        "SUBMIT:request-1",
+        "TAKE_SNAPSHOT:snapshot-1",
+        "CORRUPT_SNAPSHOT:middle-byte",
+        "RESTART:node-1",
+        "RETRY:request-1");
+    add(
+        values,
+        "M11-REJECT-N-MINUS-ONE",
+        Mutation.REJECT_N_MINUS_ONE,
+        "N_MINUS_ONE_COMPATIBILITY_REJECTED",
+        "DECODE_REQUEST_V1:request-v1",
+        "DECODE_RESPONSE_V1:response-v1",
+        "DECODE_SNAPSHOT_V1:snapshot-v1");
+    add(
+        values,
+        "M11-INCLUDE-RUNTIME-METADATA-IN-DIGEST",
+        Mutation.INCLUDE_RUNTIME_METADATA_IN_DIGEST,
+        "RUNTIME_METADATA_CHANGED_BUSINESS_DIGEST",
+        "READ_DIGEST:before",
+        "SET_SESSION:session-b",
+        "READ_DIGEST:after");
+    add(
+        values,
+        "M11-DOUBLE-WRITE-LOCAL-WAL",
+        Mutation.DOUBLE_WRITE_LOCAL_WAL,
+        "CLUSTER_SERVICE_WROTE_STANDALONE_WAL",
+        "SUBMIT:request-1");
+    add(
+        values,
+        "M11-ACCEPT-UNSUPPORTED-VERSION",
+        Mutation.ACCEPT_UNSUPPORTED_VERSION,
+        "UNSUPPORTED_VERSION_ACCEPTED",
+        "DECODE_REQUEST_V3:request-v3");
+    return Map.copyOf(values);
+  }
+
+  private static void add(
+      Map<String, Definition> values,
+      String id,
+      Mutation mutation,
+      String fingerprint,
+      String... encoded) {
+    values.put(
+        id,
+        new Definition(
+            id, mutation, fingerprint, Arrays.stream(encoded).map(Step::parse).toList()));
+  }
+
+  private static Outcome execute(
+      Path repositoryRoot,
+      Path suiteRoot,
+      Definition definition,
+      List<Step> steps,
+      Mutation mutation) {
+    Path scratch = createCandidateDirectory(suiteRoot);
+    Classification classification = Classification.PASS;
+    String fingerprint = "";
+    String detail = "";
+    int mutationActions = 0;
+    try {
+      CandidateMachine candidate = new CandidateMachine(repositoryRoot, scratch, mutation);
+      for (Step step : steps) {
+        candidate.execute(step);
+      }
+      mutationActions = candidate.trace().mutationActions();
+      Optional<String> violation = UnifiedObserver.observe(candidate.trace());
+      if (violation.isPresent()) {
+        classification = Classification.STUDENT_FAILURE;
+        fingerprint = violation.orElseThrow();
+      }
+    } catch (InvalidHistory failure) {
+      classification = Classification.INVALID_HISTORY;
+      detail = stableDetail(failure);
+    } catch (RuntimeException | Error failure) {
+      classification = Classification.valueOf(M11FailureClassifier.classify(failure));
+      if (classification == Classification.STUDENT_FAILURE) {
+        fingerprint = failure.getMessage();
+      } else {
+        detail = stableDetail(failure);
+      }
+    } finally {
+      try {
+        M09ScenarioSupport.deleteTree(scratch);
+      } catch (RuntimeException failure) {
+        classification = Classification.SYSTEM_ERROR;
+        fingerprint = "";
+        detail = "cleanup:" + stableDetail(failure);
+      }
     }
-    require(killed == 10, "not every M11 mutant was killed");
-    require(controls.size() == 3, "M11 system control count changed");
+    if (classification == Classification.STUDENT_FAILURE
+        && mutation != Mutation.NONE
+        && mutationActions == 0) {
+      return new Outcome(
+          Classification.SYSTEM_ERROR,
+          "",
+          "observer reported a mutation without an executed fault action",
+          0);
+    }
+    return new Outcome(classification, fingerprint, detail, mutationActions);
+  }
+
+  private static Shrink minimize(Path root, Path suiteRoot, Definition definition, List<Step> raw) {
+    List<Step> current = new ArrayList<>(raw);
+    int trials = 0;
+    boolean changed;
+    do {
+      changed = false;
+      for (int index = 0; index < current.size(); index++) {
+        List<Step> candidate = new ArrayList<>(current);
+        candidate.remove(index);
+        trials++;
+        Outcome outcome = execute(root, suiteRoot, definition, candidate, definition.mutation());
+        systemRequire(
+            outcome.classification() != Classification.SYSTEM_ERROR,
+            "shrinker SYSTEM_ERROR " + definition.id() + ": " + outcome.detail());
+        if (outcome.classification() == Classification.STUDENT_FAILURE
+            && definition.fingerprint().equals(outcome.fingerprint())) {
+          current = candidate;
+          changed = true;
+          break;
+        }
+      }
+    } while (changed);
+    return new Shrink(List.copyOf(current), trials);
+  }
+
+  private static boolean oneMinimal(
+      Path root, Path suiteRoot, Definition definition, List<Step> steps) {
+    for (int index = 0; index < steps.size(); index++) {
+      List<Step> candidate = new ArrayList<>(steps);
+      candidate.remove(index);
+      Outcome outcome = execute(root, suiteRoot, definition, candidate, definition.mutation());
+      systemRequire(
+          outcome.classification() != Classification.SYSTEM_ERROR,
+          "one-delete SYSTEM_ERROR " + definition.id() + ": " + outcome.detail());
+      if (outcome.classification() == Classification.STUDENT_FAILURE
+          && definition.fingerprint().equals(outcome.fingerprint())) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static ReplayAudit strictReplay(
+      Path root,
+      Path suiteRoot,
+      JsonNode parsed,
+      Map<String, Definition> definitions,
+      byte[] persistedBytes) {
+    JsonNode witnesses = parsed.path("witnesses");
+    systemRequire(witnesses.size() == 10, "persisted M11 counterexample count changed");
+    Set<String> ids = new HashSet<>();
+    Set<String> mutants = new HashSet<>();
+    ArrayNode results = JsonSupport.MAPPER.createArrayNode();
+    StringBuilder canonical = new StringBuilder("M11R2\n");
+    int replayed = 0;
+    int oneDeleteAudits = 0;
+
+    for (int index = 0; index < witnesses.size(); index++) {
+      JsonNode witness = witnesses.get(index);
+      String expectedMutant = M11StartCheckRunner.MUTANT_IDS.get(index);
+      String mutant = witness.path("mutant").stringValue();
+      String id = witness.path("id").stringValue();
+      systemRequire(expectedMutant.equals(mutant), "persisted mutant order changed at " + index);
+      systemRequire(ids.add(id), "duplicate persisted counterexample ID " + id);
+      systemRequire(mutants.add(mutant), "duplicate persisted mutant ID " + mutant);
+      Definition definition = definitions.get(mutant);
+      systemRequire(definition != null, "persisted mutant is unknown " + mutant);
+
+      List<Step> steps = new ArrayList<>();
+      for (JsonNode encoded : witness.path("steps")) {
+        Step step = Step.parsePersisted(encoded);
+        steps.add(step);
+      }
+      systemRequire(
+          steps.size() == witness.path("minimalActions").intValue(),
+          "persisted minimal action count changed " + mutant);
+
+      Outcome production = execute(root, suiteRoot, definition, steps, Mutation.NONE);
+      systemRequire(
+          production.classification() == Classification.PASS,
+          "serialized production replay did not PASS " + mutant);
+      Outcome replay = execute(root, suiteRoot, definition, steps, definition.mutation());
+      String expectedFingerprint = witness.path("fingerprint").stringValue();
+      int expectedMutationActions = witness.path("actualMutationActions").intValue();
+      systemRequire(
+          replay.classification() == Classification.STUDENT_FAILURE
+              && expectedFingerprint.equals(replay.fingerprint())
+              && expectedMutationActions == replay.mutationActions(),
+          "serialized fresh replay changed " + mutant);
+      systemRequire(
+          oneMinimal(root, suiteRoot, definition, steps),
+          "serialized witness lost one-minimality " + mutant);
+
+      ObjectNode result = results.addObject();
+      result.put("counterexampleId", id);
+      result.put("mutant", mutant);
+      result.put("classification", Classification.STUDENT_FAILURE.name());
+      result.put("fingerprint", replay.fingerprint());
+      result.put("steps", steps.size());
+      result.put("actualMutationActions", replay.mutationActions());
+      result.put("freshCandidate", true);
+      result.put("freshProductionControl", true);
+      result.put("fingerprintExact", true);
+      result.put("oneMinimal", true);
+      canonical
+          .append(mutant)
+          .append('|')
+          .append(replay.fingerprint())
+          .append('|')
+          .append(replay.mutationActions())
+          .append('|')
+          .append(
+              steps.stream().map(Step::encoded).collect(java.util.stream.Collectors.joining(",")))
+          .append('\n');
+      replayed++;
+      oneDeleteAudits++;
+    }
+    systemRequire(ids.size() == 10 && mutants.size() == 10, "persisted IDs are not unique");
 
     byte[] canonicalBytes = canonical.toString().getBytes(StandardCharsets.UTF_8);
-    ObjectNode counterexamples = JsonSupport.MAPPER.createObjectNode();
-    counterexamples.put("schemaVersion", "matching.m11.counterexamples.v1");
-    counterexamples.put("seed", "6111");
-    counterexamples.put("required", 10);
-    counterexamples.put("persisted", killed);
-    counterexamples.put("replayInterpreter", "M11_DECLARED_STEP_GRAMMAR_V1");
-    counterexamples.put("minimalityScope", "ONE_MINIMAL_WITHIN_DECLARED_STEP_DELETION_GRAMMAR");
-    counterexamples.put("globalMinimumClaim", false);
-    counterexamples.put("invalidHistoryCountedAsKill", false);
-    counterexamples.put("systemErrorCountedAsKill", false);
-    counterexamples.set("witnesses", witnesses);
-    return new Result(
-        candidates,
-        controls,
-        counterexamples,
-        canonicalBytes,
-        Hashing.sha256Hex(canonicalBytes),
-        killed,
-        rawActions,
-        minimalActions,
-        shrinkTrials);
+    ObjectNode report = JsonSupport.MAPPER.createObjectNode();
+    report.put("schemaVersion", "matching.m11.replay.v1");
+    report.put("status", M11CheckRunner.PASS);
+    report.put("replayInterpreter", INTERPRETER);
+    report.put("persistedBytesSha256", Hashing.sha256Hex(persistedBytes));
+    report.put("persistedBytesParsed", true);
+    report.put("required", 10);
+    report.put("replayed", replayed);
+    report.put("orderedUniqueIds", true);
+    report.put("stepCountsExact", true);
+    report.put("freshCandidatePerReplay", true);
+    report.put("productionControlsPassed", replayed);
+    report.put("fingerprintsExact", true);
+    report.put("oneDeleteAudits", oneDeleteAudits);
+    report.put("invalidHistoryCountedAsKill", false);
+    report.put("systemErrorCountedAsKill", false);
+    report.put("canonicalSha256", Hashing.sha256Hex(canonicalBytes));
+    report.set("results", results);
+    return new ReplayAudit(report, canonicalBytes, Hashing.sha256Hex(canonicalBytes));
   }
 
-  private static Replay classify(Path root, String id, List<Step> steps) {
+  private static ArrayNode executeControls(Path root) {
+    ArrayNode controls = JsonSupport.MAPPER.createArrayNode();
+    for (String id : M11StartCheckRunner.SYSTEM_ERROR_IDS) {
+      ControlOutcome outcome = executeControl(root, id);
+      systemRequire(
+          outcome.classification() == Classification.SYSTEM_ERROR,
+          "control did not classify as SYSTEM_ERROR " + id);
+      ObjectNode node = controls.addObject();
+      node.put("id", id);
+      node.put("classification", Classification.SYSTEM_ERROR.name());
+      node.put("classifier", "M11_SHARED_FAILURE_CLASSIFIER_V1");
+      node.put("executedPath", outcome.path());
+      node.put("failureType", outcome.failureType());
+      node.put("countedAsKill", false);
+    }
+    return controls;
+  }
+
+  private static ControlOutcome executeControl(Path root, String id) {
     try {
-      Observation observation = executeCandidate(root, id, steps);
-      String fingerprint = observe(id, observation);
-      if (fingerprint != null) {
-        throw new M11SemanticFailure(fingerprint);
-      }
-      return new Replay(M11CheckRunner.PASS, "NONE");
-    } catch (InvalidHistory invalid) {
-      return new Replay("INVALID_HISTORY", invalid.getMessage());
-    } catch (M11SemanticFailure failure) {
-      return new Replay(M11CheckRunner.STUDENT_FAILURE, failure.getMessage());
-    } catch (RuntimeException failure) {
-      return new Replay(M11CheckRunner.SYSTEM_ERROR, failure.getClass().getSimpleName());
+      String path =
+          switch (id) {
+            case "M11-THROWING-CODEC-CONTROL" -> runCodecControl();
+            case "M11-CLUSTER-STARTUP-CONTROL" -> runClusterStartupControl(root);
+            case "M11-CORRUPT-HARNESS-OUTPUT-CONTROL" -> runHarnessOutputControl();
+            default -> throw new IllegalArgumentException("unknown M11 system control " + id);
+          };
+      return new ControlOutcome(Classification.PASS, path, "NONE");
+    } catch (RuntimeException | Error failure) {
+      Classification classification =
+          Classification.valueOf(M11FailureClassifier.classify(failure));
+      return new ControlOutcome(
+          classification, controlPath(id), failure.getClass().getSimpleName());
     }
   }
 
-  private static Observation executeCandidate(Path root, String id, List<Step> steps) {
-    return switch (id) {
-      case "M11-OFFER-AS-SUCCESS" -> offerAsSuccess(steps);
-      case "M11-SESSION-AS-IDENTITY" -> transportAsIdentity(steps, true);
-      case "M11-CORRELATION-AS-IDENTITY" -> transportAsIdentity(steps, false);
-      case "M11-RESPOND-BEFORE-BIND" -> respondBeforeBind(steps);
-      case "M11-DROP-IDENTITY-FROM-SNAPSHOT" -> dropSnapshotIdentity(steps);
-      case "M11-CORRUPT-SNAPSHOT-TO-GENESIS" -> corruptSnapshotToGenesis(steps);
-      case "M11-REJECT-N-MINUS-ONE" -> rejectPreviousVersion(root, steps);
-      case "M11-INCLUDE-RUNTIME-METADATA-IN-DIGEST" -> metadataInDigest(steps);
-      case "M11-DOUBLE-WRITE-LOCAL-WAL" -> doubleWriteLocalWal(steps);
-      case "M11-ACCEPT-UNSUPPORTED-VERSION" -> acceptUnsupported(steps);
-      default -> throw new IllegalArgumentException("unknown M11 mutant " + id);
-    };
-  }
-
-  private static Observation offerAsSuccess(List<Step> steps) {
-    requireKinds(steps, "OFFER", "APPLY_PENDING", "OBSERVE");
-    int applied = 0;
-    int responses = 0;
-    int responseBeforeApply = 0;
-    for (Step step : steps) {
-      if ("OFFER".equals(step.kind())) {
-        responses++;
-        if (applied == 0) {
-          responseBeforeApply++;
-        }
-      } else if ("APPLY_PENDING".equals(step.kind())) {
-        requireHistory(applied == 0, "apply was not pending");
-      }
-    }
-    return facts(
-        "responses", responses, "applied", applied, "responsesBeforeApply", responseBeforeApply);
-  }
-
-  private static Observation transportAsIdentity(List<Step> steps, boolean session) {
-    String firstKind = session ? "SESSION_APPLY" : "CORRELATION_APPLY";
-    String retryKind = session ? "SESSION_RETRY" : "CORRELATION_RETRY";
-    requireKinds(steps, firstKind, retryKind, "OBSERVE");
-    M11CommandRequest request = request();
-    DirectM11MatchingRuntime oracle = new DirectM11MatchingRuntime();
-    M11ApplicationResult oracleFirst = oracle.submit(request);
-    M11ApplicationResult oracleRetry = oracle.submit(request.withCorrelationId(new UUID(31, 37)));
-    requireHistory(
-        oracleFirst.response().status() == M11ResponseStatus.NEW_APPLIED
-            && oracleRetry.response().status() == M11ResponseStatus.DUPLICATE_REPLAYED,
-        "production identity oracle changed");
-
-    Map<String, DirectM11MatchingRuntime> partitioned = new LinkedHashMap<>();
-    int candidateNew = 0;
-    for (Step step : steps) {
-      if (firstKind.equals(step.kind()) || retryKind.equals(step.kind())) {
-        String key = step.value();
-        DirectM11MatchingRuntime runtime =
-            partitioned.computeIfAbsent(key, ignored -> new DirectM11MatchingRuntime());
-        M11ApplicationResult result =
-            runtime.submit(
-                request.withCorrelationId(
-                    UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8))));
-        if (result.response().status() == M11ResponseStatus.NEW_APPLIED) {
-          candidateNew++;
-        }
-      }
-    }
-    return facts("candidateNew", candidateNew, "oracleNew", 1, "oracleDuplicates", 1);
-  }
-
-  private static Observation respondBeforeBind(List<Step> steps) {
-    requireKinds(steps, "APPLY", "RESPOND", "CRASH_BEFORE_BIND", "RETRY");
-    M11CommandRequest request = request();
-    M11ApplicationResult first = new DirectM11MatchingRuntime().submit(request);
-    requireHistory(first.fullResult().isPresent(), "production apply did not produce a result");
-    int applyOrdinal = indexOf(steps, "APPLY");
-    int responseOrdinal = indexOf(steps, "RESPOND");
-    int bindOrdinal = Integer.MAX_VALUE;
-    DirectM11MatchingRuntime afterCrash = new DirectM11MatchingRuntime();
-    M11ApplicationResult retry = afterCrash.submit(request.withCorrelationId(new UUID(41, 43)));
-    return facts(
-        "responseBeforeBind",
-        responseOrdinal > applyOrdinal && responseOrdinal < bindOrdinal,
-        "retryWasNew",
-        retry.response().status() == M11ResponseStatus.NEW_APPLIED);
-  }
-
-  private static Observation dropSnapshotIdentity(List<Step> steps) {
-    requireKinds(steps, "APPLY", "SNAPSHOT_WITHOUT_IDENTITY", "RESTORE", "RETRY");
-    M11CommandRequest request = request();
-    DirectM11MatchingRuntime original = new DirectM11MatchingRuntime();
-    M11ApplicationResult first = original.submit(request);
-    DeterministicMatchingAdapter matcher =
-        DeterministicMatchingAdapter.restore(original.stateImage().commandState());
-    long before = matcher.nextApplicationSequence();
-    var second = matcher.apply(request.command());
-    return facts(
-        "originalApplied",
-        first.response().status() == M11ResponseStatus.NEW_APPLIED,
-        "retryApplicationSequence",
-        second.applicationSequence(),
-        "beforeRetrySequence",
-        before);
-  }
-
-  private static Observation corruptSnapshotToGenesis(List<Step> steps) {
-    requireKinds(steps, "APPLY", "CORRUPT_SNAPSHOT", "RESTORE_FALLBACK");
-    DirectM11MatchingRuntime original = new DirectM11MatchingRuntime();
-    original.submit(request());
-    byte[] encoded = new M11SnapshotCodec().encodeCurrent(original.stateImage());
-    encoded[encoded.length / 2] ^= 1;
-    boolean decoderRejected = false;
-    try {
-      new M11SnapshotCodec().decodeCanonical(encoded);
-    } catch (M11ProtocolException expected) {
-      decoderRejected = true;
-    }
-    requireHistory(decoderRejected, "corruption was not detected by the production codec");
-    DirectM11MatchingRuntime mutantRestored = new DirectM11MatchingRuntime();
-    return facts(
-        "decoderRejected",
-        true,
-        "restoredGenesis",
-        mutantRestored.nextApplicationSequence() == 1,
-        "originalNextSequence",
-        original.nextApplicationSequence());
-  }
-
-  private static Observation rejectPreviousVersion(Path root, List<Step> steps) {
-    requireKinds(steps, "READ_REQUEST_V1", "READ_RESPONSE_V1", "READ_SNAPSHOT_S1", "OBSERVE");
-    M11RequestCodec requests = new M11RequestCodec();
-    boolean productionReadable;
-    try {
-      byte[] request = java.nio.file.Files.readAllBytes(root.resolve(golden("request-v1.bin")));
-      byte[] response = java.nio.file.Files.readAllBytes(root.resolve(golden("response-v1.bin")));
-      byte[] snapshot = java.nio.file.Files.readAllBytes(root.resolve(golden("snapshot-v1.bin")));
-      productionReadable =
-          requests.decodeCanonical(request, 1).protocolVersion() == 1
-              && new M11ResponseCodec().decodeCanonical(response).protocolVersion() == 1
-              && new M11SnapshotCodec().decodeCanonical(snapshot).schemaVersion() == 1;
-    } catch (java.io.IOException | M11ProtocolException failure) {
-      throw new IllegalStateException("cannot execute N-1 production oracle", failure);
-    }
-    boolean mutantReadable = false;
-    return facts("productionReadable", productionReadable, "mutantReadable", mutantReadable);
-  }
-
-  private static Observation metadataInDigest(List<Step> steps) {
-    requireKinds(steps, "BUSINESS_STATE", "SESSION_ONE", "SESSION_TWO", "OBSERVE");
-    DirectM11MatchingRuntime runtime = new DirectM11MatchingRuntime();
-    runtime.submit(request());
-    String business = runtime.semanticStateDigest();
-    String first = sha256(business + ":session-1");
-    String second = sha256(business + ":session-2");
-    return facts(
-        "businessDigestStable", business.equals(runtime.semanticStateDigest()),
-        "mutantDigestStable", first.equals(second));
-  }
-
-  private static Observation doubleWriteLocalWal(List<Step> steps) {
-    requireKinds(steps, "CLUSTER_APPLY", "OBSERVE_WAL");
-    M11CommandRequest request = request();
-    M11ApplicationResult applied = new DirectM11MatchingRuntime().submit(request);
-    ByteArrayOutputStream localWal = new ByteArrayOutputStream();
-    localWal.writeBytes(new M11RequestCodec().encode(request));
-    return facts(
-        "applied",
-        applied.response().status() == M11ResponseStatus.NEW_APPLIED,
-        "standaloneWalWrites",
-        localWal.size() > 0 ? 1 : 0);
-  }
-
-  private static Observation acceptUnsupported(List<Step> steps) {
-    requireKinds(steps, "DECODE_REQUEST_V3", "OBSERVE");
+  private static String runCodecControl() {
     M11RequestCodec codec = new M11RequestCodec();
-    byte[] unsupported = codec.encode(request());
-    ByteBuffer.wrap(unsupported).putInt(Integer.BYTES, 3);
-    boolean productionRejected = false;
-    try {
-      codec.decodeCanonical(unsupported, 1);
-    } catch (M11ProtocolException expected) {
-      productionRejected = true;
-    }
-    ByteBuffer.wrap(unsupported).putInt(Integer.BYTES, 2);
-    boolean mutantAccepted;
-    try {
-      mutantAccepted = codec.decodeCanonical(unsupported, 1).protocolVersion() == 2;
-    } catch (M11ProtocolException failure) {
-      throw new IllegalStateException("mutant version bypass did not execute", failure);
-    }
-    return facts("productionRejected", productionRejected, "mutantAccepted", mutantAccepted);
+    byte[] request = codec.encode(request());
+    new FaultingRequestDecoder(codec).decode(request);
+    return "REQUEST_CODEC_COMPONENT";
   }
 
-  private static String observe(String id, Observation observation) {
+  private static String runClusterStartupControl(Path root) {
+    new FaultingClusterLauncher().launch(root.resolve("build/tmp/m11-control-cluster"), 1, 41_111);
+    return "SINGLE_NODE_CLUSTER_LAUNCHER";
+  }
+
+  private static String runHarnessOutputControl() {
+    ObjectNode valid = JsonSupport.MAPPER.createObjectNode();
+    valid.put("schemaVersion", "matching.m11.cluster-runtime.v1");
+    byte[] encoded = JsonSupport.prettyBytes(valid);
+    byte[] truncated = Arrays.copyOf(encoded, Math.max(1, encoded.length / 2));
+    JsonSupport.parse(truncated);
+    return "HARNESS_REPORT_PARSER";
+  }
+
+  private static String controlPath(String id) {
     return switch (id) {
-      case "M11-OFFER-AS-SUCCESS" ->
-          observation.number("responsesBeforeApply") > 0
-              ? "INGRESS_OFFER_UPGRADED_TO_BUSINESS_SUCCESS"
-              : null;
-      case "M11-SESSION-AS-IDENTITY" ->
-          observation.number("candidateNew") > observation.number("oracleNew")
-              ? "SESSION_CHANGED_BUSINESS_IDENTITY"
-              : null;
-      case "M11-CORRELATION-AS-IDENTITY" ->
-          observation.number("candidateNew") > observation.number("oracleNew")
-              ? "CORRELATION_CHANGED_BUSINESS_IDENTITY"
-              : null;
-      case "M11-RESPOND-BEFORE-BIND" ->
-          observation.flag("responseBeforeBind") && observation.flag("retryWasNew")
-              ? "RESPONSE_OBSERVED_BEFORE_RESULT_BIND"
-              : null;
-      case "M11-DROP-IDENTITY-FROM-SNAPSHOT" ->
-          observation.number("retryApplicationSequence")
-                  >= observation.number("beforeRetrySequence")
-              ? "SNAPSHOT_LOST_IDEMPOTENCY_TABLE"
-              : null;
-      case "M11-CORRUPT-SNAPSHOT-TO-GENESIS" ->
-          observation.flag("decoderRejected") && observation.flag("restoredGenesis")
-              ? "CORRUPT_SNAPSHOT_SILENTLY_BECAME_GENESIS"
-              : null;
-      case "M11-REJECT-N-MINUS-ONE" ->
-          observation.flag("productionReadable") && !observation.flag("mutantReadable")
-              ? "N_MINUS_ONE_COMPATIBILITY_REJECTED"
-              : null;
-      case "M11-INCLUDE-RUNTIME-METADATA-IN-DIGEST" ->
-          observation.flag("businessDigestStable") && !observation.flag("mutantDigestStable")
-              ? "RUNTIME_METADATA_CHANGED_BUSINESS_DIGEST"
-              : null;
-      case "M11-DOUBLE-WRITE-LOCAL-WAL" ->
-          observation.number("standaloneWalWrites") > 0
-              ? "CLUSTER_SERVICE_WROTE_STANDALONE_WAL"
-              : null;
-      case "M11-ACCEPT-UNSUPPORTED-VERSION" ->
-          observation.flag("productionRejected") && observation.flag("mutantAccepted")
-              ? "UNSUPPORTED_VERSION_ACCEPTED"
-              : null;
-      default -> throw new IllegalArgumentException("unknown M11 mutant " + id);
+      case "M11-THROWING-CODEC-CONTROL" -> "REQUEST_CODEC_COMPONENT";
+      case "M11-CLUSTER-STARTUP-CONTROL" -> "SINGLE_NODE_CLUSTER_LAUNCHER";
+      case "M11-CORRUPT-HARNESS-OUTPUT-CONTROL" -> "HARNESS_REPORT_PARSER";
+      default -> "UNKNOWN";
     };
   }
 
-  private static List<Step> rawWitness(String id) {
-    return switch (id) {
-      case "M11-OFFER-AS-SUCCESS" -> steps("OFFER:one", "APPLY_PENDING:one", "OBSERVE:one");
-      case "M11-SESSION-AS-IDENTITY" ->
-          steps("SESSION_APPLY:session-1", "SESSION_RETRY:session-2", "OBSERVE:one");
-      case "M11-CORRELATION-AS-IDENTITY" ->
-          steps(
-              "CORRELATION_APPLY:correlation-1", "CORRELATION_RETRY:correlation-2", "OBSERVE:one");
-      case "M11-RESPOND-BEFORE-BIND" ->
-          steps("APPLY:one", "RESPOND:one", "CRASH_BEFORE_BIND:one", "RETRY:one");
-      case "M11-DROP-IDENTITY-FROM-SNAPSHOT" ->
-          steps("APPLY:one", "SNAPSHOT_WITHOUT_IDENTITY:one", "RESTORE:one", "RETRY:one");
-      case "M11-CORRUPT-SNAPSHOT-TO-GENESIS" ->
-          steps("APPLY:one", "CORRUPT_SNAPSHOT:one", "RESTORE_FALLBACK:one");
-      case "M11-REJECT-N-MINUS-ONE" ->
-          steps(
-              "READ_REQUEST_V1:one", "READ_RESPONSE_V1:one", "READ_SNAPSHOT_S1:one", "OBSERVE:one");
-      case "M11-INCLUDE-RUNTIME-METADATA-IN-DIGEST" ->
-          steps("BUSINESS_STATE:one", "SESSION_ONE:one", "SESSION_TWO:one", "OBSERVE:one");
-      case "M11-DOUBLE-WRITE-LOCAL-WAL" -> steps("CLUSTER_APPLY:one", "OBSERVE_WAL:one");
-      case "M11-ACCEPT-UNSUPPORTED-VERSION" -> steps("DECODE_REQUEST_V3:one", "OBSERVE:one");
-      default -> throw new IllegalArgumentException("unknown M11 mutant " + id);
-    };
+  private static final class CandidateMachine {
+    private final Path repositoryRoot;
+    private final Path scratch;
+    private final Mutation mutation;
+    private final M11RequestCodec requestCodec = new M11RequestCodec();
+    private final M11ResponseCodec responseCodec = new M11ResponseCodec();
+    private final M11SnapshotCodec snapshotCodec = new M11SnapshotCodec();
+    private final Trace trace = new Trace();
+    private final M11CommandRequest original = request();
+    private DirectM11MatchingRuntime runtime = new DirectM11MatchingRuntime();
+    private byte[] durableSnapshot = snapshotCodec.encodeCurrent(runtime.stateImage());
+    private byte[] snapshotBytes;
+    private CandidateCheckpoint checkpoint;
+    private DeterministicMatchingAdapter matcherWithoutIdentity;
+    private boolean pendingEarlyResponse;
+    private boolean crashed;
+    private boolean restoreBlocked;
+    private String session = "session-a";
+
+    CandidateMachine(Path repositoryRoot, Path scratch, Mutation mutation) {
+      this.repositoryRoot = repositoryRoot;
+      this.scratch = scratch;
+      this.mutation = mutation;
+    }
+
+    void execute(Step step) {
+      switch (step.action()) {
+        case NOOP -> {}
+        case OFFER -> offer();
+        case SUBMIT_SESSION -> submitTransportIdentity(step.value(), fixedCorrelation());
+        case SUBMIT_CORRELATION ->
+            submitTransportIdentity("session-fixed", namedUuid(step.value()));
+        case BEGIN_SUBMIT -> beginSubmit();
+        case CRASH -> crash();
+        case RETRY -> retry();
+        case SUBMIT -> submit();
+        case TAKE_SNAPSHOT -> takeSnapshot();
+        case CORRUPT_SNAPSHOT -> corruptSnapshot();
+        case RESTART -> restart();
+        case DECODE_REQUEST_V1 -> decodePrevious(Artifact.REQUEST);
+        case DECODE_RESPONSE_V1 -> decodePrevious(Artifact.RESPONSE);
+        case DECODE_SNAPSHOT_V1 -> decodePrevious(Artifact.SNAPSHOT);
+        case READ_DIGEST -> readDigest(step.value());
+        case SET_SESSION -> session = step.value();
+        case DECODE_REQUEST_V3 -> decodeUnsupported();
+      }
+    }
+
+    Trace trace() {
+      return trace;
+    }
+
+    private void offer() {
+      byte[] encoded = requestCodec.encode(original);
+      trace.add(new IngressEvent(original.correlationId(), encoded.length));
+      if (mutation == Mutation.OFFER_AS_SUCCESS) {
+        trace.mutated();
+        trace.add(
+            new CompletionEvent(
+                original.correlationId(), CompletionSource.INGRESS_OFFER, OutcomeStatus.NEW));
+      }
+    }
+
+    private void submitTransportIdentity(String transportSession, UUID correlation) {
+      M11CommandRequest external = original.withCorrelationId(correlation);
+      M11CommandRequest submitted = external;
+      if (mutation == Mutation.SESSION_AS_IDENTITY
+          || mutation == Mutation.CORRELATION_AS_IDENTITY) {
+        String token =
+            mutation == Mutation.SESSION_AS_IDENTITY
+                ? "session:" + transportSession
+                : "correlation:" + correlation;
+        submitted =
+            createRequest(
+                correlation,
+                "m11-mutant-" + sha256(token).substring(0, 12),
+                namedUuid(token),
+                external.command());
+        trace.mutated();
+      }
+      M11ApplicationResult result = runtime.submit(submitted);
+      trace.add(
+          new IdentitySubmissionEvent(
+              IdentityKey.of(external),
+              transportSession,
+              correlation,
+              status(result),
+              applicationSequence(result),
+              resultDigest(result)));
+    }
+
+    private void beginSubmit() {
+      M11ApplicationResult applied = runtime.submit(original);
+      trace.add(
+          new ApplyEvent(
+              original.correlationId(),
+              status(applied),
+              applicationSequence(applied),
+              resultDigest(applied)));
+      if (mutation == Mutation.RESPOND_BEFORE_BIND) {
+        trace.mutated();
+        pendingEarlyResponse = true;
+        trace.add(
+            new CompletionEvent(
+                original.correlationId(), CompletionSource.CORRELATED_EGRESS, status(applied)));
+      } else {
+        durableSnapshot = snapshotCodec.encodeCurrent(runtime.stateImage());
+        trace.add(new BindingEvent(original.commandId(), applicationSequence(applied)));
+        trace.add(
+            new CompletionEvent(
+                original.correlationId(), CompletionSource.CORRELATED_EGRESS, status(applied)));
+      }
+    }
+
+    private void crash() {
+      crashed = true;
+      if (mutation == Mutation.RESPOND_BEFORE_BIND && pendingEarlyResponse) {
+        matcherWithoutIdentity =
+            DeterministicMatchingAdapter.restore(runtime.stateImage().commandState());
+        trace.add(new CrashEvent(matcherWithoutIdentity.nextApplicationSequence()));
+        return;
+      }
+      runtime = restore(durableSnapshot);
+      trace.add(new CrashEvent(runtime.nextApplicationSequence()));
+    }
+
+    private void retry() {
+      M11CommandRequest retry = original.withCorrelationId(retryCorrelation());
+      if (restoreBlocked) {
+        trace.add(new RetryEvent(retry.correlationId(), OutcomeStatus.BLOCKED, 0, ""));
+        return;
+      }
+      if (matcherWithoutIdentity != null) {
+        CanonicalResult applied = matcherWithoutIdentity.apply(retry.command());
+        trace.add(
+            new RetryEvent(
+                retry.correlationId(),
+                OutcomeStatus.NEW,
+                applied.applicationSequence(),
+                applied.resultDigest()));
+        return;
+      }
+      if (pendingEarlyResponse && !crashed) {
+        durableSnapshot = snapshotCodec.encodeCurrent(runtime.stateImage());
+        trace.add(new BindingEvent(original.commandId(), runtime.nextApplicationSequence() - 1));
+        pendingEarlyResponse = false;
+      }
+      M11ApplicationResult result = runtime.submit(retry);
+      trace.add(
+          new RetryEvent(
+              retry.correlationId(),
+              status(result),
+              applicationSequence(result),
+              resultDigest(result)));
+    }
+
+    private void submit() {
+      M11ApplicationResult result = runtime.submit(original);
+      trace.add(
+          new ApplyEvent(
+              original.correlationId(),
+              status(result),
+              applicationSequence(result),
+              resultDigest(result)));
+      if (mutation == Mutation.DOUBLE_WRITE_LOCAL_WAL
+          && result.response().status() == M11ResponseStatus.NEW_APPLIED) {
+        writeStandaloneWal(requestCodec.encode(original));
+      }
+    }
+
+    private void takeSnapshot() {
+      M11RuntimeState state = runtime.stateImage();
+      snapshotBytes = snapshotCodec.encodeCurrent(state);
+      M11RuntimeState decoded = decodeSnapshot(snapshotBytes).state();
+      int persistedIdentities = decoded.identityBindings().size();
+      if (mutation == Mutation.DROP_IDENTITY_FROM_SNAPSHOT) {
+        checkpoint = new CandidateCheckpoint(decoded.commandState(), List.of());
+        persistedIdentities = 0;
+        trace.mutated();
+      } else {
+        checkpoint = new CandidateCheckpoint(decoded.commandState(), decoded.identityBindings());
+      }
+      trace.add(
+          new SnapshotEvent(
+              decoded.nextApplicationSequence() - 1,
+              decoded.identityBindings().size(),
+              persistedIdentities));
+    }
+
+    private void corruptSnapshot() {
+      if (snapshotBytes == null) {
+        return;
+      }
+      snapshotBytes = snapshotBytes.clone();
+      snapshotBytes[snapshotBytes.length / 2] ^= 1;
+      trace.add(new CorruptionEvent(snapshotBytes.length / 2));
+    }
+
+    private void restart() {
+      if (snapshotBytes == null || checkpoint == null) {
+        return;
+      }
+      try {
+        M11RuntimeState decoded = snapshotCodec.decodeCanonical(snapshotBytes).state();
+        runtime = DirectM11MatchingRuntime.restore(decoded);
+        durableSnapshot = snapshotBytes.clone();
+        trace.add(new RestoreEvent(RestoreOutcome.EXACT, decoded.nextApplicationSequence()));
+      } catch (M11ProtocolException failure) {
+        if (mutation == Mutation.CORRUPT_SNAPSHOT_TO_GENESIS) {
+          runtime = new DirectM11MatchingRuntime();
+          durableSnapshot = snapshotCodec.encodeCurrent(runtime.stateImage());
+          restoreBlocked = false;
+          trace.mutated();
+          trace.add(new RestoreEvent(RestoreOutcome.GENESIS_FALLBACK, 1));
+        } else {
+          restoreBlocked = true;
+          trace.add(new RestoreEvent(RestoreOutcome.FAIL_CLOSED, 0));
+        }
+        return;
+      }
+      if (mutation == Mutation.DROP_IDENTITY_FROM_SNAPSHOT) {
+        matcherWithoutIdentity = DeterministicMatchingAdapter.restore(checkpoint.commandState());
+        trace.add(
+            new RestoreEvent(
+                RestoreOutcome.MATCHER_WITHOUT_IDENTITY,
+                matcherWithoutIdentity.nextApplicationSequence()));
+      }
+    }
+
+    private void decodePrevious(Artifact artifact) {
+      byte[] encoded = readBytes(repositoryRoot.resolve(golden(artifact)));
+      int wireVersion = ByteBuffer.wrap(encoded).getInt(Integer.BYTES);
+      if (mutation == Mutation.REJECT_N_MINUS_ONE
+          && wireVersion < M11RequestCodec.CURRENT_VERSION) {
+        trace.mutated();
+        trace.add(
+            new DecodeEvent(
+                artifact,
+                wireVersion,
+                false,
+                0,
+                M11ProtocolException.Code.UNSUPPORTED_VERSION.name()));
+        return;
+      }
+      try {
+        int decodedVersion =
+            switch (artifact) {
+              case REQUEST -> requestCodec.decodeCanonical(encoded, 1).protocolVersion();
+              case RESPONSE -> responseCodec.decodeCanonical(encoded).protocolVersion();
+              case SNAPSHOT -> snapshotCodec.decodeCanonical(encoded).schemaVersion();
+            };
+        trace.add(new DecodeEvent(artifact, wireVersion, true, decodedVersion, ""));
+      } catch (M11ProtocolException failure) {
+        trace.add(new DecodeEvent(artifact, wireVersion, false, 0, failure.code().name()));
+      }
+    }
+
+    private void readDigest(String label) {
+      String businessDigest = runtime.semanticStateDigest();
+      String exposed = businessDigest;
+      if (mutation == Mutation.INCLUDE_RUNTIME_METADATA_IN_DIGEST) {
+        exposed = sha256(businessDigest + "|" + session + "|" + original.correlationId());
+        trace.mutated();
+      }
+      trace.add(new DigestEvent(label, session, businessDigest, exposed));
+    }
+
+    private void decodeUnsupported() {
+      byte[] immutable = requestCodec.encode(original);
+      ByteBuffer.wrap(immutable).putInt(Integer.BYTES, 3);
+      int originalWireVersion = ByteBuffer.wrap(immutable).getInt(Integer.BYTES);
+      if (mutation == Mutation.ACCEPT_UNSUPPORTED_VERSION) {
+        byte[] candidateInput = immutable.clone();
+        ByteBuffer.wrap(candidateInput).putInt(Integer.BYTES, M11RequestCodec.CURRENT_VERSION);
+        try {
+          int decoded = requestCodec.decodeCanonical(candidateInput, 1).protocolVersion();
+          trace.mutated();
+          trace.add(new DecodeEvent(Artifact.REQUEST, originalWireVersion, true, decoded, ""));
+        } catch (M11ProtocolException failure) {
+          throw new IllegalStateException("clamped mutant decoder failed", failure);
+        }
+        return;
+      }
+      try {
+        M11CommandRequest decoded = requestCodec.decodeCanonical(immutable.clone(), 1);
+        trace.add(
+            new DecodeEvent(
+                Artifact.REQUEST, originalWireVersion, true, decoded.protocolVersion(), ""));
+      } catch (M11ProtocolException failure) {
+        trace.add(
+            new DecodeEvent(
+                Artifact.REQUEST, originalWireVersion, false, 0, failure.code().name()));
+      }
+    }
+
+    private void writeStandaloneWal(byte[] canonicalRequest) {
+      Path wal = scratch.resolve("standalone.m11wal");
+      ByteBuffer record = ByteBuffer.allocate(Integer.BYTES + canonicalRequest.length);
+      record.putInt(canonicalRequest.length).put(canonicalRequest).flip();
+      try (FileChannel channel =
+          FileChannel.open(
+              wal,
+              StandardOpenOption.CREATE,
+              StandardOpenOption.WRITE,
+              StandardOpenOption.APPEND)) {
+        while (record.hasRemaining()) {
+          channel.write(record);
+        }
+        channel.force(true);
+        long bytes = Files.size(wal);
+        trace.mutated();
+        trace.add(new WalEvent(wal.getFileName().toString(), bytes, true));
+      } catch (IOException failure) {
+        throw new IllegalStateException("mutant standalone WAL write failed", failure);
+      }
+    }
+
+    private M11CommandRequest createRequest(
+        UUID correlationId, String producerId, UUID commandId, M08Command command) {
+      try {
+        return requestCodec.create(2, 2, correlationId, producerId, 1, 1, 1, commandId, command);
+      } catch (M11ProtocolException failure) {
+        throw new IllegalStateException("cannot create mutant request", failure);
+      }
+    }
+
+    private DirectM11MatchingRuntime restore(byte[] encoded) {
+      try {
+        return DirectM11MatchingRuntime.restore(snapshotCodec.decodeCanonical(encoded).state());
+      } catch (M11ProtocolException failure) {
+        throw new IllegalStateException("cannot restore candidate snapshot", failure);
+      }
+    }
+
+    private io.github.lchareln.cex.matching.cluster.M11Snapshot decodeSnapshot(byte[] encoded) {
+      try {
+        return snapshotCodec.decodeCanonical(encoded);
+      } catch (M11ProtocolException failure) {
+        throw new IllegalStateException("cannot decode candidate snapshot", failure);
+      }
+    }
+  }
+
+  private static final class UnifiedObserver {
+    private UnifiedObserver() {}
+
+    static Optional<String> observe(Trace trace) {
+      List<TraceEvent> events = trace.events();
+      for (int index = 0; index < events.size(); index++) {
+        if (events.get(index) instanceof CompletionEvent completion
+            && completion.source() == CompletionSource.INGRESS_OFFER
+            && !hasPriorApply(events, index, completion.correlationId())) {
+          return Optional.of("INGRESS_OFFER_UPGRADED_TO_BUSINESS_SUCCESS");
+        }
+      }
+
+      List<IdentitySubmissionEvent> identities =
+          events.stream()
+              .filter(IdentitySubmissionEvent.class::isInstance)
+              .map(IdentitySubmissionEvent.class::cast)
+              .toList();
+      if (identities.size() >= 2) {
+        IdentitySubmissionEvent first = identities.get(0);
+        IdentitySubmissionEvent second = identities.get(1);
+        if (first.identity().equals(second.identity())
+            && first.status() == OutcomeStatus.NEW
+            && second.status() == OutcomeStatus.NEW) {
+          if (!first.session().equals(second.session())
+              && first.correlationId().equals(second.correlationId())) {
+            return Optional.of("SESSION_CHANGED_BUSINESS_IDENTITY");
+          }
+          if (first.session().equals(second.session())
+              && !first.correlationId().equals(second.correlationId())) {
+            return Optional.of("CORRELATION_CHANGED_BUSINESS_IDENTITY");
+          }
+        }
+      }
+
+      for (int index = 0; index < events.size(); index++) {
+        if (events.get(index) instanceof CompletionEvent completion
+            && completion.source() == CompletionSource.CORRELATED_EGRESS
+            && !hasPriorBinding(events, index)) {
+          boolean crashAfter = hasAfter(events, index, CrashEvent.class);
+          boolean newRetryAfter =
+              events.subList(index + 1, events.size()).stream()
+                  .filter(RetryEvent.class::isInstance)
+                  .map(RetryEvent.class::cast)
+                  .anyMatch(retry -> retry.status() == OutcomeStatus.NEW);
+          if (crashAfter && newRetryAfter) {
+            return Optional.of("RESPONSE_OBSERVED_BEFORE_RESULT_BIND");
+          }
+        }
+      }
+
+      SnapshotEvent snapshot = first(events, SnapshotEvent.class);
+      RestoreEvent restore = last(events, RestoreEvent.class);
+      RetryEvent retry = last(events, RetryEvent.class);
+      if (snapshot != null
+          && restore != null
+          && retry != null
+          && snapshot.liveIdentityCount() > 0
+          && snapshot.persistedIdentityCount() < snapshot.liveIdentityCount()
+          && restore.outcome() == RestoreOutcome.MATCHER_WITHOUT_IDENTITY
+          && retry.status() == OutcomeStatus.NEW
+          && retry.applicationSequence() > snapshot.applicationSequence()) {
+        return Optional.of("SNAPSHOT_LOST_IDEMPOTENCY_TABLE");
+      }
+      if (snapshot != null
+          && restore != null
+          && retry != null
+          && snapshot.applicationSequence() > 0
+          && events.stream().anyMatch(CorruptionEvent.class::isInstance)
+          && restore.outcome() == RestoreOutcome.GENESIS_FALLBACK
+          && retry.status() == OutcomeStatus.NEW) {
+        return Optional.of("CORRUPT_SNAPSHOT_SILENTLY_BECAME_GENESIS");
+      }
+
+      for (TraceEvent event : events) {
+        if (event instanceof DecodeEvent decode
+            && decode.wireVersion() == 1
+            && !decode.accepted()
+            && M11ProtocolException.Code.UNSUPPORTED_VERSION
+                .name()
+                .equals(decode.rejectionCode())) {
+          return Optional.of("N_MINUS_ONE_COMPATIBILITY_REJECTED");
+        }
+      }
+
+      List<DigestEvent> digests =
+          events.stream()
+              .filter(DigestEvent.class::isInstance)
+              .map(DigestEvent.class::cast)
+              .toList();
+      if (digests.size() >= 2) {
+        DigestEvent first = digests.get(0);
+        DigestEvent second = digests.get(1);
+        if (first.businessDigest().equals(second.businessDigest())
+            && !first.exposedDigest().equals(second.exposedDigest())) {
+          return Optional.of("RUNTIME_METADATA_CHANGED_BUSINESS_DIGEST");
+        }
+      }
+
+      if (events.stream()
+          .filter(WalEvent.class::isInstance)
+          .map(WalEvent.class::cast)
+          .anyMatch(wal -> wal.bytes() > 0 && wal.forced())) {
+        return Optional.of("CLUSTER_SERVICE_WROTE_STANDALONE_WAL");
+      }
+      for (TraceEvent event : events) {
+        if (event instanceof DecodeEvent decode
+            && decode.wireVersion() > M11RequestCodec.CURRENT_VERSION
+            && decode.accepted()) {
+          return Optional.of("UNSUPPORTED_VERSION_ACCEPTED");
+        }
+      }
+      return Optional.empty();
+    }
+
+    private static boolean hasPriorApply(List<TraceEvent> events, int end, UUID correlationId) {
+      return events.subList(0, end).stream()
+          .filter(ApplyEvent.class::isInstance)
+          .map(ApplyEvent.class::cast)
+          .anyMatch(apply -> apply.correlationId().equals(correlationId));
+    }
+
+    private static boolean hasPriorBinding(List<TraceEvent> events, int end) {
+      return events.subList(0, end).stream().anyMatch(BindingEvent.class::isInstance);
+    }
+
+    private static boolean hasAfter(
+        List<TraceEvent> events, int start, Class<? extends TraceEvent> type) {
+      return events.subList(start + 1, events.size()).stream().anyMatch(type::isInstance);
+    }
+
+    private static <T extends TraceEvent> T first(List<TraceEvent> events, Class<T> type) {
+      return events.stream().filter(type::isInstance).map(type::cast).findFirst().orElse(null);
+    }
+
+    private static <T extends TraceEvent> T last(List<TraceEvent> events, Class<T> type) {
+      T found = null;
+      for (TraceEvent event : events) {
+        if (type.isInstance(event)) {
+          found = type.cast(event);
+        }
+      }
+      return found;
+    }
+  }
+
+  private static final class Trace {
+    private final List<TraceEvent> events = new ArrayList<>();
+    private int mutationActions;
+
+    void add(TraceEvent event) {
+      events.add(event);
+    }
+
+    void mutated() {
+      mutationActions++;
+    }
+
+    List<TraceEvent> events() {
+      return List.copyOf(events);
+    }
+
+    int mutationActions() {
+      return mutationActions;
+    }
+  }
+
+  private sealed interface TraceEvent
+      permits IngressEvent,
+          CompletionEvent,
+          IdentitySubmissionEvent,
+          ApplyEvent,
+          BindingEvent,
+          CrashEvent,
+          RetryEvent,
+          SnapshotEvent,
+          CorruptionEvent,
+          RestoreEvent,
+          DecodeEvent,
+          DigestEvent,
+          WalEvent {}
+
+  private record IngressEvent(UUID correlationId, long offeredBytes) implements TraceEvent {}
+
+  private record CompletionEvent(UUID correlationId, CompletionSource source, OutcomeStatus status)
+      implements TraceEvent {}
+
+  private record IdentitySubmissionEvent(
+      IdentityKey identity,
+      String session,
+      UUID correlationId,
+      OutcomeStatus status,
+      long applicationSequence,
+      String resultDigest)
+      implements TraceEvent {}
+
+  private record ApplyEvent(
+      UUID correlationId, OutcomeStatus status, long applicationSequence, String resultDigest)
+      implements TraceEvent {}
+
+  private record BindingEvent(UUID commandId, long applicationSequence) implements TraceEvent {}
+
+  private record CrashEvent(long restoredNextApplicationSequence) implements TraceEvent {}
+
+  private record RetryEvent(
+      UUID correlationId, OutcomeStatus status, long applicationSequence, String resultDigest)
+      implements TraceEvent {}
+
+  private record SnapshotEvent(
+      long applicationSequence, int liveIdentityCount, int persistedIdentityCount)
+      implements TraceEvent {}
+
+  private record CorruptionEvent(int byteOffset) implements TraceEvent {}
+
+  private record RestoreEvent(RestoreOutcome outcome, long nextApplicationSequence)
+      implements TraceEvent {}
+
+  private record DecodeEvent(
+      Artifact artifact,
+      int wireVersion,
+      boolean accepted,
+      int decodedVersion,
+      String rejectionCode)
+      implements TraceEvent {}
+
+  private record DigestEvent(
+      String label, String session, String businessDigest, String exposedDigest)
+      implements TraceEvent {}
+
+  private record WalEvent(String file, long bytes, boolean forced) implements TraceEvent {}
+
+  private record IdentityKey(UUID commandId, Slot slot, String payloadHash) {
+    static IdentityKey of(M11CommandRequest request) {
+      return new IdentityKey(request.commandId(), request.slot(), request.payloadHash());
+    }
+  }
+
+  private record CandidateCheckpoint(
+      CommandApplierState commandState,
+      List<io.github.lchareln.cex.matching.cluster.M11IdentityBinding> bindings) {
+    CandidateCheckpoint {
+      bindings = List.copyOf(bindings);
+    }
+  }
+
+  private record Definition(String id, Mutation mutation, String fingerprint, List<Step> history) {
+    Definition {
+      history = List.copyOf(history);
+    }
+  }
+
+  private record Outcome(
+      Classification classification, String fingerprint, String detail, int mutationActions) {}
+
+  private record Shrink(List<Step> steps, int trials) {
+    Shrink {
+      steps = List.copyOf(steps);
+    }
+  }
+
+  private record ReplayAudit(ObjectNode report, byte[] canonicalBytes, String digest) {
+    ReplayAudit {
+      report = report.deepCopy();
+      canonicalBytes = canonicalBytes.clone();
+    }
+
+    @Override
+    public ObjectNode report() {
+      return report.deepCopy();
+    }
+
+    @Override
+    public byte[] canonicalBytes() {
+      return canonicalBytes.clone();
+    }
+  }
+
+  private record ControlOutcome(Classification classification, String path, String failureType) {}
+
+  record Result(
+      ObjectNode counterexamples,
+      byte[] persistedBytes,
+      ArrayNode candidates,
+      ArrayNode controls,
+      ObjectNode replayReport,
+      byte[] canonicalBytes,
+      String digest,
+      int killed,
+      int rawActions,
+      int minimalActions,
+      int shrinkTrials,
+      int actualMutationActions) {
+    Result {
+      counterexamples = counterexamples.deepCopy();
+      persistedBytes = persistedBytes.clone();
+      candidates = candidates.deepCopy();
+      controls = controls.deepCopy();
+      replayReport = replayReport.deepCopy();
+      canonicalBytes = canonicalBytes.clone();
+    }
+
+    @Override
+    public ObjectNode counterexamples() {
+      return counterexamples.deepCopy();
+    }
+
+    @Override
+    public byte[] persistedBytes() {
+      return persistedBytes.clone();
+    }
+
+    @Override
+    public ArrayNode candidates() {
+      return candidates.deepCopy();
+    }
+
+    @Override
+    public ArrayNode controls() {
+      return controls.deepCopy();
+    }
+
+    @Override
+    public ObjectNode replayReport() {
+      return replayReport.deepCopy();
+    }
+
+    @Override
+    public byte[] canonicalBytes() {
+      return canonicalBytes.clone();
+    }
+  }
+
+  private record Step(Action action, String value, String encoded) {
+    static Step parse(String encoded) {
+      if (encoded == null || !encoded.equals(encoded.strip())) {
+        throw new InvalidHistory("step contains surrounding whitespace");
+      }
+      int separator = encoded.indexOf(':');
+      if (separator <= 0 || separator == encoded.length() - 1) {
+        throw new InvalidHistory("malformed step");
+      }
+      String kind = encoded.substring(0, separator);
+      String value = encoded.substring(separator + 1);
+      if (!value.matches("[a-z0-9][a-z0-9-]*")) {
+        throw new InvalidHistory("invalid step value");
+      }
+      final Action action;
+      try {
+        action = Action.valueOf(kind);
+      } catch (IllegalArgumentException failure) {
+        throw new InvalidHistory("unknown step kind " + kind);
+      }
+      return new Step(action, value, encoded);
+    }
+
+    static Step parsePersisted(JsonNode node) {
+      if (!node.isObject() || !node.path("kind").isString() || !node.path("encoded").isString()) {
+        throw new InvalidHistory("persisted step is malformed");
+      }
+      Step step = parse(node.path("encoded").stringValue());
+      if (!step.action().name().equals(node.path("kind").stringValue())) {
+        throw new InvalidHistory("persisted step kind disagrees with encoding");
+      }
+      return step;
+    }
+
+    void write(ObjectNode node) {
+      node.put("kind", action.name());
+      node.put("encoded", encoded);
+    }
+  }
+
+  private enum Action {
+    NOOP,
+    OFFER,
+    SUBMIT_SESSION,
+    SUBMIT_CORRELATION,
+    BEGIN_SUBMIT,
+    CRASH,
+    RETRY,
+    SUBMIT,
+    TAKE_SNAPSHOT,
+    CORRUPT_SNAPSHOT,
+    RESTART,
+    DECODE_REQUEST_V1,
+    DECODE_RESPONSE_V1,
+    DECODE_SNAPSHOT_V1,
+    READ_DIGEST,
+    SET_SESSION,
+    DECODE_REQUEST_V3
+  }
+
+  private enum Mutation {
+    NONE,
+    OFFER_AS_SUCCESS,
+    SESSION_AS_IDENTITY,
+    CORRELATION_AS_IDENTITY,
+    RESPOND_BEFORE_BIND,
+    DROP_IDENTITY_FROM_SNAPSHOT,
+    CORRUPT_SNAPSHOT_TO_GENESIS,
+    REJECT_N_MINUS_ONE,
+    INCLUDE_RUNTIME_METADATA_IN_DIGEST,
+    DOUBLE_WRITE_LOCAL_WAL,
+    ACCEPT_UNSUPPORTED_VERSION
+  }
+
+  private enum Classification {
+    PASS,
+    STUDENT_FAILURE,
+    SYSTEM_ERROR,
+    INVALID_HISTORY
+  }
+
+  private enum OutcomeStatus {
+    NEW,
+    DUPLICATE,
+    REJECTED,
+    BLOCKED
+  }
+
+  private enum CompletionSource {
+    INGRESS_OFFER,
+    CORRELATED_EGRESS
+  }
+
+  private enum RestoreOutcome {
+    EXACT,
+    MATCHER_WITHOUT_IDENTITY,
+    FAIL_CLOSED,
+    GENESIS_FALLBACK
+  }
+
+  private enum Artifact {
+    REQUEST,
+    RESPONSE,
+    SNAPSHOT
+  }
+
+  private static final class FaultingRequestDecoder {
+    private final M11RequestCodec delegate;
+
+    FaultingRequestDecoder(M11RequestCodec delegate) {
+      this.delegate = delegate;
+    }
+
+    M11CommandRequest decode(byte[] encoded) {
+      java.util.Objects.requireNonNull(delegate, "delegate");
+      java.util.Objects.requireNonNull(encoded, "encoded");
+      throw new IllegalStateException("injected request codec component failure");
+    }
+  }
+
+  private static final class FaultingClusterLauncher {
+    void launch(Path root, long shard, int portBase) {
+      new io.github.lchareln.cex.matching.cluster.M11SingleNodeConfig(
+          root, 11, shard, portBase, 0x020000, java.time.Duration.ofSeconds(1));
+      throw new IllegalStateException("injected single-node Cluster startup failure");
+    }
   }
 
   private static M11CommandRequest request() {
@@ -399,7 +1344,7 @@ final class M11MutantSuite {
           .create(
               2,
               2,
-              new UUID(11, 13),
+              fixedCorrelation(),
               "m11-mutant",
               1,
               1,
@@ -420,32 +1365,42 @@ final class M11MutantSuite {
     }
   }
 
-  private static Path golden(String name) {
-    return Path.of("matching-testkit/src/test/resources/m11/goldens").resolve(name);
+  private static Path golden(Artifact artifact) {
+    String file =
+        switch (artifact) {
+          case REQUEST -> "request-v1.bin";
+          case RESPONSE -> "response-v1.bin";
+          case SNAPSHOT -> "snapshot-v1.bin";
+        };
+    return Path.of("matching-testkit/src/test/resources/m11/goldens").resolve(file);
   }
 
-  private static Observation facts(Object... pairs) {
-    Map<String, Object> values = new LinkedHashMap<>();
-    for (int index = 0; index < pairs.length; index += 2) {
-      values.put((String) pairs[index], pairs[index + 1]);
-    }
-    return new Observation(Map.copyOf(values));
+  private static OutcomeStatus status(M11ApplicationResult result) {
+    return switch (result.response().status()) {
+      case NEW_APPLIED -> OutcomeStatus.NEW;
+      case DUPLICATE_REPLAYED -> OutcomeStatus.DUPLICATE;
+      case REJECTED -> OutcomeStatus.REJECTED;
+    };
   }
 
-  private static int indexOf(List<Step> steps, String kind) {
-    for (int index = 0; index < steps.size(); index++) {
-      if (kind.equals(steps.get(index).kind())) {
-        return index;
-      }
-    }
-    throw new InvalidHistory("missing " + kind);
+  private static long applicationSequence(M11ApplicationResult result) {
+    return result.response().applicationSequence().orElse(0);
   }
 
-  private static void requireKinds(List<Step> steps, String... kinds) {
-    List<String> actual = steps.stream().map(Step::kind).toList();
-    for (String kind : kinds) {
-      requireHistory(actual.contains(kind), "missing " + kind);
-    }
+  private static String resultDigest(M11ApplicationResult result) {
+    return result.response().resultDigest().orElse("");
+  }
+
+  private static UUID fixedCorrelation() {
+    return new UUID(23, 29);
+  }
+
+  private static UUID retryCorrelation() {
+    return new UUID(31, 37);
+  }
+
+  private static UUID namedUuid(String value) {
+    return UUID.nameUUIDFromBytes(value.getBytes(StandardCharsets.UTF_8));
   }
 
   private static String sha256(String value) {
@@ -458,141 +1413,52 @@ final class M11MutantSuite {
     }
   }
 
-  private static Shrink minimize(Path root, String id, List<Step> raw, String fingerprint) {
-    List<Step> current = new ArrayList<>(raw);
-    int trials = 0;
-    boolean changed;
-    do {
-      changed = false;
-      for (int index = 0; index < current.size(); index++) {
-        List<Step> candidate = new ArrayList<>(current);
-        candidate.remove(index);
-        trials++;
-        Replay replay = classify(root, id, candidate);
-        if (M11CheckRunner.STUDENT_FAILURE.equals(replay.classification())
-            && fingerprint.equals(replay.fingerprint())) {
-          current = candidate;
-          changed = true;
-          break;
-        }
-      }
-    } while (changed);
-    return new Shrink(List.copyOf(current), trials);
-  }
-
-  private static boolean oneMinimal(Path root, String id, List<Step> steps, String fingerprint) {
-    for (int index = 0; index < steps.size(); index++) {
-      List<Step> candidate = new ArrayList<>(steps);
-      candidate.remove(index);
-      Replay replay = classify(root, id, candidate);
-      if (M11CheckRunner.STUDENT_FAILURE.equals(replay.classification())
-          && fingerprint.equals(replay.fingerprint())) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private static Runnable controlAction(String id) {
-    return switch (id) {
-      case "M11-THROWING-CODEC-CONTROL" ->
-          () -> {
-            throw new IllegalStateException("codec control");
-          };
-      case "M11-CLUSTER-STARTUP-CONTROL" ->
-          () -> {
-            throw new IllegalStateException("cluster startup control");
-          };
-      case "M11-CORRUPT-HARNESS-OUTPUT-CONTROL" ->
-          () -> {
-            throw new IllegalArgumentException("harness output control");
-          };
-      default -> throw new IllegalArgumentException("unknown M11 system control " + id);
-    };
-  }
-
-  private static void control(ArrayNode controls, String id, Runnable action) {
-    String classification;
+  private static Path createTemporaryDirectory() {
     try {
-      action.run();
-      classification = M11CheckRunner.PASS;
-    } catch (RuntimeException failure) {
-      classification = M11CheckRunner.SYSTEM_ERROR;
+      return Files.createTempDirectory("m11-mutant-suite-");
+    } catch (IOException failure) {
+      throw new IllegalStateException("cannot create M11 mutant suite directory", failure);
     }
-    require(
-        M11CheckRunner.SYSTEM_ERROR.equals(classification), id + " did not fail as SYSTEM_ERROR");
-    ObjectNode node = controls.addObject();
-    node.put("id", id);
-    node.put("classification", classification);
-    node.put("countedAsKill", false);
   }
 
-  private static List<Step> steps(String... encoded) {
-    return Arrays.stream(encoded).map(Step::new).toList();
+  private static Path createCandidateDirectory(Path suiteRoot) {
+    try {
+      return Files.createTempDirectory(suiteRoot, "candidate-");
+    } catch (IOException failure) {
+      throw new IllegalStateException("cannot create M11 candidate directory", failure);
+    }
   }
 
-  private static void requireHistory(boolean condition, String message) {
+  private static String stableDetail(Throwable failure) {
+    String message = failure.getMessage();
+    return failure.getClass().getSimpleName() + (message == null ? "" : ":" + message);
+  }
+
+  private static byte[] readBytes(Path path) {
+    try {
+      return Files.readAllBytes(path);
+    } catch (IOException failure) {
+      throw new IllegalStateException("cannot read " + path, failure);
+    }
+  }
+
+  private static String readString(Path path) {
+    try {
+      return Files.readString(path);
+    } catch (IOException failure) {
+      throw new IllegalStateException("cannot read " + path, failure);
+    }
+  }
+
+  private static void semanticRequire(boolean condition, String message) {
     if (!condition) {
-      throw new InvalidHistory(message);
+      throw new M11SemanticFailure(message);
     }
   }
 
-  private static void require(boolean condition, String message) {
+  private static void systemRequire(boolean condition, String message) {
     if (!condition) {
       throw new IllegalStateException(message);
-    }
-  }
-
-  record Step(String encoded) {
-    String kind() {
-      int separator = encoded.indexOf(':');
-      if (separator <= 0 || separator == encoded.length() - 1) {
-        throw new InvalidHistory("malformed step");
-      }
-      return encoded.substring(0, separator);
-    }
-
-    String value() {
-      return encoded.substring(encoded.indexOf(':') + 1);
-    }
-
-    void write(ObjectNode node) {
-      node.put("kind", kind());
-      node.put("encoded", encoded);
-    }
-  }
-
-  record Observation(Map<String, Object> facts) {
-    long number(String key) {
-      return ((Number) facts.get(key)).longValue();
-    }
-
-    boolean flag(String key) {
-      return (Boolean) facts.get(key);
-    }
-  }
-
-  record Replay(String classification, String fingerprint) {}
-
-  record Shrink(List<Step> steps, int trials) {}
-
-  record Result(
-      ArrayNode candidates,
-      ArrayNode controls,
-      ObjectNode counterexamples,
-      byte[] canonicalBytes,
-      String digest,
-      int killed,
-      int rawActions,
-      int minimalActions,
-      int shrinkTrials) {
-    Result {
-      canonicalBytes = canonicalBytes.clone();
-    }
-
-    @Override
-    public byte[] canonicalBytes() {
-      return canonicalBytes.clone();
     }
   }
 

@@ -26,6 +26,9 @@ public final class M11CheckRunner {
   static final String CHECK_SCHEMA_PATH = "schemas/matching.m11.check.v2.schema.json";
   static final String COUNTEREXAMPLE_SCHEMA_PATH =
       "schemas/matching.m11.counterexamples.v1.schema.json";
+  static final String REPLAY_SCHEMA_PATH = "schemas/matching.m11.replay.v1.schema.json";
+  static final String COVERAGE_SCHEMA_PATH = "schemas/matching.m11.coverage.v2.schema.json";
+  static final String MUTANTS_SCHEMA_PATH = "schemas/matching.m11.mutants.v1.schema.json";
   static final List<String> OUTPUTS =
       List.of(
           "inherited-m10.json",
@@ -37,6 +40,7 @@ public final class M11CheckRunner {
           "coverage.json",
           "mutants.json",
           "counterexamples.json",
+          "replay.json",
           "architecture.json",
           "environment.json");
 
@@ -54,8 +58,7 @@ public final class M11CheckRunner {
       return new Result(PASS, reports.resolve("check.json"));
     } catch (RuntimeException failure) {
       clear(reports);
-      String classification =
-          failure instanceof M11SemanticFailure ? STUDENT_FAILURE : SYSTEM_ERROR;
+      String classification = M11FailureClassifier.classify(failure);
       writeFailure(root, reports, classification, stableMessage(failure, root));
       return new Result(classification, reports.resolve("check.json"));
     }
@@ -71,10 +74,13 @@ public final class M11CheckRunner {
     ObjectNode architecture = new M11ArchitectureGate().run(root);
     M11GeneratedSuite.Result generated = new M11GeneratedSuite().run(root.resolve("build/tmp/m11"));
     M11FixedSuite.Result fixed = new M11FixedSuite().run(root, protocol, generated, architecture);
-    ObjectNode coverage = new M11Coverage().run(root, fixed);
     M11MutantSuite.Result mutants = new M11MutantSuite().run(root);
     JsonSupport.validate(
         mutants.counterexamples(), readString(root.resolve(COUNTEREXAMPLE_SCHEMA_PATH)), false);
+    JsonSupport.validate(
+        mutants.replayReport(), readString(root.resolve(REPLAY_SCHEMA_PATH)), false);
+    ObjectNode coverage = new M11Coverage().run(root, fixed, mutants);
+    JsonSupport.validate(coverage, readString(root.resolve(COVERAGE_SCHEMA_PATH)), false);
     ObjectNode environment =
         new M11Environment().capture(generated.clusterRoot(), started, Instant.now());
     return new Artifacts(
@@ -104,25 +110,11 @@ public final class M11CheckRunner {
     write(reports, "protocol-goldens.json", artifacts.protocol().report());
     write(reports, "coverage.json", artifacts.coverage());
 
-    byte[] counterexamples = JsonSupport.prettyBytes(artifacts.mutants().counterexamples());
+    byte[] counterexamples = artifacts.mutants().persistedBytes();
     AtomicFiles.write(reports.resolve("counterexamples.json"), counterexamples);
-    ObjectNode mutantReport = JsonSupport.MAPPER.createObjectNode();
-    mutantReport.put("schemaVersion", "matching.m11.mutants.v1");
-    mutantReport.put("status", PASS);
-    mutantReport.put("required", M11StartCheckRunner.MUTANT_IDS.size());
-    mutantReport.put("killed", artifacts.mutants().killed());
-    mutantReport.put("classification", STUDENT_FAILURE);
-    mutantReport.put("executableCandidates", artifacts.mutants().candidates().size());
-    mutantReport.put("systemErrorControls", artifacts.mutants().controls().size());
-    mutantReport.put("systemErrorsObserved", artifacts.mutants().controls().size());
-    mutantReport.put("systemErrorCountedAsKill", false);
-    mutantReport.put("counterexampleSha256", Hashing.sha256Hex(counterexamples));
-    mutantReport.put("counterexampleCanonicalSha256", artifacts.mutants().digest());
-    mutantReport.put("rawActions", artifacts.mutants().rawActions());
-    mutantReport.put("minimalActions", artifacts.mutants().minimalActions());
-    mutantReport.put("shrinkTrials", artifacts.mutants().shrinkTrials());
-    mutantReport.set("candidates", artifacts.mutants().candidates().deepCopy());
-    mutantReport.set("controls", artifacts.mutants().controls().deepCopy());
+    write(reports, "replay.json", artifacts.mutants().replayReport());
+    ObjectNode mutantReport = mutantReport(artifacts.mutants());
+    JsonSupport.validate(mutantReport, readString(root.resolve(MUTANTS_SCHEMA_PATH)), false);
     write(reports, "mutants.json", mutantReport);
     write(reports, "architecture.json", artifacts.architecture());
     write(reports, "environment.json", artifacts.environment());
@@ -130,6 +122,37 @@ public final class M11CheckRunner {
     ObjectNode check = passReport(root, reports, artifacts, mutantReport);
     JsonSupport.validate(check, readString(root.resolve(CHECK_SCHEMA_PATH)), false);
     write(reports, "check.json", check);
+  }
+
+  static ObjectNode mutantReport(M11MutantSuite.Result mutants) {
+    ObjectNode report = JsonSupport.MAPPER.createObjectNode();
+    report.put("schemaVersion", "matching.m11.mutants.v1");
+    report.put("status", PASS);
+    report.put("required", M11StartCheckRunner.MUTANT_IDS.size());
+    report.put("killed", mutants.killed());
+    report.put("classification", STUDENT_FAILURE);
+    report.put("executableCandidates", mutants.candidates().size());
+    report.put("systemErrorControls", mutants.controls().size());
+    report.put("systemErrorsObserved", mutants.controls().size());
+    report.put("systemErrorCountedAsKill", false);
+    report.put("counterexampleSha256", Hashing.sha256Hex(mutants.persistedBytes()));
+    report.put("counterexampleCanonicalSha256", mutants.digest());
+    report.put(
+        "productionControlsPassed",
+        mutants.replayReport().path("productionControlsPassed").intValue());
+    report.put("serializedFreshReplays", mutants.replayReport().path("replayed").intValue());
+    report.put(
+        "serializedReplayFingerprintsExact",
+        mutants.replayReport().path("fingerprintsExact").booleanValue());
+    report.put(
+        "oneMinimalCounterexamples", mutants.replayReport().path("oneDeleteAudits").intValue());
+    report.put("actualMutationActions", mutants.actualMutationActions());
+    report.put("rawActions", mutants.rawActions());
+    report.put("minimalActions", mutants.minimalActions());
+    report.put("shrinkTrials", mutants.shrinkTrials());
+    report.set("candidates", mutants.candidates());
+    report.set("controls", mutants.controls());
+    return report;
   }
 
   private static ObjectNode passReport(
@@ -263,7 +286,16 @@ public final class M11CheckRunner {
     check.set("snapshotRestart", artifacts.generated().snapshotReport().deepCopy());
 
     ObjectNode coverage = check.putObject("coverage");
-    copy(artifacts.coverage(), coverage, "required", "observed", "allWitnessed");
+    copy(
+        artifacts.coverage(),
+        coverage,
+        "required",
+        "observed",
+        "allWitnessed",
+        "source",
+        "systemErrorEvaluatedAfterControls",
+        "factCount",
+        "ledgerSha256");
     ObjectNode mutants = check.putObject("mutants");
     copy(
         mutantReport,
@@ -275,7 +307,33 @@ public final class M11CheckRunner {
         "systemErrorControls",
         "systemErrorsObserved",
         "systemErrorCountedAsKill",
-        "counterexampleSha256");
+        "counterexampleSha256",
+        "counterexampleCanonicalSha256",
+        "productionControlsPassed",
+        "serializedFreshReplays",
+        "serializedReplayFingerprintsExact",
+        "oneMinimalCounterexamples",
+        "actualMutationActions",
+        "rawActions",
+        "minimalActions",
+        "shrinkTrials");
+    ObjectNode replay = check.putObject("replay");
+    copy(
+        artifacts.mutants().replayReport(),
+        replay,
+        "required",
+        "replayed",
+        "persistedBytesParsed",
+        "orderedUniqueIds",
+        "stepCountsExact",
+        "freshCandidatePerReplay",
+        "productionControlsPassed",
+        "fingerprintsExact",
+        "oneDeleteAudits",
+        "invalidHistoryCountedAsKill",
+        "systemErrorCountedAsKill",
+        "persistedBytesSha256",
+        "canonicalSha256");
     ObjectNode architecture = check.putObject("architecture");
     copy(
         artifacts.architecture(),

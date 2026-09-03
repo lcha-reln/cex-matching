@@ -13,6 +13,10 @@
     "globalMinimumClaim",
     "invalidHistoryCountedAsKill",
     "systemErrorCountedAsKill",
+    "serializedFreshReplay",
+    "serializedReplayCount",
+    "serializedReplayFingerprintsExact",
+    "oneDeleteAudits",
     "witnesses"
   ],
   "properties": {
@@ -20,16 +24,33 @@
     "seed": { "const": "6111" },
     "required": { "const": 10 },
     "persisted": { "const": 10 },
-    "replayInterpreter": { "const": "M11_DECLARED_STEP_GRAMMAR_V1" },
-    "minimalityScope": { "const": "ONE_MINIMAL_WITHIN_DECLARED_STEP_DELETION_GRAMMAR" },
+    "replayInterpreter": { "const": "M11_TYPED_STEP_INTERPRETER_V2" },
+    "minimalityScope": { "const": "ONE_MINIMAL_WITHIN_TYPED_STEP_DELETION_GRAMMAR" },
     "globalMinimumClaim": { "const": false },
     "invalidHistoryCountedAsKill": { "const": false },
     "systemErrorCountedAsKill": { "const": false },
+    "serializedFreshReplay": { "const": true },
+    "serializedReplayCount": { "const": 10 },
+    "serializedReplayFingerprintsExact": { "const": true },
+    "oneDeleteAudits": { "const": 10 },
     "witnesses": {
       "type": "array",
       "minItems": 10,
       "maxItems": 10,
-      "items": { "$ref": "#/$defs/witness" }
+      "uniqueItems": true,
+      "prefixItems": [
+        { "$ref": "#/$defs/offerWitness" },
+        { "$ref": "#/$defs/sessionWitness" },
+        { "$ref": "#/$defs/correlationWitness" },
+        { "$ref": "#/$defs/respondWitness" },
+        { "$ref": "#/$defs/dropIdentityWitness" },
+        { "$ref": "#/$defs/corruptSnapshotWitness" },
+        { "$ref": "#/$defs/rejectPreviousWitness" },
+        { "$ref": "#/$defs/metadataDigestWitness" },
+        { "$ref": "#/$defs/doubleWalWitness" },
+        { "$ref": "#/$defs/unsupportedVersionWitness" }
+      ],
+      "items": false
     }
   },
   "$defs": {
@@ -44,6 +65,11 @@
         "rawActions",
         "minimalActions",
         "shrinkTrials",
+        "actualMutationActions",
+        "oneMinimal",
+        "stepCountMatchesMinimalActions",
+        "strictFreshReplay",
+        "serializedReplayFingerprintExact",
         "minimalityScope",
         "globalMinimumClaim",
         "steps"
@@ -56,7 +82,12 @@
         "rawActions": { "type": "integer", "minimum": 1 },
         "minimalActions": { "type": "integer", "minimum": 1 },
         "shrinkTrials": { "type": "integer", "minimum": 1 },
-        "minimalityScope": { "const": "ONE_MINIMAL_WITHIN_DECLARED_STEP_DELETION_GRAMMAR" },
+        "actualMutationActions": { "type": "integer", "minimum": 1 },
+        "oneMinimal": { "const": true },
+        "stepCountMatchesMinimalActions": { "const": true },
+        "strictFreshReplay": { "const": true },
+        "serializedReplayFingerprintExact": { "const": true },
+        "minimalityScope": { "const": "ONE_MINIMAL_WITHIN_TYPED_STEP_DELETION_GRAMMAR" },
         "globalMinimumClaim": { "const": false },
         "steps": {
           "type": "array",
@@ -66,12 +97,91 @@
             "additionalProperties": false,
             "required": ["kind", "encoded"],
             "properties": {
-              "kind": { "type": "string", "pattern": "^[A-Z_]+$" },
+              "kind": {
+                "enum": [
+                  "OFFER",
+                  "SUBMIT_SESSION",
+                  "SUBMIT_CORRELATION",
+                  "BEGIN_SUBMIT",
+                  "CRASH",
+                  "RETRY",
+                  "SUBMIT",
+                  "TAKE_SNAPSHOT",
+                  "CORRUPT_SNAPSHOT",
+                  "RESTART",
+                  "DECODE_REQUEST_V1",
+                  "DECODE_RESPONSE_V1",
+                  "DECODE_SNAPSHOT_V1",
+                  "READ_DIGEST",
+                  "SET_SESSION",
+                  "DECODE_REQUEST_V3"
+                ]
+              },
               "encoded": { "type": "string", "minLength": 1 }
             }
           }
         }
       }
+    },
+    "offerWitness": {
+      "allOf": [
+        { "$ref": "#/$defs/witness" },
+        { "properties": { "id": { "const": "cex-m11-offer-as-success" }, "mutant": { "const": "M11-OFFER-AS-SUCCESS" } } }
+      ]
+    },
+    "sessionWitness": {
+      "allOf": [
+        { "$ref": "#/$defs/witness" },
+        { "properties": { "id": { "const": "cex-m11-session-as-identity" }, "mutant": { "const": "M11-SESSION-AS-IDENTITY" } } }
+      ]
+    },
+    "correlationWitness": {
+      "allOf": [
+        { "$ref": "#/$defs/witness" },
+        { "properties": { "id": { "const": "cex-m11-correlation-as-identity" }, "mutant": { "const": "M11-CORRELATION-AS-IDENTITY" } } }
+      ]
+    },
+    "respondWitness": {
+      "allOf": [
+        { "$ref": "#/$defs/witness" },
+        { "properties": { "id": { "const": "cex-m11-respond-before-bind" }, "mutant": { "const": "M11-RESPOND-BEFORE-BIND" } } }
+      ]
+    },
+    "dropIdentityWitness": {
+      "allOf": [
+        { "$ref": "#/$defs/witness" },
+        { "properties": { "id": { "const": "cex-m11-drop-identity-from-snapshot" }, "mutant": { "const": "M11-DROP-IDENTITY-FROM-SNAPSHOT" } } }
+      ]
+    },
+    "corruptSnapshotWitness": {
+      "allOf": [
+        { "$ref": "#/$defs/witness" },
+        { "properties": { "id": { "const": "cex-m11-corrupt-snapshot-to-genesis" }, "mutant": { "const": "M11-CORRUPT-SNAPSHOT-TO-GENESIS" } } }
+      ]
+    },
+    "rejectPreviousWitness": {
+      "allOf": [
+        { "$ref": "#/$defs/witness" },
+        { "properties": { "id": { "const": "cex-m11-reject-n-minus-one" }, "mutant": { "const": "M11-REJECT-N-MINUS-ONE" } } }
+      ]
+    },
+    "metadataDigestWitness": {
+      "allOf": [
+        { "$ref": "#/$defs/witness" },
+        { "properties": { "id": { "const": "cex-m11-include-runtime-metadata-in-digest" }, "mutant": { "const": "M11-INCLUDE-RUNTIME-METADATA-IN-DIGEST" } } }
+      ]
+    },
+    "doubleWalWitness": {
+      "allOf": [
+        { "$ref": "#/$defs/witness" },
+        { "properties": { "id": { "const": "cex-m11-double-write-local-wal" }, "mutant": { "const": "M11-DOUBLE-WRITE-LOCAL-WAL" } } }
+      ]
+    },
+    "unsupportedVersionWitness": {
+      "allOf": [
+        { "$ref": "#/$defs/witness" },
+        { "properties": { "id": { "const": "cex-m11-accept-unsupported-version" }, "mutant": { "const": "M11-ACCEPT-UNSUPPORTED-VERSION" } } }
+      ]
     }
   }
 }

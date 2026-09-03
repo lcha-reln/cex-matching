@@ -40,6 +40,7 @@
             "snapshotRestart",
             "coverage",
             "mutants",
+            "replay",
             "architecture",
             "environment",
             "artifactBindings",
@@ -64,12 +65,13 @@
             "snapshotRestart": { "$ref": "#/$defs/snapshotRestart" },
             "coverage": { "$ref": "#/$defs/coverage" },
             "mutants": { "$ref": "#/$defs/mutants" },
+            "replay": { "$ref": "#/$defs/replay" },
             "architecture": { "$ref": "#/$defs/architecture" },
             "environment": { "$ref": "#/$defs/environment" },
             "artifactBindings": {
               "type": "array",
-              "minItems": 11,
-              "maxItems": 11,
+              "minItems": 12,
+              "maxItems": 12,
               "uniqueItems": true,
               "items": { "$ref": "#/$defs/artifact" }
             },
@@ -145,7 +147,7 @@
       "additionalProperties": false,
       "required": ["sha256", "seed", "fixedScenarios", "histories", "actionsPerHistory", "actionsPerPath", "clusterRuns", "totalActualClusterIngress", "continuousCorpus", "stateResetBetweenSegments", "lanes", "snapshotAfterAction", "coverageObligations", "requiredMutants", "systemErrorControls", "goldens"],
       "properties": {
-        "sha256": { "const": "ec19d23ab95973dca8f5b9c41d773d0f7fe47db679f659bc3e776dd95739b7e7" },
+        "sha256": { "const": "f856c8dcf2e902add248a59cdb97525083bae469745682eed0ea7ae9169033b6" },
         "seed": { "const": "6111" },
         "fixedScenarios": { "const": 22 },
         "histories": { "const": 32 },
@@ -309,17 +311,21 @@
     "coverage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["required", "observed", "allWitnessed"],
+      "required": ["required", "observed", "allWitnessed", "source", "systemErrorEvaluatedAfterControls", "factCount", "ledgerSha256"],
       "properties": {
         "required": { "const": 28 },
         "observed": { "const": 28 },
-        "allWitnessed": { "const": true }
+        "allWitnessed": { "const": true },
+        "source": { "const": "ASSERTION_FACT_LEDGER" },
+        "systemErrorEvaluatedAfterControls": { "const": true },
+        "factCount": { "type": "integer", "minimum": 28 },
+        "ledgerSha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "mutants": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["required", "killed", "classification", "executableCandidates", "systemErrorControls", "systemErrorsObserved", "systemErrorCountedAsKill", "counterexampleSha256"],
+      "required": ["required", "killed", "classification", "executableCandidates", "systemErrorControls", "systemErrorsObserved", "systemErrorCountedAsKill", "counterexampleSha256", "counterexampleCanonicalSha256", "productionControlsPassed", "serializedFreshReplays", "serializedReplayFingerprintsExact", "oneMinimalCounterexamples", "actualMutationActions", "rawActions", "minimalActions", "shrinkTrials"],
       "properties": {
         "required": { "const": 10 },
         "killed": { "const": 10 },
@@ -328,7 +334,36 @@
         "systemErrorControls": { "const": 3 },
         "systemErrorsObserved": { "const": 3 },
         "systemErrorCountedAsKill": { "const": false },
-        "counterexampleSha256": { "$ref": "#/$defs/sha256" }
+        "counterexampleSha256": { "$ref": "#/$defs/sha256" },
+        "counterexampleCanonicalSha256": { "$ref": "#/$defs/sha256" },
+        "productionControlsPassed": { "const": 10 },
+        "serializedFreshReplays": { "const": 10 },
+        "serializedReplayFingerprintsExact": { "const": true },
+        "oneMinimalCounterexamples": { "const": 10 },
+        "actualMutationActions": { "type": "integer", "minimum": 10 },
+        "rawActions": { "type": "integer", "minimum": 10 },
+        "minimalActions": { "type": "integer", "minimum": 10 },
+        "shrinkTrials": { "type": "integer", "minimum": 10 }
+      }
+    },
+    "replay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "replayed", "persistedBytesParsed", "orderedUniqueIds", "stepCountsExact", "freshCandidatePerReplay", "productionControlsPassed", "fingerprintsExact", "oneDeleteAudits", "invalidHistoryCountedAsKill", "systemErrorCountedAsKill", "persistedBytesSha256", "canonicalSha256"],
+      "properties": {
+        "required": { "const": 10 },
+        "replayed": { "const": 10 },
+        "persistedBytesParsed": { "const": true },
+        "orderedUniqueIds": { "const": true },
+        "stepCountsExact": { "const": true },
+        "freshCandidatePerReplay": { "const": true },
+        "productionControlsPassed": { "const": 10 },
+        "fingerprintsExact": { "const": true },
+        "oneDeleteAudits": { "const": 10 },
+        "invalidHistoryCountedAsKill": { "const": false },
+        "systemErrorCountedAsKill": { "const": false },
+        "persistedBytesSha256": { "$ref": "#/$defs/sha256" },
+        "canonicalSha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "architecture": {
