@@ -34,12 +34,15 @@ public record M11RuntimeState(
         if (binding.slot().producerSequence() != 1) {
           throw new IllegalArgumentException("producer history must begin at sequence one");
         }
-      } else if (binding.slot().producerEpoch() < cursor.epoch()
-          || (binding.slot().producerEpoch() == cursor.epoch()
-              && binding.slot().producerSequence() != cursor.nextSequence())
-          || (binding.slot().producerEpoch() > cursor.epoch()
-              && binding.slot().producerSequence() != 1)) {
-        throw new IllegalArgumentException("producer history is fenced or discontinuous");
+      } else {
+        if (binding.slot().producerEpoch() < cursor.epoch()
+            || (binding.slot().producerEpoch() == cursor.epoch()
+                && (cursor.nextSequence() == Long.MAX_VALUE
+                    || binding.slot().producerSequence() != cursor.nextSequence()))
+            || (binding.slot().producerEpoch() > cursor.epoch()
+                && binding.slot().producerSequence() != 1)) {
+          throw new IllegalArgumentException("producer history is fenced or discontinuous");
+        }
       }
       producers.put(
           producerKey,

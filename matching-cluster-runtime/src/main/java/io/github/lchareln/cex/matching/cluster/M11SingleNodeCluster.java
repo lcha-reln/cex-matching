@@ -12,6 +12,7 @@ import io.aeron.cluster.service.ClusteredServiceContainer;
 import io.aeron.driver.MediaDriver;
 import io.aeron.driver.ThreadingMode;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -134,7 +135,12 @@ public final class M11SingleNodeCluster implements AutoCloseable {
   }
 
   public List<Throwable> componentErrors() {
-    return List.copyOf(componentErrors);
+    List<Throwable> errors = new ArrayList<>(componentErrors);
+    RuntimeException observerFailure = service.observerFailure();
+    if (observerFailure != null) {
+      errors.add(observerFailure);
+    }
+    return List.copyOf(errors);
   }
 
   public M11SingleNodeConfig config() {

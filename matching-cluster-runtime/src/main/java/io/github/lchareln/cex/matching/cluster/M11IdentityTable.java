@@ -2,6 +2,7 @@ package io.github.lchareln.cex.matching.cluster;
 
 import io.github.lchareln.cex.matching.local.CanonicalResult;
 import io.github.lchareln.cex.matching.local.M08Envelope;
+import io.github.lchareln.cex.matching.local.PreflightRejectionCode;
 import io.github.lchareln.cex.matching.local.Slot;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -20,16 +21,21 @@ final class M11IdentityTable {
   Decision preflight(M08Envelope envelope) {
     Objects.requireNonNull(envelope, "envelope");
     M11IdentityBinding commandBinding = byCommand.get(envelope.commandId());
-    if (commandBinding != null) {
-      return sameBinding(commandBinding, envelope)
-          ? new Duplicate(commandBinding)
-          : new Rejected("COMMAND_ID_CONFLICT");
-    }
     M11IdentityBinding slotBinding = bySlot.get(envelope.slot());
+    if (commandBinding != null) {
+      if (!commandBinding.slot().equals(envelope.slot())) {
+        return rejected(PreflightRejectionCode.COMMAND_ID_SLOT_CONFLICT);
+      }
+      if (!commandBinding.payloadHash().equals(envelope.payloadHash())) {
+        return rejected(PreflightRejectionCode.COMMAND_ID_PAYLOAD_CONFLICT);
+      }
+      if (slotBinding != commandBinding) {
+        throw new IllegalStateException("commandId and slot indexes are not bidirectionally bound");
+      }
+      return new Duplicate(commandBinding);
+    }
     if (slotBinding != null) {
-      return sameBinding(slotBinding, envelope)
-          ? new Duplicate(slotBinding)
-          : new Rejected("SLOT_CONFLICT");
+      return rejected(PreflightRejectionCode.SLOT_IDENTITY_CONFLICT);
     }
     String producerRejection = producerRejection(envelope.slot());
     return producerRejection == null ? New.INSTANCE : new Rejected(producerRejection);
@@ -86,21 +92,31 @@ final class M11IdentityTable {
   private String producerRejection(Slot slot) {
     ProducerCursor cursor = producers.get(ProducerKey.from(slot));
     if (cursor == null) {
-      return slot.producerSequence() == 1 ? null : "PRODUCER_SEQUENCE_GAP";
+      return slot.producerSequence() == 1
+          ? null
+          : PreflightRejectionCode.PRODUCER_EPOCH_MUST_START_AT_ONE.name();
     }
     if (slot.producerEpoch() < cursor.currentEpoch()) {
-      return "PRODUCER_EPOCH_FENCED";
+      return PreflightRejectionCode.PRODUCER_EPOCH_FENCED.name();
     }
-    if (slot.producerEpoch() == cursor.currentEpoch()) {
-      return slot.producerSequence() == cursor.nextSequence() ? null : "PRODUCER_SEQUENCE_GAP";
+    if (slot.producerEpoch() > cursor.currentEpoch()) {
+      return slot.producerSequence() == 1
+          ? null
+          : PreflightRejectionCode.PRODUCER_EPOCH_MUST_START_AT_ONE.name();
     }
-    return slot.producerSequence() == 1 ? null : "PRODUCER_SEQUENCE_GAP";
+    if (cursor.nextSequence() == Long.MAX_VALUE) {
+      return PreflightRejectionCode.PRODUCER_SEQUENCE_EXHAUSTED.name();
+    }
+    if (slot.producerSequence() == cursor.nextSequence()) {
+      return null;
+    }
+    return slot.producerSequence() > cursor.nextSequence()
+        ? PreflightRejectionCode.PRODUCER_SEQUENCE_GAP.name()
+        : PreflightRejectionCode.PRODUCER_SEQUENCE_STALE.name();
   }
 
-  private static boolean sameBinding(M11IdentityBinding binding, M08Envelope envelope) {
-    return binding.commandId().equals(envelope.commandId())
-        && binding.slot().equals(envelope.slot())
-        && binding.payloadHash().equals(envelope.payloadHash());
+  private static Rejected rejected(PreflightRejectionCode code) {
+    return new Rejected(code.name());
   }
 
   sealed interface Decision permits New, Duplicate, Rejected {}

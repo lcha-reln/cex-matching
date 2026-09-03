@@ -13,6 +13,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -83,6 +84,19 @@ class M11ProtocolCompatibilityTest {
                 M11ProtocolException.class,
                 () -> requestCodec.decodeCanonical(invalidResponseVersion, SHARD))
             .code());
+    ByteBuffer.wrap(invalidResponseVersion).putInt(28, 0);
+    assertEquals(
+        M11ProtocolException.Code.INVALID_VALUE,
+        assertThrows(
+                M11ProtocolException.class,
+                () -> requestCodec.decodeCanonical(invalidResponseVersion, SHARD))
+            .code());
+    assertEquals(
+        M11ProtocolException.Code.INVALID_VALUE,
+        assertThrows(
+                M11ProtocolException.class,
+                () -> requestCodec.create(1, 2, CORRELATION, goldenEnvelope(), SHARD))
+            .code());
 
     byte[] snapshot = golden("snapshot-v2.bin");
     byte[] corrupt = snapshot.clone();
@@ -119,9 +133,80 @@ class M11ProtocolCompatibilityTest {
         requestCodec.create(2, 2, new UUID(3, 3), conflictingEnvelope, SHARD);
     M11ApplicationResult rejected = runtime.submit(conflict);
     assertEquals(M11ResponseStatus.REJECTED, rejected.response().status());
-    assertEquals("COMMAND_ID_CONFLICT", rejected.response().rejectionCode().orElseThrow());
+    assertEquals("COMMAND_ID_PAYLOAD_CONFLICT", rejected.response().rejectionCode().orElseThrow());
     assertEquals(digest, runtime.semanticStateDigest());
     assertEquals(nextSequence, runtime.nextApplicationSequence());
+  }
+
+  @Test
+  void identityPreflightRetainsTheInheritedM08RejectionSemantics() throws Exception {
+    DirectM11MatchingRuntime runtime = new DirectM11MatchingRuntime();
+    M11CommandRequest first =
+        request("producer-a", 1, 1, new UUID(1, 1), new UUID(11, 1), cancel(1));
+    assertEquals(M11ResponseStatus.NEW_APPLIED, runtime.submit(first).response().status());
+
+    assertRejectedWithoutMutation(
+        runtime,
+        request("producer-a", 1, 3, new UUID(1, 2), new UUID(11, 3), cancel(3)),
+        "PRODUCER_SEQUENCE_GAP");
+    assertRejectedWithoutMutation(
+        runtime,
+        request("producer-b", 7, 2, new UUID(1, 3), new UUID(12, 2), cancel(2)),
+        "PRODUCER_EPOCH_MUST_START_AT_ONE");
+    assertRejectedWithoutMutation(
+        runtime,
+        request("producer-b", 1, 1, new UUID(1, 4), first.commandId(), cancel(4)),
+        "COMMAND_ID_SLOT_CONFLICT");
+    assertRejectedWithoutMutation(
+        runtime,
+        request("producer-a", 1, 1, new UUID(1, 5), new UUID(11, 5), cancel(5)),
+        "SLOT_IDENTITY_CONFLICT");
+    assertRejectedWithoutMutation(
+        runtime,
+        request("producer-a", 1, 1, new UUID(1, 6), first.commandId(), cancel(6)),
+        "COMMAND_ID_PAYLOAD_CONFLICT");
+
+    M11CommandRequest second =
+        request("producer-a", 1, 2, new UUID(1, 7), new UUID(11, 2), cancel(2));
+    assertEquals(M11ResponseStatus.NEW_APPLIED, runtime.submit(second).response().status());
+    assertRejectedWithoutMutation(
+        runtime,
+        request("producer-a", 2, 2, new UUID(1, 8), new UUID(21, 2), cancel(8)),
+        "PRODUCER_EPOCH_MUST_START_AT_ONE");
+    M11CommandRequest newEpoch =
+        request("producer-a", 2, 1, new UUID(1, 9), new UUID(21, 1), cancel(9));
+    assertEquals(M11ResponseStatus.NEW_APPLIED, runtime.submit(newEpoch).response().status());
+    assertRejectedWithoutMutation(
+        runtime,
+        request("producer-a", 1, 3, new UUID(1, 10), new UUID(11, 10), cancel(10)),
+        "PRODUCER_EPOCH_FENCED");
+  }
+
+  @Test
+  void snapshotIdentityOrderAndProducerContinuityFailClosed() throws Exception {
+    M11RuntimeState canonical = snapshotCodec.decodeCanonical(golden("snapshot-v2.bin")).state();
+    List<M11IdentityBinding> bindings = canonical.identityBindings();
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new M11RuntimeState(
+                canonical.commandState(), List.of(bindings.get(1), bindings.get(0))));
+
+    M11IdentityBinding second = bindings.get(1);
+    var discontinuousSlot =
+        new io.github.lchareln.cex.matching.local.Slot(
+            second.slot().producerId(),
+            second.slot().producerEpoch(),
+            second.slot().shardId(),
+            second.slot().producerSequence() + 1);
+    M11IdentityBinding discontinuous =
+        new M11IdentityBinding(
+            second.commandId(), discontinuousSlot, second.payloadHash(), second.result());
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new M11RuntimeState(
+                canonical.commandState(), List.of(bindings.getFirst(), discontinuous)));
   }
 
   @Test
@@ -178,6 +263,29 @@ class M11ProtocolCompatibilityTest {
 
   private static M08Command.Cancel cancel(long orderId) {
     return new M08Command.Cancel("BTC-USDT", BigInteger.valueOf(orderId));
+  }
+
+  private M11CommandRequest request(
+      String producer,
+      long epoch,
+      long sequence,
+      UUID correlation,
+      UUID command,
+      M08Command payload)
+      throws M11ProtocolException {
+    return requestCodec.create(
+        2, 2, correlation, producer, epoch, SHARD, sequence, command, payload);
+  }
+
+  private static void assertRejectedWithoutMutation(
+      DirectM11MatchingRuntime runtime, M11CommandRequest request, String code) {
+    long sequence = runtime.nextApplicationSequence();
+    String digest = runtime.semanticStateDigest();
+    M11CommandResponse response = runtime.submit(request).response();
+    assertEquals(M11ResponseStatus.REJECTED, response.status());
+    assertEquals(code, response.rejectionCode().orElseThrow());
+    assertEquals(sequence, runtime.nextApplicationSequence());
+    assertEquals(digest, runtime.semanticStateDigest());
   }
 
   private static void assertGolden(String name, byte[] actual) throws Exception {

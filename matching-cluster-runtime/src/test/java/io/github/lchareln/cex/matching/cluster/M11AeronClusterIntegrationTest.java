@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -67,6 +68,7 @@ class M11AeronClusterIntegrationTest {
       assertTrue(snapshot.completion().consensusRecordingId() >= 0);
 
       harness.restartFromSnapshot();
+      harness.restartFromSnapshot();
       M11HarnessReport restarted = harness.report();
       assertTrue(restarted.restartDirectoriesPreserved());
       assertTrue(restarted.completedSnapshotLoaded());
@@ -87,7 +89,7 @@ class M11AeronClusterIntegrationTest {
       assertEquals(0, report.rejectedApplications());
       assertEquals(1, report.snapshotAdminAccepted());
       assertEquals(1, report.snapshotsCompleted());
-      assertEquals(1, report.restarts());
+      assertEquals(2, report.restarts());
       assertEquals(0, report.componentErrorCount());
       assertTrue(harness.componentErrors().isEmpty());
       assertTrue(Files.isRegularFile(config.clusterDirectory().resolve("recording.log")));
@@ -95,6 +97,41 @@ class M11AeronClusterIntegrationTest {
         assertTrue(archiveFiles.anyMatch(path -> path.getFileName().toString().endsWith(".rec")));
       }
       assertFalse(harness.observations().isEmpty());
+    }
+  }
+
+  @Test
+  @Timeout(90)
+  void observerFailuresStayNonInfluencingAndAreRetainedAcrossRestart() throws Exception {
+    M11SingleNodeConfig config =
+        M11SingleNodeConfig.defaults(
+            temporaryDirectory.resolve("observer-run"), SHARD + 1, freePortBase());
+    M11RequestCodec requests = new M11RequestCodec();
+    M11CommandRequest place =
+        requests.create(
+            2, 2, new UUID(3, 1), "observer", 1, SHARD + 1, 1, new UUID(72, 1), place(72));
+    AtomicInteger observerCalls = new AtomicInteger();
+
+    try (M11SingleNodeHarness harness =
+        M11SingleNodeHarness.launchFresh(
+            config,
+            observation -> {
+              observerCalls.incrementAndGet();
+              throw new IllegalStateException("intentional observer failure");
+            })) {
+      assertEquals(M11ResponseStatus.NEW_APPLIED, harness.submit(place, DEADLINE).status());
+      assertEquals(1, observerCalls.get());
+      assertEquals(1, harness.componentErrors().size());
+
+      harness.takeSnapshot(DEADLINE);
+      harness.restartFromSnapshot();
+      assertEquals(1, harness.componentErrors().size());
+
+      M11CommandRequest duplicate = place.withCorrelationId(new UUID(3, 2));
+      assertEquals(
+          M11ResponseStatus.DUPLICATE_REPLAYED, harness.submit(duplicate, DEADLINE).status());
+      assertEquals(2, observerCalls.get());
+      assertEquals(2, harness.report().componentErrorCount());
     }
   }
 

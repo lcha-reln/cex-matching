@@ -10,9 +10,10 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 /** Restart-capable production harness used by local teaching and deterministic acceptance. */
 public final class M11SingleNodeHarness implements AutoCloseable {
   private final M11SingleNodeConfig config;
+  private final M11ApplicationObserver observer;
   private final ConcurrentLinkedQueue<M11ServiceObservation> observations =
       new ConcurrentLinkedQueue<>();
-  private final List<Throwable> archivedErrors = new ArrayList<>();
+  private final ConcurrentLinkedQueue<Throwable> archivedErrors = new ConcurrentLinkedQueue<>();
   private M11SingleNodeCluster node;
   private M11MatchingClusterClient client;
   private long archivedIngressOffers;
@@ -25,13 +26,20 @@ public final class M11SingleNodeHarness implements AutoCloseable {
   private M11SnapshotWitness lastSnapshot;
   private M11ApplicationSnapshotWitness lastLoadedSnapshot;
 
-  private M11SingleNodeHarness(M11SingleNodeConfig config) {
+  private M11SingleNodeHarness(M11SingleNodeConfig config, M11ApplicationObserver observer) {
     this.config = config;
+    this.observer = observer;
   }
 
   public static M11SingleNodeHarness launchFresh(M11SingleNodeConfig config) {
+    return launchFresh(config, M11ApplicationObserver.NO_OP);
+  }
+
+  public static M11SingleNodeHarness launchFresh(
+      M11SingleNodeConfig config, M11ApplicationObserver observer) {
     M11SingleNodeHarness harness =
-        new M11SingleNodeHarness(Objects.requireNonNull(config, "config"));
+        new M11SingleNodeHarness(
+            Objects.requireNonNull(config, "config"), Objects.requireNonNull(observer, "observer"));
     harness.start(true);
     return harness;
   }
@@ -154,7 +162,14 @@ public final class M11SingleNodeHarness implements AutoCloseable {
   }
 
   private void start(boolean freshStart) {
-    node = M11SingleNodeCluster.launch(config, freshStart, observations::add);
+    node =
+        M11SingleNodeCluster.launch(
+            config,
+            freshStart,
+            observation -> {
+              observations.add(observation);
+              observer.onApplication(observation);
+            });
     try {
       client = node.connectClient();
     } catch (RuntimeException | Error failure) {
@@ -165,17 +180,37 @@ public final class M11SingleNodeHarness implements AutoCloseable {
   }
 
   private void closeComponents() {
+    RuntimeException closeFailure = null;
     if (client != null) {
-      archivedIngressOffers += client.ingressOffersAccepted();
-      archivedEgressResponses += client.egressResponsesDecoded();
-      client.close();
-      archivedErrors.addAll(client.componentErrors());
+      M11MatchingClusterClient closingClient = client;
       client = null;
+      archivedIngressOffers += closingClient.ingressOffersAccepted();
+      archivedEgressResponses += closingClient.egressResponsesDecoded();
+      try {
+        closingClient.close();
+      } catch (RuntimeException failure) {
+        archivedErrors.add(failure);
+        closeFailure = failure;
+      }
+      archivedErrors.addAll(closingClient.componentErrors());
     }
     if (node != null) {
-      node.close();
-      archivedErrors.addAll(node.componentErrors());
+      M11SingleNodeCluster closingNode = node;
       node = null;
+      try {
+        closingNode.close();
+      } catch (RuntimeException failure) {
+        archivedErrors.add(failure);
+        if (closeFailure == null) {
+          closeFailure = failure;
+        } else {
+          closeFailure.addSuppressed(failure);
+        }
+      }
+      archivedErrors.addAll(closingNode.componentErrors());
+    }
+    if (closeFailure != null) {
+      throw closeFailure;
     }
   }
 
