@@ -441,6 +441,7 @@ tasks.register<JavaExec>("m11Check") {
     description = "Runs the completed single-member Aeron adapter judge."
     dependsOn("test", ":matching-core:test", ":matching-local-runtime:test", ":matching-cluster-runtime:test", ":matching-reference:check", "classes")
     classpath = sourceSets.main.get().runtimeClasspath
+    jvmArgs("--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED")
     mainClass.set("io.github.lchareln.cex.matching.testkit.M11CheckMain")
     args(
         rootProject.layout.projectDirectory.asFile.absolutePath,
@@ -454,6 +455,7 @@ tasks.register<JavaExec>("m11Evidence") {
     description = "Generates and validates clean-tree annotated-tag M11 evidence."
     dependsOn("m11Check")
     classpath = sourceSets.main.get().runtimeClasspath
+    jvmArgs("--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED")
     mainClass.set("io.github.lchareln.cex.matching.testkit.M11EvidenceMain")
     args(
         rootProject.layout.projectDirectory.asFile.absolutePath,

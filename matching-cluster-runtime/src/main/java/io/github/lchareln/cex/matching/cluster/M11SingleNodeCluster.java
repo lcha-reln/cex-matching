@@ -1,5 +1,6 @@
 package io.github.lchareln.cex.matching.cluster;
 
+import io.aeron.Aeron;
 import io.aeron.archive.Archive;
 import io.aeron.archive.client.AeronArchive;
 import io.aeron.cluster.ClusterControl;
@@ -13,9 +14,11 @@ import io.aeron.driver.MediaDriver;
 import io.aeron.driver.ThreadingMode;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import org.agrona.DirectBuffer;
 import org.agrona.concurrent.NoOpLock;
 
 /** Owns a real Media Driver, Archive, Consensus Module, and service container. */
@@ -159,6 +162,42 @@ public final class M11SingleNodeCluster implements AutoCloseable {
         consensus == null ? -1 : consensus.recordingId);
   }
 
+  public M11ClusterRuntimeWitness runtimeWitness(Duration timeout) {
+    Objects.requireNonNull(timeout, "timeout");
+    if (timeout.isZero() || timeout.isNegative()) {
+      throw new IllegalArgumentException("timeout must be positive");
+    }
+    long deadline = Math.addExact(System.nanoTime(), timeout.toNanos());
+    while (service.role() != io.aeron.cluster.service.Cluster.Role.LEADER) {
+      Throwable componentFailure = componentErrors.peek();
+      if (componentFailure != null) {
+        throw new IllegalStateException(
+            "M11 cluster failed before the service became leader", componentFailure);
+      }
+      if (System.nanoTime() >= deadline) {
+        throw new IllegalStateException("M11 service did not become leader before the deadline");
+      }
+      Thread.onSpinWait();
+    }
+    ConsensusModule.Context context = clusteredMediaDriver.consensusModule().context();
+    int memberCount =
+        (int)
+            Arrays.stream(context.clusterMembers().split("\\|", -1))
+                .filter(member -> !member.isBlank())
+                .count();
+    return new M11ClusterRuntimeWitness(
+        context.clusterId(),
+        memberCount,
+        context.clusterMemberId(),
+        context.appointedLeaderId(),
+        context.clusterMembers(),
+        service.role().name(),
+        implementationVersion(Aeron.class),
+        implementationVersion(DirectBuffer.class),
+        config.rootDirectory().toString(),
+        config.portBase());
+  }
+
   public M11SnapshotCompletion awaitSnapshotCompletion(
       M11SnapshotBaseline baseline, Duration timeout) {
     Objects.requireNonNull(baseline, "baseline");
@@ -216,5 +255,14 @@ public final class M11SingleNodeCluster implements AutoCloseable {
     } finally {
       clusteredMediaDriver.close();
     }
+  }
+
+  private static String implementationVersion(Class<?> type) {
+    String version = type.getPackage().getImplementationVersion();
+    if (version == null || version.isBlank()) {
+      throw new IllegalStateException(
+          "missing runtime implementation version for " + type.getName());
+    }
+    return version;
   }
 }

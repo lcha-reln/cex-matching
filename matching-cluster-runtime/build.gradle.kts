@@ -9,6 +9,7 @@ plugins {
 dependencies {
     api(project(":matching-local-runtime"))
     implementation(libs.aeron.cluster)
+    implementation(libs.agrona)
 
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)

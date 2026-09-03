@@ -1,5 +1,6 @@
 package io.github.lchareln.cex.matching.testkit;
 
+import io.github.lchareln.cex.matching.RuleSetIdentity;
 import io.github.lchareln.cex.matching.cluster.DirectM11MatchingRuntime;
 import io.github.lchareln.cex.matching.cluster.M11ApplicationResult;
 import io.github.lchareln.cex.matching.cluster.M11CommandRequest;
@@ -11,6 +12,7 @@ import io.github.lchareln.cex.matching.cluster.M11ResponseCodec;
 import io.github.lchareln.cex.matching.cluster.M11ResponseStatus;
 import io.github.lchareln.cex.matching.cluster.M11Snapshot;
 import io.github.lchareln.cex.matching.cluster.M11SnapshotCodec;
+import io.github.lchareln.cex.matching.local.M08Command;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
@@ -113,7 +115,7 @@ final class M11ProtocolSuite {
 
     verifyS1Idempotency(requests.getFirst(), snapshots.getFirst());
     verifyResponseDownEncoding(requestCodec, responseCodec, requests.getLast());
-    verifyPayloadHashDomain(requestCodec, requests.getLast());
+    PayloadHashWitness payloadHash = verifyPayloadHashDomain(requestCodec, requests.getLast());
     verifyInvalidRequestedResponse(requestCodec, requests.getLast());
     verifyMalformed(requestCodec, responseCodec, snapshotCodec, root, workload);
     verifyUnsupported(requestCodec, responseCodec, snapshotCodec, root, workload);
@@ -131,6 +133,9 @@ final class M11ProtocolSuite {
     report.put("responseV1DownEncoded", true);
     report.put("responseV1OutcomesCovered", 4);
     report.put("payloadHashOuterInvariant", true);
+    report.put("payloadHashOuterFieldProbes", payloadHash.outerFieldProbes());
+    report.put("payloadHashPayloadMutationProbes", payloadHash.payloadMutationProbes());
+    report.put("payloadHashPayloadSensitive", true);
     report.put("forgedPayloadHashPreApplyRejected", true);
     report.put("forgedPayloadHashStateMutations", 0);
     report.put("responseV2Current", true);
@@ -231,29 +236,215 @@ final class M11ProtocolSuite {
         "core business rejection commitment was not covered");
   }
 
-  private static void verifyPayloadHashDomain(
+  private static PayloadHashWitness verifyPayloadHashDomain(
       M11RequestCodec requestCodec, M11CommandRequest currentRequest) {
-    String payloadHash = currentRequest.payloadHash();
-    M11CommandRequest differentCorrelation = currentRequest.withCorrelationId(new UUID(53, 59));
-    require(
-        payloadHash.equals(differentCorrelation.payloadHash()),
-        "outer correlation changed the payload hash");
-    M11CommandRequest differentResponse =
+    M08Command.Place basePayload =
+        new M08Command.Place(
+            "BTC-USDT",
+            BigInteger.valueOf(101),
+            "BUY",
+            BigInteger.valueOf(6_000_000),
+            BigInteger.valueOf(7),
+            "GTC",
+            0,
+            "NONE",
+            java.util.Optional.empty());
+    M11CommandRequest base =
         create(
             requestCodec,
             2,
+            2,
+            new UUID(53, 59),
+            "hash-domain",
+            1,
+            1,
             1,
             new UUID(61, 67),
-            currentRequest.envelopeBytes(),
-            currentRequest.slot().shardId());
+            basePayload);
+    String payloadHash = base.payloadHash();
+    List<M11CommandRequest> outerVariants =
+        List.of(
+            base.withCorrelationId(new UUID(71, 73)),
+            create(requestCodec, 2, 1, new UUID(53, 59), base.envelopeBytes(), 1),
+            create(requestCodec, 1, 1, new UUID(53, 59), base.envelopeBytes(), 1),
+            create(
+                requestCodec,
+                2,
+                2,
+                new UUID(53, 59),
+                "hash-domain-other",
+                1,
+                1,
+                1,
+                new UUID(61, 67),
+                basePayload),
+            create(
+                requestCodec,
+                2,
+                2,
+                new UUID(53, 59),
+                "hash-domain",
+                2,
+                1,
+                1,
+                new UUID(61, 67),
+                basePayload),
+            create(
+                requestCodec,
+                2,
+                2,
+                new UUID(53, 59),
+                "hash-domain",
+                1,
+                2,
+                1,
+                new UUID(61, 67),
+                basePayload),
+            create(
+                requestCodec,
+                2,
+                2,
+                new UUID(53, 59),
+                "hash-domain",
+                1,
+                1,
+                2,
+                new UUID(61, 67),
+                basePayload),
+            create(
+                requestCodec,
+                2,
+                2,
+                new UUID(53, 59),
+                "hash-domain",
+                1,
+                1,
+                1,
+                new UUID(79, 83),
+                basePayload));
     require(
-        payloadHash.equals(differentResponse.payloadHash()),
-        "requested response version changed the payload hash");
+        outerVariants.stream().allMatch(variant -> payloadHash.equals(variant.payloadHash())),
+        "an outer request or envelope identity field changed the payload hash");
+
+    List<M08Command> payloadVariants =
+        List.of(
+            new M08Command.Place(
+                "ETH-USDT",
+                basePayload.orderId(),
+                basePayload.side(),
+                basePayload.priceTicks(),
+                basePayload.quantityLots(),
+                basePayload.executionPolicy(),
+                basePayload.participantGroupId(),
+                basePayload.stpPolicy(),
+                basePayload.expectedActive()),
+            new M08Command.Place(
+                basePayload.instrumentId(),
+                BigInteger.valueOf(102),
+                basePayload.side(),
+                basePayload.priceTicks(),
+                basePayload.quantityLots(),
+                basePayload.executionPolicy(),
+                basePayload.participantGroupId(),
+                basePayload.stpPolicy(),
+                basePayload.expectedActive()),
+            new M08Command.Place(
+                basePayload.instrumentId(),
+                basePayload.orderId(),
+                "SELL",
+                basePayload.priceTicks(),
+                basePayload.quantityLots(),
+                basePayload.executionPolicy(),
+                basePayload.participantGroupId(),
+                basePayload.stpPolicy(),
+                basePayload.expectedActive()),
+            new M08Command.Place(
+                basePayload.instrumentId(),
+                basePayload.orderId(),
+                basePayload.side(),
+                BigInteger.valueOf(6_000_001),
+                basePayload.quantityLots(),
+                basePayload.executionPolicy(),
+                basePayload.participantGroupId(),
+                basePayload.stpPolicy(),
+                basePayload.expectedActive()),
+            new M08Command.Place(
+                basePayload.instrumentId(),
+                basePayload.orderId(),
+                basePayload.side(),
+                basePayload.priceTicks(),
+                BigInteger.valueOf(8),
+                basePayload.executionPolicy(),
+                basePayload.participantGroupId(),
+                basePayload.stpPolicy(),
+                basePayload.expectedActive()),
+            new M08Command.Place(
+                basePayload.instrumentId(),
+                basePayload.orderId(),
+                basePayload.side(),
+                basePayload.priceTicks(),
+                basePayload.quantityLots(),
+                "IOC",
+                basePayload.participantGroupId(),
+                basePayload.stpPolicy(),
+                basePayload.expectedActive()),
+            new M08Command.Place(
+                basePayload.instrumentId(),
+                basePayload.orderId(),
+                basePayload.side(),
+                basePayload.priceTicks(),
+                basePayload.quantityLots(),
+                basePayload.executionPolicy(),
+                1,
+                basePayload.stpPolicy(),
+                basePayload.expectedActive()),
+            new M08Command.Place(
+                basePayload.instrumentId(),
+                basePayload.orderId(),
+                basePayload.side(),
+                basePayload.priceTicks(),
+                basePayload.quantityLots(),
+                basePayload.executionPolicy(),
+                basePayload.participantGroupId(),
+                "CANCEL_TAKER",
+                basePayload.expectedActive()),
+            new M08Command.Place(
+                basePayload.instrumentId(),
+                basePayload.orderId(),
+                basePayload.side(),
+                basePayload.priceTicks(),
+                basePayload.quantityLots(),
+                basePayload.executionPolicy(),
+                basePayload.participantGroupId(),
+                basePayload.stpPolicy(),
+                java.util.Optional.of(new RuleSetIdentity(1, "sha256:" + "0".repeat(64)))),
+            new M08Command.Cancel(basePayload.instrumentId(), basePayload.orderId()));
+    Set<String> payloadHashes = new HashSet<>();
+    payloadHashes.add(payloadHash);
+    for (int index = 0; index < payloadVariants.size(); index++) {
+      M11CommandRequest variant =
+          create(
+              requestCodec,
+              2,
+              2,
+              new UUID(89, index + 1L),
+              "hash-domain",
+              1,
+              1,
+              1,
+              new UUID(97, index + 1L),
+              payloadVariants.get(index));
+      require(
+          !payloadHash.equals(variant.payloadHash()),
+          "a changed canonical command payload retained the original payload hash");
+      require(payloadHashes.add(variant.payloadHash()), "distinct payload probes collided");
+    }
+
     DirectM11MatchingRuntime runtime = new DirectM11MatchingRuntime();
-    runtime.submit(currentRequest);
+    runtime.submit(base);
     long beforeSequence = runtime.nextApplicationSequence();
     String beforeDigest = runtime.semanticStateDigest();
-    M11ApplicationResult duplicate = runtime.submit(differentResponse);
+    M11ApplicationResult duplicate = runtime.submit(outerVariants.get(1));
     require(
         duplicate.response().status() == M11ResponseStatus.DUPLICATE_REPLAYED,
         "outer changes changed durable identity");
@@ -261,7 +452,7 @@ final class M11ProtocolSuite {
     require(runtime.semanticStateDigest().equals(beforeDigest), "outer retry changed state");
 
     byte[] forgedEnvelope = currentRequest.envelopeBytes();
-    byte[] actualHash = java.util.HexFormat.of().parseHex(payloadHash);
+    byte[] actualHash = java.util.HexFormat.of().parseHex(currentRequest.payloadHash());
     int hashOffset = indexOf(forgedEnvelope, actualHash);
     require(hashOffset >= 0, "canonical payload hash bytes are missing from the envelope");
     forgedEnvelope[hashOffset] ^= 1;
@@ -269,7 +460,8 @@ final class M11ProtocolSuite {
     long untouchedSequence = untouched.nextApplicationSequence();
     String untouchedDigest = untouched.semanticStateDigest();
     try {
-      requestCodec.create(2, 2, new UUID(71, 73), forgedEnvelope, 1);
+      requestCodec.create(
+          2, 2, new UUID(101, 103), forgedEnvelope, currentRequest.slot().shardId());
       throw new M11SemanticFailure("forged payload hash was accepted");
     } catch (M11ProtocolException expected) {
       // Decoder recomputes the command-payload hash before a request can reach apply.
@@ -278,6 +470,7 @@ final class M11ProtocolSuite {
         untouched.nextApplicationSequence() == untouchedSequence,
         "forged payload hash advanced state");
     require(untouched.semanticStateDigest().equals(untouchedDigest), "forged hash changed state");
+    return new PayloadHashWitness(outerVariants.size(), payloadVariants.size());
   }
 
   private static void assertResponseV1(
@@ -537,4 +730,6 @@ final class M11ProtocolSuite {
       snapshots = List.copyOf(snapshots);
     }
   }
+
+  record PayloadHashWitness(int outerFieldProbes, int payloadMutationProbes) {}
 }

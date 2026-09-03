@@ -3,6 +3,7 @@ package io.github.lchareln.cex.matching.testkit;
 import io.github.lchareln.cex.matching.cluster.DirectM11MatchingRuntime;
 import io.github.lchareln.cex.matching.cluster.M11ApplicationResult;
 import io.github.lchareln.cex.matching.cluster.M11ApplicationSnapshotWitness;
+import io.github.lchareln.cex.matching.cluster.M11ClusterRuntimeWitness;
 import io.github.lchareln.cex.matching.cluster.M11CommandRequest;
 import io.github.lchareln.cex.matching.cluster.M11CommandResponse;
 import io.github.lchareln.cex.matching.cluster.M11HarnessReport;
@@ -21,9 +22,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -49,6 +50,9 @@ final class M11GeneratedSuite {
   private static final long SHARD = 1;
   private static final Duration RESPONSE_TIMEOUT = Duration.ofSeconds(15);
   private static final Duration SNAPSHOT_TIMEOUT = Duration.ofSeconds(30);
+  private static final int PORT_BLOCK_SIZE = 6;
+  private static final int MAX_PORT_PROBE_ATTEMPTS = 2_048;
+  private static final int MAX_CLUSTER_LAUNCH_ATTEMPTS = 8;
 
   Result run(Path workingRoot) {
     M09ScenarioSupport.deleteTree(workingRoot);
@@ -62,9 +66,21 @@ final class M11GeneratedSuite {
 
     DirectRun direct = runDirect(first);
     ClusterRun uninterrupted =
-        runCluster(first, direct.results(), workingRoot.resolve("uninterrupted"), false, 23_111);
+        runCluster(
+            first,
+            direct.results(),
+            workingRoot.resolve("uninterrupted"),
+            false,
+            23_111,
+            List.of());
     ClusterRun restarted =
-        runCluster(first, direct.results(), workingRoot.resolve("snapshot-restart"), true, 33_111);
+        runCluster(
+            first,
+            direct.results(),
+            workingRoot.resolve("snapshot-restart"),
+            true,
+            33_111,
+            List.of(uninterrupted.portBlock()));
     require(
         uninterrupted.applicationResults().equals(restarted.applicationResults()),
         "the two Cluster paths diverged");
@@ -76,8 +92,21 @@ final class M11GeneratedSuite {
 
     M11HarnessReport uninterruptedHarness = uninterrupted.harnessReport();
     M11HarnessReport restartedHarness = restarted.harnessReport();
-    requireClusterCounts(uninterruptedHarness, false);
-    requireClusterCounts(restartedHarness, true);
+    requireClusterCounts(uninterruptedHarness, false, direct.counts());
+    requireClusterCounts(restartedHarness, true, direct.counts());
+    require(uninterrupted.teardownCompleted(), "uninterrupted teardown was not witnessed");
+    require(restarted.teardownCompleted(), "restart teardown was not witnessed");
+    require(
+        uninterrupted.portBlock().disjoint(restarted.portBlock()),
+        "Cluster UDP port blocks overlap");
+    require(
+        uninterrupted.runtimeWitnesses().stream()
+            .allMatch(witness -> "LEADER".equals(witness.serviceRole())),
+        "uninterrupted service was not leader");
+    require(
+        restarted.runtimeWitnesses().stream()
+            .allMatch(witness -> "LEADER".equals(witness.serviceRole())),
+        "restart service was not leader");
 
     ObjectNode generated = JsonSupport.MAPPER.createObjectNode();
     generated.put("schemaVersion", "matching.m11.generated-differential.v1");
@@ -103,23 +132,37 @@ final class M11GeneratedSuite {
     generated.put("threePathFullBusinessEquivalent", true);
     generated.put("finalIdentityBindings", direct.finalState().identityBindings().size());
     generated.put("finalNextApplicationSequence", direct.finalState().nextApplicationSequence());
+    generated.put("newOrdinalsContinuous", direct.newOrdinalsContinuous());
+    generated.put("duplicateStateInvariantChecks", direct.duplicateInvariantChecks());
+    generated.put("conflictStateInvariantChecks", direct.conflictInvariantChecks());
+    ArrayNode schedule = generated.putArray("segmentSchedule");
+    first.segmentSchedule().forEach(schedule::add);
     ArrayNode lanes = generated.putArray("lanes");
     for (Lane lane : Lane.values()) {
       ObjectNode value = lanes.addObject();
       value.put("id", lane.name());
-      value.put("segments", 8);
-      value.put("actions", 1024);
+      long segments =
+          first.actions().stream()
+              .map(Action::segment)
+              .distinct()
+              .filter(segment -> first.actions().get(segment * ACTIONS_PER_SEGMENT).lane() == lane)
+              .count();
+      long actions = first.actions().stream().filter(action -> action.lane() == lane).count();
+      value.put("segments", segments);
+      value.put("actions", actions);
     }
 
     ObjectNode cluster = JsonSupport.MAPPER.createObjectNode();
+    M11ClusterRuntimeWitness uninterruptedRuntime = uninterrupted.runtimeWitnesses().getFirst();
+    M11ClusterRuntimeWitness restartedRuntime = restarted.runtimeWitnesses().getLast();
     cluster.put("schemaVersion", "matching.m11.cluster-runtime.v1");
     cluster.put("status", M11CheckRunner.PASS);
     cluster.put("implementation", "REAL_AERON_CLUSTER");
-    cluster.put("memberCount", 1);
-    cluster.put("memberId", 0);
-    cluster.put("appointedLeaderId", 0);
-    cluster.put("clusterRuns", CLUSTER_RUNS);
-    cluster.put("actionsPerRun", ACTIONS_PER_PATH);
+    cluster.put("memberCount", uninterruptedRuntime.memberCount());
+    cluster.put("memberId", uninterruptedRuntime.memberId());
+    cluster.put("appointedLeaderId", uninterruptedRuntime.appointedLeaderId());
+    cluster.put("clusterRuns", List.of(uninterrupted, restarted).size());
+    cluster.put("actionsPerRun", first.actions().size());
     cluster.put(
         "acceptedIngressOffers",
         uninterruptedHarness.ingressOffersAccepted() + restartedHarness.ingressOffersAccepted());
@@ -149,14 +192,61 @@ final class M11GeneratedSuite {
     cluster.put(
         "componentErrors",
         uninterruptedHarness.componentErrorCount() + restartedHarness.componentErrorCount());
-    cluster.put("correlationRoundTrips", TOTAL_CLUSTER_INGRESS);
+    cluster.put(
+        "componentErrorsSampledAfterTeardown",
+        uninterrupted.teardownCompleted() && restarted.teardownCompleted());
+    cluster.put(
+        "teardownsCompleted",
+        (uninterrupted.teardownCompleted() ? 1 : 0) + (restarted.teardownCompleted() ? 1 : 0));
+    cluster.put("serviceRole", restartedRuntime.serviceRole());
+    cluster.put("aeronConfiguredVersion", "1.52.2");
+    cluster.put("agronaConfiguredVersion", "2.5.0");
+    cluster.put(
+        "aeronRuntimeVersion",
+        uninterrupted.runtimeWitnesses().getFirst().aeronImplementationVersion());
+    cluster.put(
+        "agronaRuntimeVersion",
+        uninterrupted.runtimeWitnesses().getFirst().agronaImplementationVersion());
+    cluster.put("udpPortProbe", true);
+    cluster.put("portProbeMaxAttempts", MAX_PORT_PROBE_ATTEMPTS);
+    cluster.put(
+        "portProbeAttempts",
+        uninterrupted.portBlock().probeAttempts() + restarted.portBlock().probeAttempts());
+    cluster.put("portBlockSize", PORT_BLOCK_SIZE);
+    cluster.put("clusterLaunchRetryBound", MAX_CLUSTER_LAUNCH_ATTEMPTS);
+    cluster.put(
+        "clusterLaunchAttempts", uninterrupted.launchAttempts() + restarted.launchAttempts());
+    cluster.put("portBlocksDisjoint", uninterrupted.portBlock().disjoint(restarted.portBlock()));
+    cluster.put(
+        "ownedRootsDisjoint",
+        !uninterrupted
+            .runtimeWitnesses()
+            .getFirst()
+            .rootDirectory()
+            .equals(restarted.runtimeWitnesses().getFirst().rootDirectory()));
+    ArrayNode portBlocks = cluster.putArray("portBlocks");
+    addPortBlock(portBlocks, "UNINTERRUPTED", uninterrupted);
+    addPortBlock(portBlocks, "SNAPSHOT_RESTART", restarted);
+    ArrayNode runtimeWitnesses = cluster.putArray("runtimeWitnesses");
+    addRuntimeWitness(
+        runtimeWitnesses, "UNINTERRUPTED", uninterrupted.runtimeWitnesses().getFirst());
+    addRuntimeWitness(
+        runtimeWitnesses, "SNAPSHOT_RESTART_BEFORE", restarted.runtimeWitnesses().getFirst());
+    addRuntimeWitness(
+        runtimeWitnesses, "SNAPSHOT_RESTART_AFTER", restarted.runtimeWitnesses().getLast());
+    cluster.put(
+        "correlationRoundTrips",
+        uninterruptedHarness.correlatedEgressResponses()
+            + restartedHarness.correlatedEgressResponses());
     cluster.put(
         "allBusinessOutcomesFromCorrelatedEgress",
         uninterruptedHarness.ingressOffersAccepted()
                 == uninterruptedHarness.correlatedEgressResponses()
             && restartedHarness.ingressOffersAccepted()
                 == restartedHarness.correlatedEgressResponses());
-    cluster.put("singleMemberOnly", true);
+    cluster.put(
+        "singleMemberOnly",
+        uninterruptedRuntime.memberCount() == 1 && restartedRuntime.memberCount() == 1);
     cluster.put("highAvailabilityClaim", false);
     cluster.put("performanceClaim", false);
     cluster.put("dockerRequired", false);
@@ -174,89 +264,157 @@ final class M11GeneratedSuite {
         workingRoot);
   }
 
-  private static Corpus generate() {
+  static Corpus generate() {
     M11RequestCodec codec = new M11RequestCodec();
     List<Action> actions = new ArrayList<>(ACTIONS_PER_PATH);
-    List<M11CommandRequest> originals = new ArrayList<>(SNAPSHOT_AFTER_ACTION);
+    List<Original> originals = new ArrayList<>(2048);
+    List<List<Original>> currentBySegment = new ArrayList<>();
+    List<List<Original>> previousBySegment = new ArrayList<>();
+    for (int segment = 0; segment < 8; segment++) {
+      currentBySegment.add(new ArrayList<>(ACTIONS_PER_SEGMENT));
+      previousBySegment.add(new ArrayList<>(ACTIONS_PER_SEGMENT));
+    }
     M03SplitMix64V1 random = new M03SplitMix64V1(BASE_SEED);
-    for (int segment = 0; segment < 16; segment++) {
-      Lane lane = segment < 8 ? Lane.CURRENT_NEW : Lane.PREVIOUS_NEW;
-      int requestVersion = lane == Lane.CURRENT_NEW ? 2 : 1;
+    List<SegmentSpec> schedule = segmentSchedule();
+    long nextNewOrdinal = 1;
+    for (int segment = 0; segment < schedule.size(); segment++) {
+      SegmentSpec spec = schedule.get(segment);
       for (int action = 0; action < ACTIONS_PER_SEGMENT; action++) {
         int global = segment * ACTIONS_PER_SEGMENT + action;
-        M11CommandRequest request =
-            create(
-                codec,
-                requestVersion,
-                requestVersion,
-                uuid(random),
-                "m11-generated",
-                1,
-                global + 1L,
-                uuid(random),
-                place(global + 1L, random));
-        originals.add(request);
-        actions.add(new Action(global, segment, action, lane, Expected.NEW, request, "NEW"));
-      }
-    }
-    for (int segment = 16; segment < 24; segment++) {
-      for (int action = 0; action < ACTIONS_PER_SEGMENT; action++) {
-        int global = segment * ACTIONS_PER_SEGMENT + action;
-        int source = (segment - 16) * ACTIONS_PER_SEGMENT + action;
-        M11CommandRequest duplicate = originals.get(source).withCorrelationId(uuid(random));
-        actions.add(
-            new Action(
-                global,
-                segment,
-                action,
-                Lane.DUPLICATE_REPLAY,
-                Expected.DUPLICATE,
-                duplicate,
-                "SOURCE_" + source));
-      }
-    }
-    for (int segment = 24; segment < 32; segment++) {
-      for (int action = 0; action < ACTIONS_PER_SEGMENT; action++) {
-        int global = segment * ACTIONS_PER_SEGMENT + action;
-        int source = (8 + segment - 24) * ACTIONS_PER_SEGMENT + action;
-        M11CommandRequest original = originals.get(source);
-        boolean commandConflict = (action & 1) == 0;
-        M11CommandRequest conflict =
-            create(
-                codec,
-                original.protocolVersion(),
-                original.requestedResponseVersion(),
-                uuid(random),
-                commandConflict ? "m11-conflict-" + global : original.slot().producerId(),
-                original.slot().producerEpoch(),
-                commandConflict ? 1 : original.slot().producerSequence(),
-                commandConflict ? original.commandId() : uuid(random),
-                conflictingPlace(global + 1L, random));
-        String detail = commandConflict ? "COMMAND_ID_SLOT_CONFLICT" : "SLOT_IDENTITY_CONFLICT";
-        actions.add(
-            new Action(
-                global,
-                segment,
-                action,
-                Lane.IDENTITY_CONFLICT,
-                Expected.CONFLICT,
-                conflict,
-                detail));
+        switch (spec.lane()) {
+          case CURRENT_NEW, PREVIOUS_NEW -> {
+            int requestVersion = spec.lane() == Lane.CURRENT_NEW ? 2 : 1;
+            long newOrdinal = nextNewOrdinal++;
+            M11CommandRequest request =
+                create(
+                    codec,
+                    requestVersion,
+                    requestVersion,
+                    uuid(random),
+                    "m11-generated",
+                    1,
+                    newOrdinal,
+                    uuid(random),
+                    place(newOrdinal, random));
+            Original original = new Original(global, newOrdinal, request);
+            originals.add(original);
+            (spec.lane() == Lane.CURRENT_NEW ? currentBySegment : previousBySegment)
+                .get(spec.laneIndex())
+                .add(original);
+            actions.add(
+                new Action(
+                    global,
+                    segment,
+                    action,
+                    spec.lane(),
+                    spec.laneIndex(),
+                    Expected.NEW,
+                    request,
+                    newOrdinal,
+                    -1,
+                    false,
+                    "NEW_" + newOrdinal));
+          }
+          case DUPLICATE_REPLAY -> {
+            Original source =
+                spec.laneIndex() < 4
+                    ? currentBySegment.get(spec.laneIndex()).get(action)
+                    : previousBySegment.get(spec.laneIndex() - 4).get(action);
+            boolean crossSnapshot = spec.laneIndex() >= 4;
+            M11CommandRequest duplicate = source.request().withCorrelationId(uuid(random));
+            actions.add(
+                new Action(
+                    global,
+                    segment,
+                    action,
+                    spec.lane(),
+                    spec.laneIndex(),
+                    Expected.DUPLICATE,
+                    duplicate,
+                    0,
+                    source.actionIndex(),
+                    crossSnapshot,
+                    "SOURCE_NEW_" + source.newOrdinal()));
+          }
+          case IDENTITY_CONFLICT -> {
+            int conflictOrdinal = spec.laneIndex() * ACTIONS_PER_SEGMENT + action;
+            Original source = originals.get(conflictOrdinal);
+            M11CommandRequest original = source.request();
+            boolean commandConflict = (conflictOrdinal & 1) == 0;
+            M11CommandRequest conflict =
+                create(
+                    codec,
+                    original.protocolVersion(),
+                    original.requestedResponseVersion(),
+                    uuid(random),
+                    commandConflict ? "m11-conflict-" + global : original.slot().producerId(),
+                    original.slot().producerEpoch(),
+                    commandConflict ? 1 : original.slot().producerSequence(),
+                    commandConflict ? original.commandId() : uuid(random),
+                    conflictingPlace(global + 1L, random));
+            String detail = commandConflict ? "COMMAND_ID_SLOT_CONFLICT" : "SLOT_IDENTITY_CONFLICT";
+            actions.add(
+                new Action(
+                    global,
+                    segment,
+                    action,
+                    spec.lane(),
+                    spec.laneIndex(),
+                    Expected.CONFLICT,
+                    conflict,
+                    0,
+                    source.actionIndex(),
+                    false,
+                    detail));
+          }
+        }
       }
     }
     require(actions.size() == ACTIONS_PER_PATH, "M11 generator did not fill the corpus");
-    return new Corpus(List.copyOf(actions), canonical(actions));
+    require(nextNewOrdinal == 2049, "M11 generator NEW ordinal count changed");
+    return new Corpus(
+        List.copyOf(actions), canonical(actions), schedule.stream().map(SegmentSpec::id).toList());
   }
 
-  private static DirectRun runDirect(Corpus corpus) {
+  static DirectRun runDirect(Corpus corpus) {
     DirectM11MatchingRuntime runtime = new DirectM11MatchingRuntime();
     List<M11ApplicationResult> results = new ArrayList<>(ACTIONS_PER_PATH);
     Map<Expected, Integer> counts = new EnumMap<>(Expected.class);
     int commandConflicts = 0;
     int slotConflicts = 0;
+    int duplicateInvariantChecks = 0;
+    int conflictInvariantChecks = 0;
+    long expectedNewOrdinal = 1;
     for (Action action : corpus.actions()) {
+      M11RuntimeState before = action.expected() == Expected.NEW ? null : runtime.stateImage();
+      String cursorBefore = before == null ? null : producerCursorWitness(before);
       M11ApplicationResult result = runtime.submit(action.request());
       verifyExpected(action, result.response());
+      if (action.expected() == Expected.NEW) {
+        require(action.newOrdinal() == expectedNewOrdinal, "NEW ordinal is discontinuous");
+        require(
+            action.request().slot().producerSequence() == expectedNewOrdinal,
+            "producer sequence is discontinuous");
+        require(
+            result.response().applicationSequence().orElseThrow() == expectedNewOrdinal,
+            "application sequence is discontinuous");
+        expectedNewOrdinal++;
+      } else {
+        M11RuntimeState after = runtime.stateImage();
+        require(before.equals(after), "non-mutating action changed direct state");
+        require(
+            cursorBefore.equals(producerCursorWitness(after)),
+            "non-mutating action changed producer cursors");
+        if (action.expected() == Expected.DUPLICATE) {
+          M11ApplicationResult original = results.get(action.sourceActionIndex());
+          require(
+              result.fullResult().equals(original.fullResult()),
+              "duplicate did not replay its original full result");
+          duplicateInvariantChecks++;
+        } else {
+          conflictInvariantChecks++;
+        }
+      }
       results.add(result);
       counts.merge(action.expected(), 1, Integer::sum);
       if ("COMMAND_ID_SLOT_CONFLICT".equals(action.detail())) {
@@ -265,14 +423,22 @@ final class M11GeneratedSuite {
         slotConflicts++;
       }
     }
-    require(runtime.nextApplicationSequence() == 2049, "direct application sequence changed");
-    require(runtime.stateImage().identityBindings().size() == 2048, "direct identity size changed");
+    int newApplications = counts.getOrDefault(Expected.NEW, 0);
+    require(
+        runtime.nextApplicationSequence() == newApplications + 1L,
+        "direct application sequence changed");
+    require(
+        runtime.stateImage().identityBindings().size() == newApplications,
+        "direct identity size changed");
     return new DirectRun(
         List.copyOf(results),
         runtime.stateImage(),
         Map.copyOf(counts),
         commandConflicts,
-        slotConflicts);
+        slotConflicts,
+        duplicateInvariantChecks,
+        conflictInvariantChecks,
+        expectedNewOrdinal == 2049);
   }
 
   private static ClusterRun runCluster(
@@ -280,10 +446,12 @@ final class M11GeneratedSuite {
       List<M11ApplicationResult> expected,
       Path root,
       boolean restart,
-      int preferredPort) {
+      int preferredPort,
+      List<PortBlock> excludedPortBlocks) {
     createDirectories(root);
-    int portBase = findPortBlock(preferredPort);
-    M11SingleNodeConfig config = M11SingleNodeConfig.defaults(root, SHARD, portBase);
+    LaunchedHarness launched = launchHarness(root, preferredPort, excludedPortBlocks);
+    PortBlock portBlock = launched.portBlock();
+    M11SingleNodeConfig config = launched.config();
     List<M11CommandResponse> responses = new ArrayList<>(ACTIONS_PER_PATH);
     M11RuntimeState beforeSnapshot = null;
     String beforeIdentityDigest = null;
@@ -293,8 +461,44 @@ final class M11GeneratedSuite {
     boolean directoriesPresentBefore = false;
     boolean directoriesPresentAfter = false;
     M11SnapshotWitness completedSnapshot = null;
+    M11RuntimeState finalState = null;
+    List<M11ApplicationResult> applications = List.of();
+    List<Long> sessionIds = List.of();
+    List<M11ClusterRuntimeWitness> runtimeWitnesses = new ArrayList<>();
+    int crossSnapshotFullResultChecks = 0;
+    int crossSnapshotStateChecks = 0;
+    int crossSnapshotSequenceChecks = 0;
+    int crossSnapshotIdentityChecks = 0;
+    int crossSnapshotCursorChecks = 0;
+    int conflictStateChecks = 0;
+    int conflictSequenceChecks = 0;
+    int conflictIdentityChecks = 0;
+    int conflictCursorChecks = 0;
+    long firstPostRestartApplicationSequence = -1;
+    long firstPostRestartProducerSequence = -1;
+    String firstPostRestartLane = "";
+    String firstPostRestartStatus = "";
+    long preSnapshotSessionId = -1;
+    long postRestartSessionId = -1;
+    long replayedDuplicateSessionId = -1;
+    boolean identityReplayedAcrossSessions = false;
+    int prefixNew =
+        (int)
+            corpus.actions().subList(0, SNAPSHOT_AFTER_ACTION).stream()
+                .filter(action -> action.expected() == Expected.NEW)
+                .count();
+    int prefixDuplicate =
+        (int)
+            corpus.actions().subList(0, SNAPSHOT_AFTER_ACTION).stream()
+                .filter(action -> action.expected() == Expected.DUPLICATE)
+                .count();
     ObjectNode snapshot = JsonSupport.MAPPER.createObjectNode();
-    try (M11SingleNodeHarness harness = M11SingleNodeHarness.launchFresh(config)) {
+    M11SingleNodeHarness harness = launched.harness();
+    Throwable executionFailure = null;
+    boolean teardownCompleted = false;
+    try {
+      runtimeWitnesses.add(harness.runtimeWitness(RESPONSE_TIMEOUT));
+      verifyRuntimeWitness(runtimeWitnesses.getFirst(), config);
       for (int index = 0; index < corpus.actions().size(); index++) {
         if (restart && index == SNAPSHOT_AFTER_ACTION) {
           beforeSnapshot = harness.stateImage();
@@ -317,6 +521,9 @@ final class M11GeneratedSuite {
           infrastructureRequire(
               harness.componentErrors().isEmpty(), "component error before Cluster restart");
           harness.restartFromSnapshot();
+          M11ClusterRuntimeWitness restartedWitness = harness.runtimeWitness(RESPONSE_TIMEOUT);
+          verifyRuntimeWitness(restartedWitness, config);
+          runtimeWitnesses.add(restartedWitness);
           directoriesPresentAfter =
               Files.isRegularFile(config.clusterDirectory().resolve("recording.log"))
                   && Files.isDirectory(config.archiveDirectory());
@@ -349,134 +556,267 @@ final class M11GeneratedSuite {
               "restart loaded a different application snapshot");
         }
         Action action = corpus.actions().get(index);
+        boolean crossSnapshotDuplicate = restart && action.crossSnapshotDuplicate();
+        boolean conflict = restart && action.expected() == Expected.CONFLICT;
+        M11RuntimeState stateBefore =
+            crossSnapshotDuplicate || conflict ? harness.stateImage() : null;
+        long sequenceBefore = stateBefore == null ? -1 : stateBefore.nextApplicationSequence();
+        List<io.github.lchareln.cex.matching.cluster.M11IdentityBinding> identitiesBefore =
+            stateBefore == null ? List.of() : stateBefore.identityBindings();
+        String cursorBefore = stateBefore == null ? "" : producerCursorWitness(stateBefore);
         M11CommandResponse response = harness.submit(action.request(), RESPONSE_TIMEOUT);
         verifyExpected(action, response);
         require(
             response.equals(expected.get(index).response()),
             "Cluster response diverged at action " + index);
         responses.add(response);
+        if (restart && index == SNAPSHOT_AFTER_ACTION) {
+          firstPostRestartApplicationSequence = response.applicationSequence().orElseThrow();
+          firstPostRestartProducerSequence = action.request().slot().producerSequence();
+          firstPostRestartLane = action.lane().name();
+          firstPostRestartStatus = response.status().name();
+          require(action.expected() == Expected.NEW, "first post-restart action is not NEW");
+          require(
+              firstPostRestartApplicationSequence == beforeNextSequence,
+              "first post-restart application sequence did not continue");
+          require(
+              firstPostRestartProducerSequence == beforeNextSequence,
+              "first post-restart producer sequence did not continue");
+        }
+        if (stateBefore != null) {
+          M11RuntimeState stateAfter = harness.stateImage();
+          require(stateBefore.equals(stateAfter), "non-mutating Cluster action changed state");
+          require(
+              sequenceBefore == stateAfter.nextApplicationSequence(),
+              "non-mutating Cluster action advanced application sequence");
+          require(
+              identitiesBefore.equals(stateAfter.identityBindings()),
+              "non-mutating Cluster action changed identity bindings");
+          require(
+              cursorBefore.equals(producerCursorWitness(stateAfter)),
+              "non-mutating Cluster action changed producer cursors");
+          if (crossSnapshotDuplicate) {
+            crossSnapshotStateChecks++;
+            crossSnapshotSequenceChecks++;
+            crossSnapshotIdentityChecks++;
+            crossSnapshotCursorChecks++;
+          } else {
+            conflictStateChecks++;
+            conflictSequenceChecks++;
+            conflictIdentityChecks++;
+            conflictCursorChecks++;
+          }
+        }
       }
       List<M11ServiceObservation> observations = harness.observations();
       require(observations.size() == ACTIONS_PER_PATH, "Cluster observation count changed");
-      List<Long> sessionIds =
+      sessionIds =
           observations.stream().map(M11ServiceObservation::clusterSessionId).distinct().toList();
-      long preSnapshotSessionId = observations.getFirst().clusterSessionId();
-      long postRestartSessionId =
+      preSnapshotSessionId = observations.getFirst().clusterSessionId();
+      postRestartSessionId =
           restart
               ? observations.get(SNAPSHOT_AFTER_ACTION).clusterSessionId()
               : preSnapshotSessionId;
-      boolean identityReplayedAcrossSessions = false;
+      applications = observations.stream().map(M11ServiceObservation::applicationResult).toList();
       if (restart) {
+        for (int index = SNAPSHOT_AFTER_ACTION; index < corpus.actions().size(); index++) {
+          Action action = corpus.actions().get(index);
+          if (!action.crossSnapshotDuplicate()) {
+            continue;
+          }
+          require(
+              action.sourceActionIndex() < SNAPSHOT_AFTER_ACTION,
+              "duplicate source is not snapshotted");
+          M11ApplicationResult original = applications.get(action.sourceActionIndex());
+          M11ApplicationResult replay = applications.get(index);
+          require(
+              replay.fullResult().equals(original.fullResult()),
+              "cross-snapshot duplicate lost its original full result");
+          require(
+              replay.fullResult().equals(expected.get(action.sourceActionIndex()).fullResult()),
+              "cross-snapshot duplicate disagreed with the direct original result");
+          require(
+              replay
+                  .response()
+                  .applicationSequence()
+                  .equals(original.response().applicationSequence()),
+              "cross-snapshot duplicate changed the original application sequence");
+          crossSnapshotFullResultChecks++;
+          if (replayedDuplicateSessionId < 0) {
+            preSnapshotSessionId = observations.get(action.sourceActionIndex()).clusterSessionId();
+            replayedDuplicateSessionId = observations.get(index).clusterSessionId();
+          }
+        }
         identityReplayedAcrossSessions =
-            preSnapshotSessionId != postRestartSessionId
-                && corpus
-                    .actions()
-                    .getFirst()
-                    .request()
-                    .commandId()
-                    .equals(corpus.actions().get(SNAPSHOT_AFTER_ACTION).request().commandId())
-                && observations
-                    .getFirst()
-                    .applicationResult()
-                    .fullResult()
-                    .equals(
-                        observations.get(SNAPSHOT_AFTER_ACTION).applicationResult().fullResult());
+            crossSnapshotFullResultChecks > 0 && preSnapshotSessionId != replayedDuplicateSessionId;
         require(sessionIds.size() >= 2, "restart path did not observe a new client session");
         require(
             identityReplayedAcrossSessions,
             "same durable identity was not replayed across client sessions");
       }
-      List<M11ApplicationResult> applications =
-          observations.stream().map(M11ServiceObservation::applicationResult).toList();
       require(applications.equals(expected), "Cluster full business observations diverged");
       infrastructureRequire(
           harness.componentErrors().isEmpty(), "Aeron component errors were observed");
-      M11RuntimeState finalState = harness.stateImage();
-      M11HarnessReport harnessReport = harness.report();
-      if (restart) {
-        require(beforeSnapshot != null, "snapshot cut was not executed");
-        require(completedSnapshot != null, "snapshot completion witness is missing");
-        M11ApplicationSnapshotWitness application = completedSnapshot.applicationSnapshot();
-        snapshot.put("schemaVersion", "matching.m11.snapshot-restart.v1");
-        snapshot.put("status", M11CheckRunner.PASS);
-        snapshot.put("requestedAfterAction", SNAPSHOT_AFTER_ACTION);
-        snapshot.put(
-            "adminRequestAccepted",
-            completedSnapshot.adminAcceptance().correlationId() > 0
-                && "SNAPSHOT".equals(completedSnapshot.adminAcceptance().requestType().name())
-                && "OK".equals(completedSnapshot.adminAcceptance().responseCode().name()));
-        snapshot.put(
-            "completionBounded",
-            completedSnapshot.completion().completionCountAfter()
-                > completedSnapshot.completion().completionCountBefore());
-        snapshot.put(
-            "controlToggleResetToNeutral",
-            "NEUTRAL".equals(completedSnapshot.completion().controlToggleState().name()));
-        snapshot.put(
-            "recordingLogNewSnapshotEntry", completedSnapshot.completion().recordingIdsChanged());
-        snapshot.put(
-            "acceptanceDistinctFromCompletion",
-            completedSnapshot.adminAcceptance().correlationId() > 0
-                && completedSnapshot.completion().completionCountAfter()
-                    > completedSnapshot.completion().completionCountBefore());
-        snapshot.put("closedOnlyAfterCompletion", harnessReport.snapshotsCompleted() == 1);
-        snapshot.put("restartCount", harnessReport.restarts());
-        snapshot.put(
-            "directoriesPreserved",
-            directoriesPresentBefore
-                && directoriesPresentAfter
-                && harnessReport.restartDirectoriesPreserved());
-        snapshot.put("loadedSnapshot", harnessReport.completedSnapshotLoaded());
-        snapshot.put(
-            "identityDigestExact", application.identityTableDigest().equals(beforeIdentityDigest));
-        snapshot.put(
-            "semanticDigestExact", application.semanticStateDigest().equals(beforeSemanticDigest));
-        snapshot.put(
-            "nextApplicationSequenceExact",
-            application.nextApplicationSequence() == beforeNextSequence);
-        snapshot.put("duplicateOriginalResultsSurvived", 1024);
-        snapshot.put("conflictsRemainNonMutating", 1024);
-        snapshot.put("distinctClientSessionIds", sessionIds.size());
-        snapshot.put("preSnapshotSessionId", preSnapshotSessionId);
-        snapshot.put("postRestartSessionId", postRestartSessionId);
-        snapshot.put("identityReplayedAcrossSessions", identityReplayedAcrossSessions);
-        snapshot.put("adminCorrelationId", completedSnapshot.adminAcceptance().correlationId());
-        snapshot.put(
-            "completionCountBefore", completedSnapshot.completion().completionCountBefore());
-        snapshot.put("completionCountAfter", completedSnapshot.completion().completionCountAfter());
-        snapshot.put("controlToggleState", "NEUTRAL");
-        snapshot.put(
-            "previousServiceRecordingId",
-            completedSnapshot.completion().previousServiceRecordingId());
-        snapshot.put(
-            "previousConsensusRecordingId",
-            completedSnapshot.completion().previousConsensusRecordingId());
-        snapshot.put(
-            "serviceLeadershipTermId", completedSnapshot.completion().serviceLeadershipTermId());
-        snapshot.put(
-            "consensusLeadershipTermId",
-            completedSnapshot.completion().consensusLeadershipTermId());
-        snapshot.put("serviceLogPosition", completedSnapshot.completion().serviceLogPosition());
-        snapshot.put("consensusLogPosition", completedSnapshot.completion().consensusLogPosition());
-        snapshot.put("serviceRecordingId", completedSnapshot.completion().serviceRecordingId());
-        snapshot.put("consensusRecordingId", completedSnapshot.completion().consensusRecordingId());
-        snapshot.put("recordingIdsChanged", completedSnapshot.completion().recordingIdsChanged());
-        snapshot.put(
-            "sameTermAndLogPosition", completedSnapshot.completion().sameTermAndLogPosition());
-        snapshot.put("snapshotSequence", application.snapshotSequence());
-        snapshot.put("snapshotStateSha256", beforeSnapshotDigest);
-        snapshot.put("identityTableSha256", beforeIdentityDigest);
-        snapshot.put("semanticStateSha256", beforeSemanticDigest);
-        snapshot.put("restoredNextApplicationSequence", beforeNextSequence);
+      finalState = harness.stateImage();
+    } catch (RuntimeException | Error failure) {
+      executionFailure = failure;
+    } finally {
+      try {
+        harness.close();
+        teardownCompleted = true;
+      } catch (RuntimeException | Error closeFailure) {
+        if (executionFailure == null) {
+          executionFailure = closeFailure;
+        } else {
+          executionFailure.addSuppressed(closeFailure);
+        }
       }
-      return new ClusterRun(
-          List.copyOf(responses),
-          applications,
-          finalState,
-          snapshot,
-          harnessReport,
-          observations.size());
     }
+    M11HarnessReport harnessReport = harness.report();
+    if (executionFailure != null) {
+      if (executionFailure instanceof RuntimeException runtimeFailure) {
+        throw runtimeFailure;
+      }
+      throw (Error) executionFailure;
+    }
+    infrastructureRequire(teardownCompleted, "Cluster teardown did not complete");
+    infrastructureRequire(
+        harnessReport.componentErrorCount() == 0,
+        "Aeron component errors were observed during or after teardown");
+    if (restart) {
+      int expectedCrossSnapshotDuplicates =
+          (int) corpus.actions().stream().filter(Action::crossSnapshotDuplicate).count();
+      int expectedConflicts =
+          (int)
+              corpus.actions().stream()
+                  .filter(action -> action.expected() == Expected.CONFLICT)
+                  .count();
+      require(prefixNew == 1536, "snapshot prefix NEW count differs from the frozen schedule");
+      require(
+          prefixDuplicate == 512,
+          "snapshot prefix duplicate count differs from the frozen schedule");
+      require(
+          crossSnapshotFullResultChecks == expectedCrossSnapshotDuplicates,
+          "not every cross-snapshot duplicate replayed its full original result");
+      require(
+          crossSnapshotStateChecks == expectedCrossSnapshotDuplicates
+              && crossSnapshotSequenceChecks == expectedCrossSnapshotDuplicates
+              && crossSnapshotIdentityChecks == expectedCrossSnapshotDuplicates
+              && crossSnapshotCursorChecks == expectedCrossSnapshotDuplicates,
+          "not every cross-snapshot duplicate preserved all state witnesses");
+      require(
+          conflictStateChecks == expectedConflicts
+              && conflictSequenceChecks == expectedConflicts
+              && conflictIdentityChecks == expectedConflicts
+              && conflictCursorChecks == expectedConflicts,
+          "not every identity conflict preserved all state witnesses");
+      require(beforeSnapshot != null, "snapshot cut was not executed");
+      require(completedSnapshot != null, "snapshot completion witness is missing");
+      M11ApplicationSnapshotWitness application = completedSnapshot.applicationSnapshot();
+      snapshot.put("schemaVersion", "matching.m11.snapshot-restart.v1");
+      snapshot.put("status", M11CheckRunner.PASS);
+      snapshot.put("requestedAfterAction", SNAPSHOT_AFTER_ACTION);
+      snapshot.put("snapshotPrefixNewApplied", prefixNew);
+      snapshot.put("snapshotPrefixDuplicateReplayed", prefixDuplicate);
+      snapshot.put("snapshotIdentityBindings", beforeSnapshot.identityBindings().size());
+      snapshot.put("snapshotNextApplicationSequence", beforeNextSequence);
+      snapshot.put("firstPostRestartLane", firstPostRestartLane);
+      snapshot.put("firstPostRestartStatus", firstPostRestartStatus);
+      snapshot.put("firstPostRestartApplicationSequence", firstPostRestartApplicationSequence);
+      snapshot.put("firstPostRestartProducerSequence", firstPostRestartProducerSequence);
+      snapshot.put("postRestartCrossSnapshotDuplicates", crossSnapshotFullResultChecks);
+      snapshot.put("postRestartDuplicateFullResultExact", crossSnapshotFullResultChecks > 0);
+      snapshot.put("postRestartDuplicateStateInvariantChecks", crossSnapshotStateChecks);
+      snapshot.put("postRestartDuplicateSequenceInvariantChecks", crossSnapshotSequenceChecks);
+      snapshot.put("postRestartDuplicateIdentityInvariantChecks", crossSnapshotIdentityChecks);
+      snapshot.put("postRestartDuplicateCursorInvariantChecks", crossSnapshotCursorChecks);
+      snapshot.put("postRestartConflictStateInvariantChecks", conflictStateChecks);
+      snapshot.put("postRestartConflictSequenceInvariantChecks", conflictSequenceChecks);
+      snapshot.put("postRestartConflictIdentityInvariantChecks", conflictIdentityChecks);
+      snapshot.put("postRestartConflictCursorInvariantChecks", conflictCursorChecks);
+      snapshot.put(
+          "adminRequestAccepted",
+          completedSnapshot.adminAcceptance().correlationId() > 0
+              && "SNAPSHOT".equals(completedSnapshot.adminAcceptance().requestType().name())
+              && "OK".equals(completedSnapshot.adminAcceptance().responseCode().name()));
+      snapshot.put(
+          "completionBounded",
+          completedSnapshot.completion().completionCountAfter()
+              > completedSnapshot.completion().completionCountBefore());
+      snapshot.put(
+          "controlToggleResetToNeutral",
+          "NEUTRAL".equals(completedSnapshot.completion().controlToggleState().name()));
+      snapshot.put(
+          "recordingLogNewSnapshotEntry", completedSnapshot.completion().recordingIdsChanged());
+      snapshot.put(
+          "acceptanceDistinctFromCompletion",
+          completedSnapshot.adminAcceptance().correlationId() > 0
+              && completedSnapshot.completion().completionCountAfter()
+                  > completedSnapshot.completion().completionCountBefore());
+      snapshot.put(
+          "closedOnlyAfterCompletion",
+          teardownCompleted && harnessReport.snapshotsCompleted() == 1);
+      snapshot.put("componentErrorsAfterTeardown", harnessReport.componentErrorCount());
+      snapshot.put("restartCount", harnessReport.restarts());
+      snapshot.put(
+          "directoriesPreserved",
+          directoriesPresentBefore
+              && directoriesPresentAfter
+              && harnessReport.restartDirectoriesPreserved());
+      snapshot.put("loadedSnapshot", harnessReport.completedSnapshotLoaded());
+      snapshot.put(
+          "identityDigestExact", application.identityTableDigest().equals(beforeIdentityDigest));
+      snapshot.put(
+          "semanticDigestExact", application.semanticStateDigest().equals(beforeSemanticDigest));
+      snapshot.put(
+          "nextApplicationSequenceExact",
+          application.nextApplicationSequence() == beforeNextSequence);
+      snapshot.put("duplicateOriginalResultsSurvived", crossSnapshotFullResultChecks);
+      snapshot.put("conflictsRemainNonMutating", conflictStateChecks);
+      snapshot.put("distinctClientSessionIds", sessionIds.size());
+      snapshot.put("preSnapshotSessionId", preSnapshotSessionId);
+      snapshot.put("postRestartSessionId", postRestartSessionId);
+      snapshot.put("replayedDuplicateSessionId", replayedDuplicateSessionId);
+      snapshot.put("identityReplayedAcrossSessions", identityReplayedAcrossSessions);
+      snapshot.put("adminCorrelationId", completedSnapshot.adminAcceptance().correlationId());
+      snapshot.put("completionCountBefore", completedSnapshot.completion().completionCountBefore());
+      snapshot.put("completionCountAfter", completedSnapshot.completion().completionCountAfter());
+      snapshot.put("controlToggleState", "NEUTRAL");
+      snapshot.put(
+          "previousServiceRecordingId",
+          completedSnapshot.completion().previousServiceRecordingId());
+      snapshot.put(
+          "previousConsensusRecordingId",
+          completedSnapshot.completion().previousConsensusRecordingId());
+      snapshot.put(
+          "serviceLeadershipTermId", completedSnapshot.completion().serviceLeadershipTermId());
+      snapshot.put(
+          "consensusLeadershipTermId", completedSnapshot.completion().consensusLeadershipTermId());
+      snapshot.put("serviceLogPosition", completedSnapshot.completion().serviceLogPosition());
+      snapshot.put("consensusLogPosition", completedSnapshot.completion().consensusLogPosition());
+      snapshot.put("serviceRecordingId", completedSnapshot.completion().serviceRecordingId());
+      snapshot.put("consensusRecordingId", completedSnapshot.completion().consensusRecordingId());
+      snapshot.put("recordingIdsChanged", completedSnapshot.completion().recordingIdsChanged());
+      snapshot.put(
+          "sameTermAndLogPosition", completedSnapshot.completion().sameTermAndLogPosition());
+      snapshot.put("snapshotSequence", application.snapshotSequence());
+      snapshot.put("snapshotStateSha256", beforeSnapshotDigest);
+      snapshot.put("identityTableSha256", beforeIdentityDigest);
+      snapshot.put("semanticStateSha256", beforeSemanticDigest);
+      snapshot.put("restoredNextApplicationSequence", beforeNextSequence);
+      snapshot.put("finalNextApplicationSequence", finalState.nextApplicationSequence());
+    }
+    return new ClusterRun(
+        List.copyOf(responses),
+        applications,
+        finalState,
+        snapshot,
+        harnessReport,
+        applications.size(),
+        portBlock,
+        List.copyOf(runtimeWitnesses),
+        teardownCompleted,
+        launched.launchAttempts());
   }
 
   private static void verifyCompletedSnapshot(
@@ -524,12 +864,19 @@ final class M11GeneratedSuite {
         "snapshot next application sequence changed");
   }
 
-  private static void requireClusterCounts(M11HarnessReport report, boolean restarted) {
+  private static void requireClusterCounts(
+      M11HarnessReport report, boolean restarted, Map<Expected, Integer> expectedCounts) {
     require(report.ingressOffersAccepted() == ACTIONS_PER_PATH, "Cluster ingress count changed");
     require(report.correlatedEgressResponses() == ACTIONS_PER_PATH, "Cluster egress count changed");
-    require(report.newBusinessApplications() == 2048, "Cluster NEW count changed");
-    require(report.duplicateReplays() == 1024, "Cluster duplicate count changed");
-    require(report.rejectedApplications() == 1024, "Cluster rejection count changed");
+    require(
+        report.newBusinessApplications() == expectedCounts.getOrDefault(Expected.NEW, 0),
+        "Cluster NEW count changed");
+    require(
+        report.duplicateReplays() == expectedCounts.getOrDefault(Expected.DUPLICATE, 0),
+        "Cluster duplicate count changed");
+    require(
+        report.rejectedApplications() == expectedCounts.getOrDefault(Expected.CONFLICT, 0),
+        "Cluster rejection count changed");
     infrastructureRequire(
         report.componentErrorCount() == 0, "Cluster component error count changed");
     require(
@@ -570,6 +917,92 @@ final class M11GeneratedSuite {
     }
     require(
         response.correlationId().equals(action.request().correlationId()), "correlation changed");
+  }
+
+  private static void verifyRuntimeWitness(
+      M11ClusterRuntimeWitness witness, M11SingleNodeConfig config) {
+    require(witness.clusterId() == config.clusterId(), "runtime cluster ID differs from config");
+    require(witness.memberCount() == 1, "runtime member count is not one");
+    require(witness.memberId() == 0, "runtime member ID is not zero");
+    require(witness.appointedLeaderId() == 0, "runtime appointed leader is not zero");
+    require(
+        witness.clusterMembers().equals(config.clusterMembers()),
+        "runtime cluster member string differs from config");
+    require("LEADER".equals(witness.serviceRole()), "ClusteredService role is not LEADER");
+    require(
+        "1.52.2".equals(witness.aeronImplementationVersion()),
+        "runtime Aeron version is not 1.52.2");
+    require(
+        "2.5.0".equals(witness.agronaImplementationVersion()),
+        "runtime Agrona version is not 2.5.0");
+    require(
+        witness.rootDirectory().equals(config.rootDirectory().toString()),
+        "runtime root differs from config");
+    require(
+        witness.udpPortBlockBase() == config.portBase(),
+        "runtime UDP port block differs from config");
+  }
+
+  private static List<SegmentSpec> segmentSchedule() {
+    List<SegmentSpec> result = new ArrayList<>(SEGMENTS);
+    for (int index = 0; index < 8; index++) {
+      result.add(new SegmentSpec(Lane.CURRENT_NEW, index));
+    }
+    for (int index = 0; index < 4; index++) {
+      result.add(new SegmentSpec(Lane.DUPLICATE_REPLAY, index));
+    }
+    for (int index = 0; index < 8; index++) {
+      result.add(new SegmentSpec(Lane.PREVIOUS_NEW, index));
+    }
+    for (int index = 4; index < 8; index++) {
+      result.add(new SegmentSpec(Lane.DUPLICATE_REPLAY, index));
+    }
+    for (int index = 0; index < 8; index++) {
+      result.add(new SegmentSpec(Lane.IDENTITY_CONFLICT, index));
+    }
+    require(result.size() == SEGMENTS, "M11 segment schedule changed");
+    return List.copyOf(result);
+  }
+
+  private static String producerCursorWitness(M11RuntimeState state) {
+    java.util.SortedMap<String, String> cursors = new java.util.TreeMap<>();
+    for (io.github.lchareln.cex.matching.cluster.M11IdentityBinding binding :
+        state.identityBindings()) {
+      String producer = binding.slot().producerId() + '\u0000' + binding.slot().shardId();
+      cursors.put(
+          producer,
+          binding.slot().producerEpoch()
+              + ":"
+              + Math.incrementExact(binding.slot().producerSequence()));
+    }
+    return cursors.toString();
+  }
+
+  private static void addPortBlock(ArrayNode target, String run, ClusterRun clusterRun) {
+    ObjectNode block = target.addObject();
+    block.put("run", run);
+    block.put("root", clusterRun.runtimeWitnesses().getFirst().rootDirectory());
+    block.put("protocol", "UDP");
+    block.put("base", clusterRun.portBlock().base());
+    block.put("last", clusterRun.portBlock().last());
+    block.put("size", PORT_BLOCK_SIZE);
+    block.put("probeAttempts", clusterRun.portBlock().probeAttempts());
+  }
+
+  private static void addRuntimeWitness(
+      ArrayNode target, String phase, M11ClusterRuntimeWitness witness) {
+    ObjectNode value = target.addObject();
+    value.put("phase", phase);
+    value.put("clusterId", witness.clusterId());
+    value.put("memberCount", witness.memberCount());
+    value.put("memberId", witness.memberId());
+    value.put("appointedLeaderId", witness.appointedLeaderId());
+    value.put("clusterMembers", witness.clusterMembers());
+    value.put("serviceRole", witness.serviceRole());
+    value.put("aeronImplementationVersion", witness.aeronImplementationVersion());
+    value.put("agronaImplementationVersion", witness.agronaImplementationVersion());
+    value.put("rootDirectory", witness.rootDirectory());
+    value.put("udpPortBlockBase", witness.udpPortBlockBase());
   }
 
   private static M11CommandRequest create(
@@ -638,7 +1071,11 @@ final class M11GeneratedSuite {
           out.writeInt(action.segment());
           out.writeInt(action.action());
           out.writeByte(action.lane().ordinal());
+          out.writeInt(action.laneIndex());
           out.writeByte(action.expected().ordinal());
+          out.writeLong(action.newOrdinal());
+          out.writeInt(action.sourceActionIndex());
+          out.writeBoolean(action.crossSnapshotDuplicate());
           out.writeInt(encoded.length);
           out.write(encoded);
         }
@@ -649,32 +1086,79 @@ final class M11GeneratedSuite {
     }
   }
 
-  private static int findPortBlock(int preferred) {
-    for (int candidate = preferred; candidate <= 60_000; candidate += 7) {
-      List<ServerSocket> sockets = new ArrayList<>();
+  private static LaunchedHarness launchHarness(
+      Path root, int preferredPort, List<PortBlock> excludedPortBlocks) {
+    List<PortBlock> unavailable = new ArrayList<>(excludedPortBlocks);
+    RuntimeException lastBindFailure = null;
+    for (int launchAttempt = 1; launchAttempt <= MAX_CLUSTER_LAUNCH_ATTEMPTS; launchAttempt++) {
+      PortBlock portBlock = findUdpPortBlock(preferredPort, unavailable);
+      M11SingleNodeConfig config = M11SingleNodeConfig.defaults(root, SHARD, portBlock.base());
       try {
-        for (int offset = 0; offset < 6; offset++) {
-          ServerSocket socket = new ServerSocket();
+        return new LaunchedHarness(
+            config, portBlock, M11SingleNodeHarness.launchFresh(config), launchAttempt);
+      } catch (RuntimeException failure) {
+        if (!isPortBindFailure(failure)) {
+          throw failure;
+        }
+        lastBindFailure = failure;
+        unavailable.add(portBlock);
+        M09ScenarioSupport.deleteTree(root);
+        createDirectories(root);
+      }
+    }
+    throw new IllegalStateException(
+        "M11 Cluster exhausted the bounded UDP bind retry budget", lastBindFailure);
+  }
+
+  private static boolean isPortBindFailure(Throwable failure) {
+    for (Throwable cursor = failure; cursor != null; cursor = cursor.getCause()) {
+      if (cursor instanceof java.net.BindException) {
+        return true;
+      }
+      String message = cursor.getMessage();
+      if (message != null) {
+        String normalized = message.toLowerCase(java.util.Locale.ROOT);
+        if (normalized.contains("address already in use")
+            || normalized.contains("failed to bind")
+            || normalized.contains("bind failed")) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private static PortBlock findUdpPortBlock(int preferred, List<PortBlock> excluded) {
+    for (int attempt = 0; attempt < MAX_PORT_PROBE_ATTEMPTS; attempt++) {
+      int candidate = preferred + attempt * (PORT_BLOCK_SIZE + 1);
+      if (candidate > 65_530) {
+        break;
+      }
+      PortBlock proposed = new PortBlock(candidate, attempt + 1);
+      if (excluded.stream().anyMatch(block -> !block.disjoint(proposed))) {
+        continue;
+      }
+      List<DatagramSocket> sockets = new ArrayList<>();
+      try {
+        for (int offset = 0; offset < PORT_BLOCK_SIZE; offset++) {
+          DatagramSocket socket = new DatagramSocket(null);
           socket.setReuseAddress(false);
           socket.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), candidate + offset));
           sockets.add(socket);
         }
-        return candidate;
+        return proposed;
       } catch (IOException unavailable) {
         // Continue the bounded deterministic scan.
       } finally {
         sockets.forEach(M11GeneratedSuite::closeQuietly);
       }
     }
-    throw new IllegalStateException("no free loopback port block for M11 Cluster");
+    throw new IllegalStateException(
+        "no free UDP loopback port block after " + MAX_PORT_PROBE_ATTEMPTS + " attempts");
   }
 
-  private static void closeQuietly(ServerSocket socket) {
-    try {
-      socket.close();
-    } catch (IOException ignored) {
-      // Best-effort release of a temporary port reservation.
-    }
+  private static void closeQuietly(DatagramSocket socket) {
+    socket.close();
   }
 
   private static void createDirectories(Path path) {
@@ -715,14 +1199,27 @@ final class M11GeneratedSuite {
       int segment,
       int action,
       Lane lane,
+      int laneIndex,
       Expected expected,
       M11CommandRequest request,
+      long newOrdinal,
+      int sourceActionIndex,
+      boolean crossSnapshotDuplicate,
       String detail) {}
 
-  record Corpus(List<Action> actions, byte[] canonicalBytes) {
+  record SegmentSpec(Lane lane, int laneIndex) {
+    String id() {
+      return lane.name() + "[" + laneIndex + "]";
+    }
+  }
+
+  record Original(int actionIndex, long newOrdinal, M11CommandRequest request) {}
+
+  record Corpus(List<Action> actions, byte[] canonicalBytes, List<String> segmentSchedule) {
     Corpus {
       actions = List.copyOf(actions);
       canonicalBytes = canonicalBytes.clone();
+      segmentSchedule = List.copyOf(segmentSchedule);
     }
 
     @Override
@@ -736,7 +1233,10 @@ final class M11GeneratedSuite {
       M11RuntimeState finalState,
       Map<Expected, Integer> counts,
       int commandConflicts,
-      int slotConflicts) {}
+      int slotConflicts,
+      int duplicateInvariantChecks,
+      int conflictInvariantChecks,
+      boolean newOrdinalsContinuous) {}
 
   record ClusterRun(
       List<M11CommandResponse> responses,
@@ -744,7 +1244,31 @@ final class M11GeneratedSuite {
       M11RuntimeState finalState,
       ObjectNode snapshotReport,
       M11HarnessReport harnessReport,
-      int observationCount) {}
+      int observationCount,
+      PortBlock portBlock,
+      List<M11ClusterRuntimeWitness> runtimeWitnesses,
+      boolean teardownCompleted,
+      int launchAttempts) {
+    ClusterRun {
+      runtimeWitnesses = List.copyOf(runtimeWitnesses);
+    }
+  }
+
+  record PortBlock(int base, int probeAttempts) {
+    int last() {
+      return base + PORT_BLOCK_SIZE - 1;
+    }
+
+    boolean disjoint(PortBlock other) {
+      return last() < other.base() || other.last() < base;
+    }
+  }
+
+  record LaunchedHarness(
+      M11SingleNodeConfig config,
+      PortBlock portBlock,
+      M11SingleNodeHarness harness,
+      int launchAttempts) {}
 
   record Result(
       ObjectNode generatedReport,

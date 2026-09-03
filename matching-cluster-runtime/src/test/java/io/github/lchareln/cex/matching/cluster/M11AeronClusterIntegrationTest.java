@@ -54,7 +54,19 @@ class M11AeronClusterIntegrationTest {
             new UUID(71, 2),
             new M08Command.Cancel("BTC-USDT", BigInteger.ONE));
 
-    try (M11SingleNodeHarness harness = M11SingleNodeHarness.launchFresh(config)) {
+    M11SingleNodeHarness harness = M11SingleNodeHarness.launchFresh(config);
+    try (harness) {
+      M11ClusterRuntimeWitness runtime = harness.runtimeWitness(DEADLINE);
+      assertEquals(config.clusterId(), runtime.clusterId());
+      assertEquals(1, runtime.memberCount());
+      assertEquals(0, runtime.memberId());
+      assertEquals(0, runtime.appointedLeaderId());
+      assertEquals(config.clusterMembers(), runtime.clusterMembers());
+      assertEquals("LEADER", runtime.serviceRole());
+      assertEquals("1.52.2", runtime.aeronImplementationVersion());
+      assertEquals("2.5.0", runtime.agronaImplementationVersion());
+      assertEquals(config.rootDirectory().toString(), runtime.rootDirectory());
+      assertEquals(config.portBase(), runtime.udpPortBlockBase());
       assertEquivalent(direct.submit(place), harness.submit(place, DEADLINE));
       assertEquivalent(direct.submit(retry), harness.submit(retry, DEADLINE));
       String digestAtSnapshot = direct.semanticStateDigest();
@@ -100,6 +112,8 @@ class M11AeronClusterIntegrationTest {
       }
       assertFalse(harness.observations().isEmpty());
     }
+    assertEquals(0, harness.report().componentErrorCount());
+    assertTrue(harness.componentErrors().isEmpty());
   }
 
   @Test

@@ -101,6 +101,10 @@ public final class M11SingleNodeHarness implements AutoCloseable {
     return requireNode().service().semanticStateDigest();
   }
 
+  public M11ClusterRuntimeWitness runtimeWitness(Duration timeout) {
+    return requireNode().runtimeWitness(timeout);
+  }
+
   public List<M11ServiceObservation> observations() {
     return List.copyOf(observations);
   }
