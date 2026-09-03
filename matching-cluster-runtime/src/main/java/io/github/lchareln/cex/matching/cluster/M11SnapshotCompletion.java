@@ -1,12 +1,10 @@
 package io.github.lchareln.cex.matching.cluster;
 
-import io.aeron.cluster.ClusterControl;
-
 /** Durable completion witness sampled after Aeron appended and forced its RecordingLog entries. */
 public record M11SnapshotCompletion(
     long completionCountBefore,
     long completionCountAfter,
-    ClusterControl.ToggleState controlToggleState,
+    M11SnapshotControlToggleState controlToggleState,
     long previousServiceRecordingId,
     long previousConsensusRecordingId,
     long serviceLeadershipTermId,
@@ -19,7 +17,7 @@ public record M11SnapshotCompletion(
     if (completionCountAfter <= completionCountBefore) {
       throw new IllegalArgumentException("snapshot completion counter did not advance");
     }
-    if (controlToggleState != ClusterControl.ToggleState.NEUTRAL) {
+    if (controlToggleState != M11SnapshotControlToggleState.NEUTRAL) {
       throw new IllegalArgumentException("snapshot control toggle did not reset to NEUTRAL");
     }
     if (serviceLeadershipTermId < 0

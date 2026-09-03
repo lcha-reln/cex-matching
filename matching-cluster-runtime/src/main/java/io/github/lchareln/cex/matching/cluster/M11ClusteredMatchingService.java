@@ -8,9 +8,11 @@ import io.aeron.cluster.service.ClientSession;
 import io.aeron.cluster.service.Cluster;
 import io.aeron.cluster.service.ClusteredService;
 import io.aeron.logbuffer.Header;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import org.agrona.DirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 
@@ -18,6 +20,8 @@ import org.agrona.concurrent.UnsafeBuffer;
 public final class M11ClusteredMatchingService implements ClusteredService {
   private final long expectedShard;
   private final M11ApplicationObserver observer;
+  private final Duration progressTimeout;
+  private final Supplier<? extends Throwable> componentFailure;
   private final M11RequestCodec requestCodec = new M11RequestCodec();
   private final M11ResponseCodec responseCodec = new M11ResponseCodec();
   private final M11SnapshotCodec snapshotCodec = new M11SnapshotCodec();
@@ -37,15 +41,32 @@ public final class M11ClusteredMatchingService implements ClusteredService {
   private Cluster cluster;
 
   public M11ClusteredMatchingService(long expectedShard) {
-    this(expectedShard, M11ApplicationObserver.NO_OP);
+    this(
+        expectedShard,
+        M11ApplicationObserver.NO_OP,
+        M11BoundedProgress.DEFAULT_TIMEOUT,
+        () -> null);
   }
 
   public M11ClusteredMatchingService(long expectedShard, M11ApplicationObserver observer) {
+    this(expectedShard, observer, M11BoundedProgress.DEFAULT_TIMEOUT, () -> null);
+  }
+
+  M11ClusteredMatchingService(
+      long expectedShard,
+      M11ApplicationObserver observer,
+      Duration progressTimeout,
+      Supplier<? extends Throwable> componentFailure) {
     if (expectedShard <= 0) {
       throw new IllegalArgumentException("expectedShard must be positive");
     }
     this.expectedShard = expectedShard;
     this.observer = Objects.requireNonNull(observer, "observer");
+    this.progressTimeout = Objects.requireNonNull(progressTimeout, "progressTimeout");
+    if (progressTimeout.isZero() || progressTimeout.isNegative()) {
+      throw new IllegalArgumentException("progressTimeout must be positive");
+    }
+    this.componentFailure = Objects.requireNonNull(componentFailure, "componentFailure");
   }
 
   @Override
@@ -56,7 +77,8 @@ public final class M11ClusteredMatchingService implements ClusteredService {
     }
     try {
       M11AeronSnapshotTransport.LoadedSnapshot loaded =
-          snapshotTransport.read(snapshotImage, cluster.idleStrategy());
+          snapshotTransport.read(
+              snapshotImage, cluster.idleStrategy(), progressTimeout, componentFailure);
       M11Snapshot snapshot = snapshotCodec.decodeCanonical(loaded.canonicalBytes());
       long expectedSnapshotSequence = snapshot.state().nextApplicationSequence() - 1;
       if (loaded.snapshotSequence() != expectedSnapshotSequence) {
@@ -117,7 +139,9 @@ public final class M11ClusteredMatchingService implements ClusteredService {
         snapshotPublication,
         encoded,
         runtime.nextApplicationSequence() - 1,
-        cluster.idleStrategy());
+        cluster.idleStrategy(),
+        progressTimeout,
+        componentFailure);
     lastWrittenSnapshot.set(applicationSnapshotWitness(encoded, state));
   }
 
@@ -163,8 +187,11 @@ public final class M11ClusteredMatchingService implements ClusteredService {
 
   private void send(ClientSession session, byte[] encoded) {
     UnsafeBuffer response = new UnsafeBuffer(encoded);
+    M11BoundedProgress progress =
+        M11BoundedProgress.start("M11 correlated egress", progressTimeout, componentFailure);
     cluster.idleStrategy().reset();
     while (true) {
+      progress.checkpoint(session.isClosing());
       long result = session.offer(response, 0, encoded.length);
       if (result >= 0) {
         return;
@@ -172,6 +199,7 @@ public final class M11ClusteredMatchingService implements ClusteredService {
       if (result != Publication.BACK_PRESSURED && result != Publication.ADMIN_ACTION) {
         throw new IllegalStateException("M11 egress failed: " + Publication.errorString(result));
       }
+      progress.checkpoint(session.isClosing());
       cluster.idleStrategy().idle();
     }
   }

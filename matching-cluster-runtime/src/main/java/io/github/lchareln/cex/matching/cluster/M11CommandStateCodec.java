@@ -29,7 +29,7 @@ public final class M11CommandStateCodec {
   public static final int MAX_STATE_BYTES = 256 * 1024 * 1024;
 
   private static final int MAX_STRING_BYTES = 1024 * 1024;
-  private static final int MAX_ORDERS = 2_000_000;
+  static final int MAX_ORDERS = 2_000_000;
 
   public byte[] encode(CommandApplierState state) {
     Objects.requireNonNull(state, "state");
@@ -46,8 +46,13 @@ public final class M11CommandStateCodec {
     writer.putString(state.transcriptDigest());
     writer.putString(state.semanticStateDigest());
     putControl(writer, state.matchingState().control());
+    requireEncodableOrderCount(state.matchingState().orders().size());
     writer.putInt(state.matchingState().orders().size());
     state.matchingState().orders().forEach(order -> putOrder(writer, order));
+  }
+
+  static void requireEncodableOrderCount(int count) {
+    M11EncodingBounds.requireAtMost(count, MAX_ORDERS, "order count");
   }
 
   public CommandApplierState decodeCanonical(byte[] encoded) throws M11ProtocolException {

@@ -16,6 +16,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import org.agrona.DirectBuffer;
 import org.agrona.concurrent.BackoffIdleStrategy;
 import org.agrona.concurrent.IdleStrategy;
@@ -25,6 +26,7 @@ import org.agrona.concurrent.UnsafeBuffer;
 public final class M11MatchingClusterClient implements AutoCloseable {
   private final M11SingleNodeConfig config;
   private final ConcurrentLinkedQueue<Throwable> componentErrors;
+  private final Supplier<? extends Throwable> nodeFailure;
   private final MediaDriver mediaDriver;
   private final AeronCluster cluster;
   private final Listener listener;
@@ -38,17 +40,21 @@ public final class M11MatchingClusterClient implements AutoCloseable {
   private M11MatchingClusterClient(
       M11SingleNodeConfig config,
       ConcurrentLinkedQueue<Throwable> componentErrors,
+      Supplier<? extends Throwable> nodeFailure,
       MediaDriver mediaDriver,
       AeronCluster cluster,
       Listener listener) {
     this.config = config;
     this.componentErrors = componentErrors;
+    this.nodeFailure = nodeFailure;
     this.mediaDriver = mediaDriver;
     this.cluster = cluster;
     this.listener = listener;
   }
 
-  static M11MatchingClusterClient connect(M11SingleNodeConfig config) {
+  static M11MatchingClusterClient connect(
+      M11SingleNodeConfig config, Supplier<? extends Throwable> nodeFailure) {
+    Objects.requireNonNull(nodeFailure, "nodeFailure");
     ConcurrentLinkedQueue<Throwable> errors = new ConcurrentLinkedQueue<>();
     Listener listener = new Listener();
     MediaDriver mediaDriver =
@@ -70,7 +76,8 @@ public final class M11MatchingClusterClient implements AutoCloseable {
                   .messageTimeoutNs(config.clientMessageTimeout().toNanos())
                   .egressListener(listener)
                   .errorHandler(errors::add));
-      return new M11MatchingClusterClient(config, errors, mediaDriver, cluster, listener);
+      return new M11MatchingClusterClient(
+          config, errors, nodeFailure, mediaDriver, cluster, listener);
     } catch (RuntimeException | Error failure) {
       mediaDriver.close();
       throw failure;
@@ -140,7 +147,10 @@ public final class M11MatchingClusterClient implements AutoCloseable {
         }
         snapshotAdminAccepted++;
         return new M11SnapshotAdminAcceptance(
-            correlation, response.requestType(), response.code(), response.message());
+            correlation,
+            M11SnapshotAdminRequestType.SNAPSHOT,
+            M11SnapshotAdminResponseCode.OK,
+            response.message());
       }
       requireBefore(deadline, "M11 snapshot admin response timed out");
       idleStrategy.idle();
@@ -181,6 +191,10 @@ public final class M11MatchingClusterClient implements AutoCloseable {
     Throwable componentFailure = componentErrors.peek();
     if (componentFailure != null) {
       throw new IllegalStateException("M11 client component failed", componentFailure);
+    }
+    Throwable nodeComponentFailure = nodeFailure.get();
+    if (nodeComponentFailure != null) {
+      throw new IllegalStateException("M11 cluster component failed", nodeComponentFailure);
     }
     idleStrategy.idle(workCount);
   }

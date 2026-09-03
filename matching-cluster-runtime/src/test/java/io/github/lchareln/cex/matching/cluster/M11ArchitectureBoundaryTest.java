@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -34,6 +35,17 @@ class M11ArchitectureBoundaryTest {
     assertFalse(dependencies.contains("matching-testkit"));
     assertFalse(dependencies.contains("matching-reference"));
     assertFalse(dependencies.contains("matching-benchmarks"));
+
+    assertAeronIndependentWitness(M11SnapshotAdminAcceptance.class);
+    assertAeronIndependentWitness(M11SnapshotCompletion.class);
+  }
+
+  private static void assertAeronIndependentWitness(Class<? extends Record> witness) {
+    assertFalse(
+        Arrays.stream(witness.getRecordComponents())
+            .map(component -> component.getType().getName())
+            .anyMatch(name -> name.startsWith("io.aeron") || name.startsWith("org.agrona")),
+        witness.getName());
   }
 
   private static String allJava(Path directory) throws Exception {

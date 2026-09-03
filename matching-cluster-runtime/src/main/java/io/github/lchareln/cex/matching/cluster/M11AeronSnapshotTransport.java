@@ -4,7 +4,9 @@ import io.aeron.ExclusivePublication;
 import io.aeron.FragmentAssembler;
 import io.aeron.Image;
 import io.aeron.Publication;
+import java.time.Duration;
 import java.util.Objects;
+import java.util.function.Supplier;
 import org.agrona.concurrent.IdleStrategy;
 import org.agrona.concurrent.UnsafeBuffer;
 
@@ -19,12 +21,31 @@ public final class M11AeronSnapshotTransport {
       byte[] canonicalSnapshot,
       long snapshotSequence,
       IdleStrategy idleStrategy) {
+    write(
+        publication,
+        canonicalSnapshot,
+        snapshotSequence,
+        idleStrategy,
+        M11BoundedProgress.DEFAULT_TIMEOUT,
+        () -> null);
+  }
+
+  void write(
+      ExclusivePublication publication,
+      byte[] canonicalSnapshot,
+      long snapshotSequence,
+      IdleStrategy idleStrategy,
+      Duration timeout,
+      Supplier<? extends Throwable> componentFailure) {
     Objects.requireNonNull(publication, "publication");
     Objects.requireNonNull(idleStrategy, "idleStrategy");
+    M11BoundedProgress progress =
+        M11BoundedProgress.start("M11 snapshot publication", timeout, componentFailure);
     for (byte[] frame : frameCodec.encode(canonicalSnapshot, snapshotSequence)) {
       UnsafeBuffer buffer = new UnsafeBuffer(frame);
       idleStrategy.reset();
       while (true) {
+        progress.checkpoint(publication.isClosed());
         long result = publication.offer(buffer, 0, frame.length);
         if (result >= 0) {
           break;
@@ -33,14 +54,26 @@ public final class M11AeronSnapshotTransport {
           throw new IllegalStateException(
               "snapshot publication failed: " + Publication.errorString(result));
         }
+        progress.checkpoint(publication.isClosed());
         idleStrategy.idle();
       }
     }
   }
 
   public LoadedSnapshot read(Image image, IdleStrategy idleStrategy) throws M11ProtocolException {
+    return read(image, idleStrategy, M11BoundedProgress.DEFAULT_TIMEOUT, () -> null);
+  }
+
+  LoadedSnapshot read(
+      Image image,
+      IdleStrategy idleStrategy,
+      Duration timeout,
+      Supplier<? extends Throwable> componentFailure)
+      throws M11ProtocolException {
     Objects.requireNonNull(image, "image");
     Objects.requireNonNull(idleStrategy, "idleStrategy");
+    M11BoundedProgress progress =
+        M11BoundedProgress.start("M11 snapshot load", timeout, componentFailure);
     M11SnapshotFrameCodec.Accumulator accumulator = frameCodec.accumulator();
     SnapshotLoadFailure[] failure = new SnapshotLoadFailure[1];
     FragmentAssembler assembler =
@@ -59,16 +92,22 @@ public final class M11AeronSnapshotTransport {
             });
     idleStrategy.reset();
     while (!image.isEndOfStream()) {
+      progress.checkpoint(snapshotImageUnavailable(image));
       int fragments = image.poll(assembler, FRAGMENT_LIMIT);
       if (failure[0] != null) {
         throw failure[0].protocolFailure();
       }
+      progress.checkpoint(snapshotImageUnavailable(image));
       idleStrategy.idle(fragments);
     }
     if (failure[0] != null) {
       throw failure[0].protocolFailure();
     }
     return new LoadedSnapshot(accumulator.snapshotSequence(), accumulator.finish());
+  }
+
+  private static boolean snapshotImageUnavailable(Image image) {
+    return !image.isEndOfStream() && (image.isClosed() || image.isPublicationRevoked());
   }
 
   public record LoadedSnapshot(long snapshotSequence, byte[] canonicalBytes) {

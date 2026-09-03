@@ -13,7 +13,7 @@ public final class M11RuntimeStateCodec {
   public static final int MAX_STATE_BYTES = 256 * 1024 * 1024;
 
   private static final int MAX_STRING_BYTES = 1024 * 1024;
-  private static final int MAX_BINDINGS = 2_000_000;
+  static final int MAX_BINDINGS = 2_000_000;
 
   public byte[] encode(M11RuntimeState state) {
     Objects.requireNonNull(state, "state");
@@ -65,6 +65,7 @@ public final class M11RuntimeStateCodec {
 
   private static void putIdentityTable(
       M11Binary.Writer writer, List<M11IdentityBinding> identities) {
+    requireEncodableBindingCount(identities.size());
     writer.putInt(identities.size());
     for (M11IdentityBinding binding : identities) {
       writer.putLong(binding.commandId().getMostSignificantBits());
@@ -76,6 +77,10 @@ public final class M11RuntimeStateCodec {
       writer.putString(binding.payloadHash());
       M11FullResultCodec.putResult(writer, binding.result());
     }
+  }
+
+  static void requireEncodableBindingCount(int count) {
+    M11EncodingBounds.requireAtMost(count, MAX_BINDINGS, "identity binding count");
   }
 
   private static List<M11IdentityBinding> readIdentityTable(M11Binary.Reader reader)

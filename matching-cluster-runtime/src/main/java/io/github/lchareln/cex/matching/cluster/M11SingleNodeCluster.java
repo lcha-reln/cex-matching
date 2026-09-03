@@ -52,7 +52,8 @@ public final class M11SingleNodeCluster implements AutoCloseable {
     Objects.requireNonNull(config, "config");
     ConcurrentLinkedQueue<Throwable> errors = new ConcurrentLinkedQueue<>();
     M11ClusteredMatchingService service =
-        new M11ClusteredMatchingService(config.shardId(), observer);
+        new M11ClusteredMatchingService(
+            config.shardId(), observer, config.clientMessageTimeout(), errors::peek);
     String nodeAeronDirectory = config.nodeAeronDirectory().toString();
 
     MediaDriver.Context mediaContext =
@@ -127,7 +128,7 @@ public final class M11SingleNodeCluster implements AutoCloseable {
   }
 
   public M11MatchingClusterClient connectClient() {
-    return M11MatchingClusterClient.connect(config);
+    return M11MatchingClusterClient.connect(config, componentErrors::peek);
   }
 
   public M11ClusteredMatchingService service() {
@@ -190,7 +191,7 @@ public final class M11SingleNodeCluster implements AutoCloseable {
           return new M11SnapshotCompletion(
               baseline.completionCount(),
               completionCount,
-              toggle,
+              M11SnapshotControlToggleState.NEUTRAL,
               baseline.serviceRecordingId(),
               baseline.consensusRecordingId(),
               serviceEntry.leadershipTermId,

@@ -11,7 +11,7 @@ public final class M11FullResultCodec {
   public static final int MAX_RESULT_BYTES = 16 * 1024 * 1024;
 
   private static final int MAX_STRING_BYTES = 1024 * 1024;
-  private static final int MAX_EVENTS = 1_000_000;
+  static final int MAX_EVENTS = 1_000_000;
 
   public byte[] encode(CanonicalResult result) {
     Objects.requireNonNull(result, "result");
@@ -42,6 +42,7 @@ public final class M11FullResultCodec {
   }
 
   static void putResult(M11Binary.Writer writer, CanonicalResult result) {
+    requireEncodableEventCount(result.events().size());
     writer.putString(result.resultType());
     writer.putLong(result.applicationSequence());
     writer.putInt(result.events().size());
@@ -49,6 +50,10 @@ public final class M11FullResultCodec {
     writer.putString(result.context());
     writer.putString(result.semanticStateDigest());
     writer.putString(result.resultDigest());
+  }
+
+  static void requireEncodableEventCount(int count) {
+    M11EncodingBounds.requireAtMost(count, MAX_EVENTS, "canonical result event count");
   }
 
   static CanonicalResult readResult(M11Binary.Reader reader) throws M11ProtocolException {
