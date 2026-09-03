@@ -4,9 +4,9 @@ import io.github.lchareln.cex.matching.MatchingStateImage;
 import java.util.Objects;
 
 /** Complete matching-core adapter state at one applied command boundary. */
-record CommandApplierState(
+public record CommandApplierState(
     MatchingStateImage matchingState, String transcriptDigest, String semanticStateDigest) {
-  CommandApplierState {
+  public CommandApplierState {
     Objects.requireNonNull(matchingState, "matchingState");
     requireSha256(transcriptDigest, "transcriptDigest");
     requireSha256(semanticStateDigest, "semanticStateDigest");
